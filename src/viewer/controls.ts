@@ -18,10 +18,10 @@ export class FirstPersonControls {
   private wallAABBs: AABB[] = [];
 
   private keys = {
-    w: false,
-    a: false,
-    s: false,
-    d: false,
+    KeyW: false,
+    KeyA: false,
+    KeyS: false,
+    KeyD: false,
     ArrowUp: false,
     ArrowLeft: false,
     ArrowDown: false,
@@ -76,11 +76,11 @@ export class FirstPersonControls {
     const dir = new THREE.Vector3();
 
     const forward =
-      (this.keys.w || this.keys.ArrowUp ? 1 : 0) -
-      (this.keys.s || this.keys.ArrowDown ? 1 : 0);
+      (this.keys.KeyW || this.keys.ArrowUp ? 1 : 0) -
+      (this.keys.KeyS || this.keys.ArrowDown ? 1 : 0);
     const strafe =
-      (this.keys.d || this.keys.ArrowRight ? 1 : 0) -
-      (this.keys.a || this.keys.ArrowLeft ? 1 : 0);
+      (this.keys.KeyD || this.keys.ArrowRight ? 1 : 0) -
+      (this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0);
 
     if (forward !== 0 || strafe !== 0) {
       // Get camera forward vector (flattened to XZ)
@@ -129,14 +129,14 @@ export class FirstPersonControls {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    if (e.key in this.keys) {
-      this.keys[e.key as keyof typeof this.keys] = true;
+    if (e.code in this.keys) {
+      this.keys[e.code as keyof typeof this.keys] = true;
     }
   }
 
   private onKeyUp(e: KeyboardEvent): void {
-    if (e.key in this.keys) {
-      this.keys[e.key as keyof typeof this.keys] = false;
+    if (e.code in this.keys) {
+      this.keys[e.code as keyof typeof this.keys] = false;
     }
   }
 }

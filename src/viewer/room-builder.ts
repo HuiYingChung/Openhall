@@ -6,8 +6,16 @@
  */
 
 import * as THREE from 'three';
-import type { Gallery, Room, Placement, Artwork } from '../schema/gallery.schema';
+import type { Gallery, Room, Placement, Artwork, Doorway } from '../schema/gallery.schema';
 import { buildWallAABBs, type AABB, type DoorwayCut } from './collision';
+
+/** Opposite wall mapping — used to mirror a doorway into the target room. */
+const OPPOSITE_WALL: Record<string, 'n' | 's' | 'e' | 'w'> = {
+  n: 's',
+  s: 'n',
+  e: 'w',
+  w: 'e',
+};
 
 // ---------------------------------------------------------------------------
 // Material presets
@@ -79,14 +87,8 @@ export function buildScene(gallery: Gallery): BuildResult {
   const artworkMap = new Map<string, Artwork>();
   for (const aw of gallery.artworks) artworkMap.set(aw.id, aw);
 
-  // Placement lookup (artworkId → placement)
-  const placementMap = new Map<string, Placement>();
-  for (const p of gallery.placements) placementMap.set(p.artworkId, p);
-
   // -------------------------------------------------------------------------
   // Layout rooms in a row along the +X axis
-  // Each room's origin is placed so they butt up against one another.
-  // This simple strategy works for the MVP's 1-2 room demo.
   // -------------------------------------------------------------------------
   let cursorX = 0;
   const roomOrigins = new Map<string, { x: number; z: number }>();
@@ -96,22 +98,84 @@ export function buildScene(gallery: Gallery): BuildResult {
     cursorX += room.width;
   }
 
+  // -------------------------------------------------------------------------
+  // Build inbound-doorway map: for each room, collect all doorways declared
+  // by *other* rooms that target it.  These openings need to be mirrored onto
+  // the receiving room's opposite wall.  The offsetFromCenter must be
+  // re-expressed relative to the *target* room's wall centre, not the source's.
+  // -------------------------------------------------------------------------
+  const inboundDoorways = new Map<string, Doorway[]>();
+  for (const room of gallery.rooms) {
+    const srcOrigin = roomOrigins.get(room.id)!;
+    for (const d of room.doorways) {
+      const targetRoom = gallery.rooms.find((r) => r.id === d.targetRoomId);
+      const targetOrigin = roomOrigins.get(d.targetRoomId);
+      if (!targetRoom || !targetOrigin) continue;
+
+      // Compute the world-space centre of the doorway opening.
+      // For N/S doorways the offset is along X; for E/W it's along Z.
+      // In our linear layout rooms are adjacent on X, so shared walls are E/W.
+      let worldOffset: number;
+      if (d.wall === 'e' || d.wall === 'w') {
+        // offset is along Z axis
+        const srcCZ = srcOrigin.z + room.depth / 2;
+        const worldZ = srcCZ + d.offsetFromCenter;
+        const tgtCZ = targetOrigin.z + targetRoom.depth / 2;
+        worldOffset = worldZ - tgtCZ;
+      } else {
+        // N/S: offset is along X axis
+        const srcCX = srcOrigin.x + room.width / 2;
+        const worldX = srcCX + d.offsetFromCenter;
+        const tgtCX = targetOrigin.x + targetRoom.width / 2;
+        worldOffset = worldX - tgtCX;
+      }
+
+      const existing = inboundDoorways.get(d.targetRoomId) ?? [];
+      existing.push({
+        ...d,
+        wall: OPPOSITE_WALL[d.wall],
+        offsetFromCenter: worldOffset,
+      });
+      inboundDoorways.set(d.targetRoomId, existing);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Add one global ambient + hemisphere light (scene-wide, not per-room).
+  // Intensity is the average of all rooms' ambientIntensity values.
+  // -------------------------------------------------------------------------
+  const avgAmbient =
+    gallery.rooms.reduce((sum, r) => sum + r.lighting.ambientIntensity, 0) /
+    gallery.rooms.length;
+  // Use the first room's temperature for the global lights; individual rooms
+  // tune appearance via their own point lights.
+  const globalTempColor = temperatureColor(gallery.rooms[0].lighting.temperature);
+  scene.add(new THREE.AmbientLight(globalTempColor, avgAmbient));
+  scene.add(new THREE.HemisphereLight(globalTempColor, new THREE.Color(0x222222), 0.3));
+
   for (const room of gallery.rooms) {
     const origin = roomOrigins.get(room.id)!;
 
-    // Doorway cuts for collision
-    const doorwayCuts: DoorwayCut[] = room.doorways.map((d) => ({
-      wall: d.wall,
-      offsetFromCenter: d.offsetFromCenter,
-      width: d.width,
-    }));
+    // Combine own doorways + mirrored inbound doorways for this room
+    const allDoorwayCuts: DoorwayCut[] = [
+      ...room.doorways.map((d) => ({
+        wall: d.wall,
+        offsetFromCenter: d.offsetFromCenter,
+        width: d.width,
+      })),
+      ...(inboundDoorways.get(room.id) ?? []).map((d) => ({
+        wall: d.wall,
+        offsetFromCenter: d.offsetFromCenter,
+        width: d.width,
+      })),
+    ];
 
     const wallAABBs = buildWallAABBs(
       origin.x,
       origin.z,
       room.width,
       room.depth,
-      doorwayCuts
+      allDoorwayCuts
     );
 
     roomLayouts.push({
@@ -121,7 +185,7 @@ export function buildScene(gallery: Gallery): BuildResult {
       wallAABBs,
     });
 
-    buildRoom(scene, room, origin.x, origin.z);
+    buildRoom(scene, room, origin.x, origin.z, inboundDoorways.get(room.id) ?? []);
   }
 
   // -------------------------------------------------------------------------
@@ -153,9 +217,11 @@ function buildRoom(
   scene: THREE.Scene,
   room: Room,
   originX: number,
-  originZ: number
+  originZ: number,
+  /** Doorways declared by other rooms that open into this one (already wall-flipped). */
+  inboundDoorways: Doorway[]
 ): void {
-  const { width, depth, height, surfaces, lighting, doorways } = room;
+  const { width, depth, height, surfaces, lighting } = room;
   const wallColor = WALL_COLORS[surfaces.wall] ?? 0xf5f0eb;
   const floorColor = FLOOR_COLORS[surfaces.floor] ?? 0xc8a96e;
   const tempColor = temperatureColor(lighting.temperature);
@@ -182,29 +248,15 @@ function buildRoom(
   ceil.position.set(cx, height, cz);
   scene.add(ceil);
 
-  // --- Walls (solid, doorways punched out later via CSG-free segment approach) ---
-  // We render each wall as one or more rectangular panels, leaving doorway openings.
-  buildWallPanels(scene, room, originX, originZ, wallMat);
+  // --- Walls: own doorways + mirrored inbound doorways both carved out ---
+  buildWallPanels(scene, room, originX, originZ, wallMat, inboundDoorways);
 
-  // --- Ambient light ---
-  const ambient = new THREE.AmbientLight(tempColor, lighting.ambientIntensity);
-  scene.add(ambient);
+  // --- Per-room point light (fills the space; global ambient handles base level) ---
+  const pointLight = new THREE.PointLight(tempColor, 0.8, room.width * 2);
+  pointLight.position.set(cx, height - 0.3, cz);
+  scene.add(pointLight);
 
-  // --- Room fill light (hemisphere) ---
-  const hemi = new THREE.HemisphereLight(tempColor, new THREE.Color(0x222222), 0.3);
-  scene.add(hemi);
-
-  // --- Per-artwork spot lights ---
-  if (lighting.artworkSpotlights) {
-    for (const d of doorways) {
-      void d; // doorways used separately
-    }
-    // Spotlights are added in buildArtworkPlane so we know artwork positions.
-    // A point light over the room centre suffices here.
-    const pointLight = new THREE.PointLight(tempColor, 0.8, room.width * 2);
-    pointLight.position.set(cx, height - 0.3, cz);
-    scene.add(pointLight);
-  }
+  // TODO(week3): per-artwork spotlights (schema field `artworkSpotlights` respected here)
 }
 
 // ---------------------------------------------------------------------------
@@ -217,7 +269,9 @@ function buildWallPanels(
   room: Room,
   originX: number,
   originZ: number,
-  mat: THREE.Material
+  mat: THREE.Material,
+  /** Inbound doorways already mirrored to this room's wall sides. */
+  inboundDoorways: Doorway[] = []
 ): void {
   const { width, depth, height, doorways } = room;
   const cx = originX + width / 2;
@@ -225,16 +279,17 @@ function buildWallPanels(
 
   type WallSide = 'n' | 's' | 'e' | 'w';
 
-  // Group doorways per wall
-  const doorsBySide = new Map<WallSide, typeof doorways>();
-  for (const d of doorways) {
+  // Combine own + inbound doorways, then group by wall side
+  const allDoorways = [...doorways, ...inboundDoorways];
+  const doorsBySide = new Map<WallSide, typeof allDoorways>();
+  for (const d of allDoorways) {
     const arr = doorsBySide.get(d.wall as WallSide) ?? [];
     arr.push(d);
     doorsBySide.set(d.wall as WallSide, arr);
   }
 
   // Helper: segment list along a wall of length `wallLen`, cut by doorways
-  function getSegments(wallLen: number, wallDoors: typeof doorways): Array<[number, number]> {
+  function getSegments(wallLen: number, wallDoors: typeof allDoorways): Array<[number, number]> {
     let segs: Array<[number, number]> = [[0, wallLen]];
     for (const d of wallDoors) {
       const centre = wallLen / 2 + d.offsetFromCenter;

@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { GallerySchema } from './schema/gallery.schema';
 import { buildScene } from './viewer/room-builder';
 import { FirstPersonControls } from './viewer/controls';
-import { mountHintOverlay } from './ui/overlay';
+import { mountHintOverlay, mountRelockOverlay } from './ui/overlay';
 import sampleGallery from './demo/sample-gallery.json';
 
 // ---------------------------------------------------------------------------
@@ -64,27 +64,32 @@ const allWallAABBs = roomLayouts.flatMap((r) => r.wallAABBs);
 const controls = new FirstPersonControls(camera, document.body);
 controls.setWalls(allWallAABBs);
 
-// Place camera at start of first room, slightly inside
+// Place camera 3m inside the first room's near corner
 const firstLayout = roomLayouts[0];
-const startX = firstLayout.originX + firstLayout.wallAABBs.length > 0
-  ? firstLayout.originX + 3
-  : 0;
-controls.teleport(startX, firstLayout.originZ + 3);
+controls.teleport(firstLayout.originX + 3, firstLayout.originZ + 3);
 
 // ---------------------------------------------------------------------------
 // Hint overlay
 // ---------------------------------------------------------------------------
 
-const { dismiss } = mountHintOverlay(() => {
+const { dismiss: dismissHint } = mountHintOverlay(() => {
   controls.lock();
 });
 
 controls.pointerLock.addEventListener('lock', () => {
-  dismiss();
+  dismissHint();
 });
 
 controls.pointerLock.addEventListener('unlock', () => {
-  // Re-show a simpler re-lock message (just show overlay again on click)
+  const { dismiss: dismissRelock } = mountRelockOverlay(() => {
+    controls.lock();
+  });
+  // Dismiss the re-lock overlay once the pointer is locked again (one-time listener)
+  function onRelock() {
+    dismissRelock();
+    controls.pointerLock.removeEventListener('lock', onRelock);
+  }
+  controls.pointerLock.addEventListener('lock', onRelock);
 });
 
 // ---------------------------------------------------------------------------
