@@ -3,36 +3,91 @@ import tsPlugin from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import prettierConfig from 'eslint-config-prettier';
 
+// Shared browser globals used across src/
+const browserGlobals = {
+  window: 'readonly',
+  document: 'readonly',
+  console: 'readonly',
+  alert: 'readonly',
+  fetch: 'readonly',
+  localStorage: 'readonly',
+  URL: 'readonly',
+  URLSearchParams: 'readonly',
+  File: 'readonly',
+  FileList: 'readonly',
+  Image: 'readonly',
+  HTMLElement: 'readonly',
+  HTMLButtonElement: 'readonly',
+  HTMLCanvasElement: 'readonly',
+  HTMLInputElement: 'readonly',
+  HTMLSelectElement: 'readonly',
+  HTMLTextAreaElement: 'readonly',
+  requestAnimationFrame: 'readonly',
+  setTimeout: 'readonly',
+  KeyboardEvent: 'readonly',
+  MouseEvent: 'readonly',
+  PointerEvent: 'readonly',
+  Event: 'readonly',
+  DataTransfer: 'readonly',
+};
+
+// Node globals for scripts/
+const nodeGlobals = {
+  process: 'readonly',
+  console: 'readonly',
+  fetch: 'readonly',
+  URLSearchParams: 'readonly',
+};
+
+// Cloudflare Workers globals for worker/
+const cfWorkerGlobals = {
+  fetch: 'readonly',
+  Request: 'readonly',
+  Response: 'readonly',
+  URLSearchParams: 'readonly',
+  console: 'readonly',
+};
+
 export default [
   js.configs.recommended,
+  // Source TypeScript files (browser context)
   {
-    files: ['**/*.ts'],
+    files: ['src/**/*.ts'],
     languageOptions: {
       parser: tsParser,
-      parserOptions: {
-        ecmaVersion: 2022,
-        sourceType: 'module',
-      },
-      globals: {
-        window: 'readonly',
-        document: 'readonly',
-        console: 'readonly',
-        HTMLElement: 'readonly',
-        HTMLButtonElement: 'readonly',
-        HTMLCanvasElement: 'readonly',
-        requestAnimationFrame: 'readonly',
-        KeyboardEvent: 'readonly',
-        MouseEvent: 'readonly',
-        PointerEvent: 'readonly',
-        Event: 'readonly',
-      },
+      parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
+      globals: browserGlobals,
     },
-    plugins: {
-      '@typescript-eslint': tsPlugin,
-    },
+    plugins: { '@typescript-eslint': tsPlugin },
     rules: {
       ...tsPlugin.configs.recommended.rules,
       '@typescript-eslint/no-explicit-any': 'warn',
+    },
+  },
+  // Worker TypeScript (Cloudflare Workers context)
+  {
+    files: ['worker/**/*.ts'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
+      globals: cfWorkerGlobals,
+    },
+    plugins: { '@typescript-eslint': tsPlugin },
+    rules: {
+      ...tsPlugin.configs.recommended.rules,
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
+  },
+  // Node scripts (*.mjs)
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: nodeGlobals,
+    },
+    rules: {
+      'no-unused-vars': ['error', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }],
     },
   },
   prettierConfig,

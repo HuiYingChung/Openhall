@@ -67,7 +67,10 @@ export interface BuildResult {
   roomLayouts: RoomLayout[];
   /** Map from artwork id → world-space centre of the artwork plane */
   artworkPositions: Map<string, THREE.Vector3>;
-  /** Map from artwork id → the corresponding Mesh (for raycasting) */
+  /**
+   * Map from artwork id → the canvas Mesh child (for raycasting in Week 3).
+   * Each mesh has userData.artworkId set.
+   */
   artworkMeshes: Map<string, THREE.Mesh>;
 }
 
@@ -75,7 +78,15 @@ export interface BuildResult {
 // Main builder
 // ---------------------------------------------------------------------------
 
-export function buildScene(gallery: Gallery): BuildResult {
+/**
+ * @param gallery     Validated gallery object.
+ * @param aspectRatios Optional map of artworkId → real aspect ratio (width/height).
+ *                     When provided, artwork planes use the real ratio instead of 0.75.
+ */
+export function buildScene(
+  gallery: Gallery,
+  aspectRatios?: Map<string, number>
+): BuildResult {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x111111);
 
@@ -200,10 +211,13 @@ export function buildScene(gallery: Gallery): BuildResult {
     const room = gallery.rooms.find((r) => r.id === placement.roomId);
     if (!room) continue;
 
-    const { mesh, worldPos } = buildArtworkPlane(artwork, placement, room, origin);
-    scene.add(mesh);
+    const aspectRatio = aspectRatios?.get(artwork.id);
+    const { group, canvasMesh, worldPos } = buildArtworkPlane(
+      artwork, placement, room, origin, aspectRatio
+    );
+    scene.add(group);
     artworkPositions.set(artwork.id, worldPos);
-    artworkMeshes.set(artwork.id, mesh);
+    artworkMeshes.set(artwork.id, canvasMesh);
   }
 
   return { scene, roomLayouts, artworkPositions, artworkMeshes };
@@ -409,98 +423,87 @@ function buildArtworkPlane(
   artwork: Artwork,
   placement: Placement,
   room: Room,
-  origin: { x: number; z: number }
-): { mesh: THREE.Mesh; worldPos: THREE.Vector3 } {
+  origin: { x: number; z: number },
+  /** Real aspect ratio (width/height). Falls back to 0.75 for demo placeholders. */
+  aspectRatio?: number
+): { group: THREE.Group; canvasMesh: THREE.Mesh; worldPos: THREE.Vector3 } {
   const { displayWidth, hangingHeight, wall, offsetFromCenter } = placement;
-
-  // Assume square-ish artwork for placeholder — real aspect ratio comes from the texture
-  const displayHeight = displayWidth * 0.75;
+  const ratio = aspectRatio ?? 0.75;
+  const displayHeight = displayWidth / ratio;
   const frameThickness = 0.04;
 
-  // Build artwork group (frame + canvas)
   const group = new THREE.Group();
 
-  // Canvas plane
+  // Canvas plane — load real texture if imagePath is an object URL or data URL
   const canvasGeo = new THREE.PlaneGeometry(displayWidth, displayHeight);
+  let canvasMat: THREE.MeshStandardMaterial;
 
-  // Use a solid color as placeholder (real images loaded when available)
-  const placeholderColor = getPlaceholderColor(artwork.imagePath);
-  const canvasMat = new THREE.MeshStandardMaterial({
-    color: placeholderColor,
-    roughness: 0.5,
-    metalness: 0.0,
-  });
+  if (artwork.imagePath.startsWith('blob:') || artwork.imagePath.startsWith('data:') || artwork.imagePath.startsWith('http')) {
+    const texture = new THREE.TextureLoader().load(artwork.imagePath);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    canvasMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.5 });
+  } else {
+    // Placeholder solid color for demo mode
+    canvasMat = new THREE.MeshStandardMaterial({
+      color: getPlaceholderColor(artwork.imagePath),
+      roughness: 0.5,
+    });
+  }
 
-  const canvas = new THREE.Mesh(canvasGeo, canvasMat);
-  canvas.userData['artworkId'] = artwork.id;
-  group.add(canvas);
+  const canvasMesh = new THREE.Mesh(canvasGeo, canvasMat);
+  canvasMesh.userData['artworkId'] = artwork.id;
+  canvasMesh.position.z = 0.006;
+  group.add(canvasMesh);
 
   // Frame
   const frameGeo = new THREE.PlaneGeometry(
     displayWidth + frameThickness * 2,
     displayHeight + frameThickness * 2
   );
-  const frameMat = new THREE.MeshStandardMaterial({
-    color: 0x1a1208,
-    roughness: 0.7,
-    metalness: 0.1,
-  });
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1208, roughness: 0.7 });
   const frame = new THREE.Mesh(frameGeo, frameMat);
-  frame.position.z = -0.005; // slightly behind canvas
+  frame.position.z = 0; // behind canvas
   group.add(frame);
 
-  // Compute world position and orientation
+  // World position and orientation
   const cx = origin.x + room.width / 2;
   const cz = origin.z + room.depth / 2;
   let wx = cx;
   let wz = cz;
   let rotY = 0;
-  const wallInset = 0.02; // small gap to avoid z-fighting
+  const wallInset = 0.02;
 
   switch (wall) {
     case 'n':
       wz = origin.z + wallInset;
       wx = cx + offsetFromCenter;
-      rotY = 0; // faces +Z (south, into room)
+      rotY = 0;
       break;
     case 's':
       wz = origin.z + room.depth - wallInset;
       wx = cx + offsetFromCenter;
-      rotY = Math.PI; // faces -Z (north, into room)
+      rotY = Math.PI;
       break;
     case 'w':
       wx = origin.x + wallInset;
       wz = cz + offsetFromCenter;
-      rotY = Math.PI / 2; // faces +X (east, into room)
+      rotY = Math.PI / 2;
       break;
     case 'e':
       wx = origin.x + room.width - wallInset;
       wz = cz + offsetFromCenter;
-      rotY = -Math.PI / 2; // faces -X (west, into room)
+      rotY = -Math.PI / 2;
       break;
   }
 
   group.position.set(wx, hangingHeight, wz);
   group.rotation.y = rotY;
 
-  // We return the canvas mesh for raycasting; userData holds artworkId
-  const worldPos = new THREE.Vector3(wx, hangingHeight, wz);
-
-  // The group itself can't be a Mesh — return canvas mesh, attach group to scene
-  // We add the group as a child of a dummy mesh so the caller can add group to scene.
-  // Actually, the caller will get back a Mesh — use canvas mesh as proxy.
-  canvas.position.set(0, 0, 0.006); // slight forward
-  group.updateMatrixWorld();
-
-  // Return group (cast as Mesh for API compatibility) and position
-  return {
-    mesh: group as unknown as THREE.Mesh,
-    worldPos,
-  };
+  return { group, canvasMesh, worldPos: new THREE.Vector3(wx, hangingHeight, wz) };
 }
 
 // ---------------------------------------------------------------------------
-// Placeholder color utility
+// Placeholder color utility (demo mode only)
 // ---------------------------------------------------------------------------
 
 function getPlaceholderColor(imagePath: string): number {

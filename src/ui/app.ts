@@ -1,0 +1,524 @@
+/**
+ * app.ts — Main application controller.
+ * Manages the state machine: settings → upload → generating → viewer → labels
+ *
+ * Renders the UI chrome (settings, upload, progress, label editor) over the
+ * Three.js canvas. The canvas itself is always present; only the UI overlay changes.
+ */
+
+import * as THREE from 'three';
+import { GallerySchema } from '../schema/gallery.schema';
+import { buildScene } from '../viewer/room-builder';
+import { FirstPersonControls } from '../viewer/controls';
+import { mountHintOverlay } from './overlay';
+import { sanitizePlacements } from './placement-sanity';
+import { resizeToDataUrl, createDisplayObjectUrl } from './image-utils';
+import {
+  WatsonxProvider,
+  loadWatsonxSettings,
+  saveWatsonxSettings,
+} from '../ai/watsonx';
+import {
+  OpenAICompatProvider,
+  loadOpenAISettings,
+  saveOpenAISettings,
+} from '../ai/openai-compat';
+import type { AIProvider, UploadedArtwork, StylePreset } from '../ai/provider';
+import { STYLE_PRESETS as PRESETS } from '../ai/provider';
+import type { WorkAnalysis } from '../schema/analysis.schema';
+import type { Gallery } from '../schema/gallery.schema';
+
+// ---------------------------------------------------------------------------
+// App state
+// ---------------------------------------------------------------------------
+
+type AppState = 'settings' | 'upload' | 'generating' | 'viewer' | 'labels';
+
+interface AppData {
+  artworks: UploadedArtwork[];
+  userBrief: string;
+  preset: StylePreset;
+  analyses: WorkAnalysis[];
+  gallery: Gallery | null;
+}
+
+// ---------------------------------------------------------------------------
+// Bootstrap
+// ---------------------------------------------------------------------------
+
+export function bootApp(): void {
+  // Create persistent canvas
+  const canvas = document.createElement('canvas');
+  document.body.appendChild(canvas);
+  Object.assign(canvas.style, {
+    position: 'fixed', inset: '0', width: '100vw', height: '100vh',
+  });
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+
+  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 200);
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Render loop
+  const clock = new THREE.Clock();
+  let controls: FirstPersonControls | null = null;
+  let currentScene: THREE.Scene = new THREE.Scene();
+  currentScene.background = new THREE.Color(0x111111);
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const delta = Math.min(clock.getDelta(), 0.05);
+    controls?.update(delta);
+    renderer.render(currentScene, camera);
+  }
+  animate();
+
+  // App data
+  const data: AppData = {
+    artworks: [],
+    userBrief: '',
+    preset: 'white-cube',
+    analyses: [],
+    gallery: null,
+  };
+
+  // UI container
+  const ui = document.createElement('div');
+  ui.id = 'oh-ui';
+  document.body.appendChild(ui);
+
+  function setState(state: AppState) {
+    ui.innerHTML = '';
+    switch (state) {
+      case 'settings': renderSettings(ui, data, () => setState('upload')); break;
+      case 'upload': renderUpload(ui, data, () => setState('generating'), () => setState('settings')); break;
+      case 'generating': renderGenerating(ui, data, camera,
+        (_s, newControls) => { controls = newControls; setState('labels'); },
+        (err) => { alert(`Generation failed:\n${err}`); setState('upload'); }); break;
+      case 'viewer': {
+        // Just remove UI and let the viewer run
+        ui.innerHTML = '';
+        break;
+      }
+      case 'labels': renderLabels(ui, data, () => setState('viewer')); break;
+    }
+  }
+
+  // Check if settings exist — if not, go to settings first
+  const hasWatsonx = !!loadWatsonxSettings()?.apiKey;
+  const hasOpenAI = !!loadOpenAISettings()?.apiKey;
+  setState(hasWatsonx || hasOpenAI ? 'upload' : 'settings');
+}
+
+// ---------------------------------------------------------------------------
+// Settings screen
+// ---------------------------------------------------------------------------
+
+function renderSettings(
+  container: HTMLElement,
+  data: AppData,
+  onDone: () => void
+): void {
+  const wx = loadWatsonxSettings();
+  const oai = loadOpenAISettings();
+  const providerDefault = wx?.apiKey ? 'watsonx' : 'openai';
+
+  container.innerHTML = `
+    <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      background:rgba(0,0,0,0.88);z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;">
+      <div style="background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto;">
+        <h2 style="margin:0 0 0.25rem;font-size:1.4rem;">⚙️ API Settings</h2>
+        <p style="color:#888;font-size:0.85rem;margin:0 0 1.5rem;">Keys are stored in your browser only and never sent anywhere except directly to the AI provider.</p>
+
+        <label style="display:block;margin-bottom:0.5rem;font-size:0.9rem;">Provider</label>
+        <select id="oh-provider" style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:1rem;">
+          <option value="watsonx" ${providerDefault === 'watsonx' ? 'selected' : ''}>IBM watsonx.ai (Granite + Llama Vision)</option>
+          <option value="openai" ${providerDefault === 'openai' ? 'selected' : ''}>OpenAI-compatible (OpenAI, Together, etc.)</option>
+        </select>
+
+        <div id="oh-watsonx-fields" style="display:${providerDefault === 'watsonx' ? 'block' : 'none'}">
+          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">IBM Cloud API Key</label>
+          <input id="oh-wx-key" type="password" placeholder="ApiKey-..." value="${wx?.apiKey ?? ''}"
+            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
+          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">watsonx Project ID (UUID)</label>
+          <input id="oh-wx-project" type="text" placeholder="xxxxxxxx-xxxx-4xxx-xxxx-xxxxxxxxxxxx" value="${wx?.projectId ?? ''}"
+            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
+          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">Token Worker URL <span style="color:#888;">(leave blank if deploying locally)</span></label>
+          <input id="oh-wx-worker" type="text" placeholder="https://your-worker.workers.dev" value="${wx?.tokenWorkerUrl ?? ''}"
+            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
+          <p style="font-size:0.75rem;color:#666;margin:0 0 1rem;">
+            The token worker proxies IBM IAM authentication (required for browser use).<br>
+            Deploy <code>worker/token-exchange.ts</code> to Cloudflare Workers — it's free.
+          </p>
+        </div>
+
+        <div id="oh-openai-fields" style="display:${providerDefault === 'openai' ? 'block' : 'none'}">
+          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">API Key</label>
+          <input id="oh-oai-key" type="password" placeholder="sk-..." value="${oai?.apiKey ?? ''}"
+            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
+          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">Base URL</label>
+          <input id="oh-oai-url" type="text" placeholder="https://api.openai.com/v1" value="${oai?.baseUrl ?? 'https://api.openai.com/v1'}"
+            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
+          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">Model</label>
+          <input id="oh-oai-model" type="text" placeholder="gpt-4o" value="${oai?.model ?? 'gpt-4o'}"
+            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:1rem;box-sizing:border-box;" />
+        </div>
+
+        <div style="display:flex;gap:0.75rem;">
+          <button id="oh-save-settings" style="flex:1;padding:0.7rem;background:#fff;color:#111;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;">Save & Continue</button>
+        </div>
+        <p style="font-size:0.75rem;color:#555;margin:1rem 0 0;text-align:center;">No key? Try the <button id="oh-demo-btn" style="background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;font-size:0.75rem;">demo mode</button> instead.</p>
+      </div>
+    </div>`;
+
+  const providerSel = container.querySelector('#oh-provider') as HTMLSelectElement;
+  const wxFields = container.querySelector('#oh-watsonx-fields') as HTMLElement;
+  const oaiFields = container.querySelector('#oh-openai-fields') as HTMLElement;
+  providerSel.addEventListener('change', () => {
+    wxFields.style.display = providerSel.value === 'watsonx' ? 'block' : 'none';
+    oaiFields.style.display = providerSel.value === 'openai' ? 'block' : 'none';
+  });
+
+  container.querySelector('#oh-save-settings')!.addEventListener('click', () => {
+    if (providerSel.value === 'watsonx') {
+      const key = (container.querySelector('#oh-wx-key') as HTMLInputElement).value.trim();
+      const proj = (container.querySelector('#oh-wx-project') as HTMLInputElement).value.trim();
+      const worker = (container.querySelector('#oh-wx-worker') as HTMLInputElement).value.trim();
+      if (!key || !proj) { alert('API key and Project ID are required for watsonx.'); return; }
+      saveWatsonxSettings({ apiKey: key, projectId: proj, wxUrl: 'https://us-south.ml.cloud.ibm.com', tokenWorkerUrl: worker });
+    } else {
+      const key = (container.querySelector('#oh-oai-key') as HTMLInputElement).value.trim();
+      const url = (container.querySelector('#oh-oai-url') as HTMLInputElement).value.trim();
+      const model = (container.querySelector('#oh-oai-model') as HTMLInputElement).value.trim();
+      if (!key) { alert('API key is required.'); return; }
+      saveOpenAISettings({ apiKey: key, baseUrl: url || 'https://api.openai.com/v1', model: model || 'gpt-4o' });
+    }
+    onDone();
+  });
+
+  container.querySelector('#oh-demo-btn')!.addEventListener('click', () => {
+    loadDemoMode(container, data, onDone);
+  });
+}
+
+async function loadDemoMode(_container: HTMLElement, data: AppData, onDone: () => void): Promise<void> {
+  // DEMO FALLBACK: load pre-generated sample gallery
+  try {
+    const { default: sampleGallery } = await import('../demo/sample-gallery.json');
+    const result = GallerySchema.safeParse(sampleGallery);
+    if (!result.success) throw new Error('Demo gallery schema invalid');
+    data.gallery = result.data;
+    data.artworks = [];
+    onDone();
+  } catch (e) {
+    alert(`Demo mode failed: ${String(e)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Upload screen
+// ---------------------------------------------------------------------------
+
+function renderUpload(
+  container: HTMLElement,
+  data: AppData,
+  onGenerate: () => void,
+  onSettings: () => void
+): void {
+  container.innerHTML = `
+    <div style="position:fixed;inset:0;display:flex;flex-direction:column;
+      background:#0d0d0d;z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;overflow-y:auto;">
+      <div style="max-width:760px;margin:0 auto;padding:2rem;width:100%;box-sizing:border-box;">
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+          <h1 style="margin:0;font-size:1.6rem;font-weight:700;">Openhall</h1>
+          <button id="oh-to-settings" style="background:none;border:1px solid #444;color:#aaa;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.85rem;">⚙️ Settings</button>
+        </div>
+
+        <div id="oh-dropzone" style="border:2px dashed #444;border-radius:12px;padding:3rem 1rem;text-align:center;cursor:pointer;transition:border-color 0.2s;margin-bottom:1rem;">
+          <p style="font-size:1.1rem;margin:0 0 0.5rem;">Drop artworks here, or click to browse</p>
+          <p style="color:#666;font-size:0.85rem;margin:0;">Up to 10 images · JPEG, PNG, WebP</p>
+          <input id="oh-file-input" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none;" />
+        </div>
+
+        <div id="oh-thumbnail-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:1rem;margin-bottom:1.5rem;"></div>
+
+        <label style="display:block;font-size:0.9rem;margin-bottom:0.35rem;">Describe your exhibition in one sentence</label>
+        <textarea id="oh-brief" rows="2" placeholder="e.g. A series of abstract landscapes exploring the tension between the natural world and urban decay"
+          style="width:100%;padding:0.6rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:8px;font-size:0.95rem;resize:vertical;margin-bottom:1rem;box-sizing:border-box;">${data.userBrief}</textarea>
+
+        <label style="display:block;font-size:0.9rem;margin-bottom:0.5rem;">Gallery style</label>
+        <div id="oh-presets" style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem;margin-bottom:1.5rem;"></div>
+
+        <button id="oh-generate-btn" style="width:100%;padding:0.85rem;background:#fff;color:#111;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;opacity:0.4;" disabled>
+          Generate Gallery →
+        </button>
+      </div>
+    </div>`;
+
+  const dropzone = container.querySelector('#oh-dropzone') as HTMLElement;
+  const fileInput = container.querySelector('#oh-file-input') as HTMLInputElement;
+  const thumbnailGrid = container.querySelector('#oh-thumbnail-grid') as HTMLElement;
+  const generateBtn = container.querySelector('#oh-generate-btn') as HTMLButtonElement;
+  const briefInput = container.querySelector('#oh-brief') as HTMLTextAreaElement;
+  const presetsEl = container.querySelector('#oh-presets') as HTMLElement;
+
+  container.querySelector('#oh-to-settings')!.addEventListener('click', onSettings);
+
+  // Preset buttons
+  const presetKeys = Object.keys(PRESETS) as StylePreset[];
+  for (const key of presetKeys) {
+    const btn = document.createElement('button');
+    btn.dataset['preset'] = key;
+    btn.style.cssText = `padding:0.6rem 0.75rem;background:${data.preset === key ? '#fff' : '#1a1a1a'};color:${data.preset === key ? '#111' : '#f0ece6'};border:1px solid #444;border-radius:8px;cursor:pointer;text-align:left;font-size:0.85rem;`;
+    btn.innerHTML = `<strong>${PRESETS[key].label}</strong><br><span style="color:#888;font-size:0.75rem;">${PRESETS[key].description}</span>`;
+    btn.addEventListener('click', () => {
+      data.preset = key;
+      presetsEl.querySelectorAll('button').forEach((b) => {
+        const isSelected = (b as HTMLButtonElement).dataset['preset'] === key;
+        b.style.background = isSelected ? '#fff' : '#1a1a1a';
+        b.style.color = isSelected ? '#111' : '#f0ece6';
+      });
+    });
+    presetsEl.appendChild(btn);
+  }
+
+  // Brief
+  briefInput.addEventListener('input', () => { data.userBrief = briefInput.value; });
+
+  // File handling
+  function updateGenerateBtn() {
+    const ready = data.artworks.length > 0 && data.artworks.length <= 10;
+    generateBtn.disabled = !ready;
+    generateBtn.style.opacity = ready ? '1' : '0.4';
+  }
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const remaining = 10 - data.artworks.length;
+    const toProcess = Array.from(files).slice(0, remaining);
+
+    for (const file of toProcess) {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) continue;
+      const { dataUrl: analysisDataUrl, width, height } = await resizeToDataUrl(file, 1024);
+      const displayObjectUrl = createDisplayObjectUrl(file);
+      const id = `aw-${String(data.artworks.length + 1).padStart(2, '0')}`;
+      const artwork: UploadedArtwork = {
+        id, filename: file.name, analysisDataUrl, displayObjectUrl,
+        aspectRatio: width / height, title: '', medium: '', year: undefined,
+      };
+      data.artworks.push(artwork);
+      addThumbnail(thumbnailGrid, artwork, data);
+    }
+    updateGenerateBtn();
+  }
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.style.borderColor = '#aaa'; });
+  dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = '#444'; });
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.style.borderColor = '#444';
+    handleFiles(e.dataTransfer?.files ?? null);
+  });
+  fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+  // Re-render existing artworks
+  for (const aw of data.artworks) addThumbnail(thumbnailGrid, aw, data);
+  updateGenerateBtn();
+
+  generateBtn.addEventListener('click', () => {
+    data.userBrief = briefInput.value.trim();
+    if (!data.userBrief) { alert('Please add a one-sentence description of your exhibition.'); return; }
+    onGenerate();
+  });
+}
+
+function addThumbnail(grid: HTMLElement, artwork: UploadedArtwork, data: AppData): void {
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#1a1a1a;border-radius:8px;overflow:hidden;border:1px solid #333;';
+  card.innerHTML = `
+    <div style="position:relative;">
+      <img src="${artwork.displayObjectUrl}" style="width:100%;height:100px;object-fit:cover;display:block;" />
+      <button data-remove="${artwork.id}" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;padding:2px 6px;">✕</button>
+    </div>
+    <div style="padding:0.4rem;">
+      <input data-field="title" data-id="${artwork.id}" placeholder="Title" value="${artwork.title}"
+        style="width:100%;background:#111;color:#f0ece6;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;box-sizing:border-box;" />
+      <input data-field="medium" data-id="${artwork.id}" placeholder="Medium" value="${artwork.medium}"
+        style="width:100%;background:#111;color:#f0ece6;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;box-sizing:border-box;" />
+      <input data-field="year" data-id="${artwork.id}" placeholder="Year" type="number" value="${artwork.year ?? ''}"
+        style="width:100%;background:#111;color:#f0ece6;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:0.75rem;box-sizing:border-box;" />
+    </div>`;
+
+  card.querySelector(`[data-remove="${artwork.id}"]`)!.addEventListener('click', () => {
+    data.artworks = data.artworks.filter((a) => a.id !== artwork.id);
+    card.remove();
+  });
+
+  card.querySelectorAll<HTMLInputElement>('[data-field]').forEach((input) => {
+    input.addEventListener('input', () => {
+      const field = input.dataset['field'] as 'title' | 'medium' | 'year';
+      const aw = data.artworks.find((a) => a.id === input.dataset['id']);
+      if (!aw) return;
+      if (field === 'year') aw.year = input.value ? parseInt(input.value) : undefined;
+      else aw[field] = input.value;
+    });
+  });
+
+  grid.appendChild(card);
+}
+
+// ---------------------------------------------------------------------------
+// Generating screen
+// ---------------------------------------------------------------------------
+
+function renderGenerating(
+  container: HTMLElement,
+  data: AppData,
+  camera: THREE.PerspectiveCamera,
+  onDone: (scene: THREE.Scene, controls: FirstPersonControls) => void,
+  onError: (msg: string) => void
+): void {
+  container.innerHTML = `
+    <div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      background:rgba(0,0,0,0.9);z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;">
+      <p id="oh-progress-msg" style="font-size:1.1rem;margin:0 0 1rem;">Initialising AI…</p>
+      <div style="width:280px;height:4px;background:#333;border-radius:2px;">
+        <div id="oh-progress-bar" style="height:100%;background:#fff;border-radius:2px;width:0%;transition:width 0.4s;"></div>
+      </div>
+    </div>`;
+
+  const msg = container.querySelector('#oh-progress-msg') as HTMLElement;
+  const bar = container.querySelector('#oh-progress-bar') as HTMLElement;
+
+  function setProgress(text: string, pct: number) {
+    msg.textContent = text;
+    bar.style.width = `${pct}%`;
+  }
+
+  // Build provider
+  let provider: AIProvider;
+  const wxSettings = loadWatsonxSettings();
+  const oaiSettings = loadOpenAISettings();
+  if (wxSettings?.apiKey) {
+    provider = new WatsonxProvider(wxSettings);
+  } else if (oaiSettings?.apiKey) {
+    provider = new OpenAICompatProvider(oaiSettings);
+  } else {
+    onError('No API key configured. Please go to Settings.');
+    return;
+  }
+
+  (async () => {
+    try {
+      // Stage 1: vision analysis
+      const analyses: WorkAnalysis[] = [];
+      for (let i = 0; i < data.artworks.length; i++) {
+        setProgress(`Analysing artwork ${i + 1} of ${data.artworks.length}…`, 5 + (i / data.artworks.length) * 40);
+        const analysis = await provider.analyzeArtwork(data.artworks[i]);
+        analyses.push(analysis);
+      }
+      data.analyses = analyses;
+
+      // Stage 2: curation
+      setProgress('Curating exhibition…', 50);
+      const plan = await provider.curate(analyses, data.userBrief);
+
+      // Stage 3: gallery generation
+      setProgress('Designing gallery…', 65);
+      const rawGallery = await provider.generateGallery(data.artworks, analyses, plan, data.preset);
+
+      // Sanity pass
+      setProgress('Verifying layout…', 85);
+      const gallery = sanitizePlacements(rawGallery);
+      data.gallery = gallery;
+
+      // Patch imagePaths to use display object URLs
+      const urlMap = new Map(data.artworks.map((a) => [a.id, a.displayObjectUrl]));
+      gallery.artworks = gallery.artworks.map((aw) => ({
+        ...aw,
+        imagePath: urlMap.get(aw.id) ?? aw.imagePath,
+      }));
+
+      // Build scene with real textures
+      setProgress('Building scene…', 92);
+      const aspectMap = new Map(data.artworks.map((a) => [a.id, a.aspectRatio]));
+      const { scene, roomLayouts } = buildScene(gallery, aspectMap);
+      const allAABBs = roomLayouts.flatMap((r) => r.wallAABBs);
+
+      const newControls = new FirstPersonControls(camera, document.body);
+      newControls.setWalls(allAABBs);
+      const firstLayout = roomLayouts[0];
+      newControls.teleport(firstLayout.originX + 3, firstLayout.originZ + 3);
+
+      setProgress('Ready!', 100);
+      await new Promise((r) => setTimeout(r, 400));
+
+      onDone(scene, newControls);
+    } catch (e) {
+      onError(String(e));
+    }
+  })();
+}
+
+// ---------------------------------------------------------------------------
+// Label editor
+// ---------------------------------------------------------------------------
+
+function renderLabels(
+  container: HTMLElement,
+  data: AppData,
+  onEnterViewer: () => void
+): void {
+  if (!data.gallery) { onEnterViewer(); return; }
+
+  container.innerHTML = `
+    <div style="position:fixed;inset:0;display:flex;flex-direction:column;
+      background:#0d0d0d;z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;overflow-y:auto;">
+      <div style="max-width:640px;margin:0 auto;padding:2rem;width:100%;box-sizing:border-box;">
+        <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Review Wall Labels</h2>
+        <p style="color:#888;font-size:0.85rem;margin:0 0 1.5rem;">Edit any label before entering the gallery. Changes are saved automatically.</p>
+        <div id="oh-labels-list"></div>
+        <button id="oh-enter-gallery" style="width:100%;padding:0.85rem;background:#fff;color:#111;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;margin-top:1rem;">
+          Enter Gallery →
+        </button>
+      </div>
+    </div>`;
+
+  const list = container.querySelector('#oh-labels-list') as HTMLElement;
+  for (const aw of data.gallery!.artworks) {
+    const block = document.createElement('div');
+    block.style.cssText = 'margin-bottom:1.25rem;';
+    block.innerHTML = `
+      <p style="font-size:0.85rem;font-weight:600;margin:0 0 0.25rem;">${aw.title || 'Untitled'} <span style="color:#666;font-weight:400;">${aw.medium ? `· ${aw.medium}` : ''}</span></p>
+      <textarea data-id="${aw.id}" rows="3"
+        style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.85rem;resize:vertical;box-sizing:border-box;">${aw.label}</textarea>`;
+    block.querySelector('textarea')!.addEventListener('input', (e) => {
+      const id = (e.target as HTMLTextAreaElement).dataset['id'];
+      const galleryAw = data.gallery!.artworks.find((a) => a.id === id);
+      if (galleryAw) galleryAw.label = (e.target as HTMLTextAreaElement).value;
+    });
+    list.appendChild(block);
+  }
+
+  container.querySelector('#oh-enter-gallery')!.addEventListener('click', () => {
+    // Mount hint overlay then enter
+    const { dismiss: dismissHint } = mountHintOverlay(() => {
+      if (data.gallery) {
+        // controls are already set — just clear the UI
+        onEnterViewer();
+      }
+    });
+    // Auto-dismiss handled by pointer lock event in bootApp
+    void dismissHint; // used indirectly
+    onEnterViewer();
+  });
+}

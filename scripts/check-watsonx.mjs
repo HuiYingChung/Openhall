@@ -20,7 +20,6 @@
  */
 
 import { readFileSync, existsSync } from 'fs';
-import { createRequire } from 'module';
 
 // ---------------------------------------------------------------------------
 // Load .env if present (simple parser — no dependency needed)
@@ -41,14 +40,26 @@ if (existsSync('.env')) {
 const API_KEY = process.env.WATSONX_API_KEY;
 const PROJECT_ID = process.env.WATSONX_PROJECT_ID;
 
-if (!API_KEY || API_KEY === 'your-ibm-cloud-api-key-here') {
+if (!API_KEY || API_KEY.includes('paste-your') || API_KEY.includes('your-ibm')) {
   console.error('ERROR: WATSONX_API_KEY is not set. Copy .env.example to .env and fill it in.');
   process.exit(1);
 }
-if (!PROJECT_ID || PROJECT_ID === 'your-watsonx-project-id-here') {
+if (!PROJECT_ID || PROJECT_ID.includes('paste-your') || PROJECT_ID.includes('your-watsonx')) {
   console.error('ERROR: WATSONX_PROJECT_ID is not set. Copy .env.example to .env and fill it in.');
   process.exit(1);
 }
+
+// Validate UUID v4 format before hitting the API
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+if (!UUID_RE.test(PROJECT_ID)) {
+  console.error('ERROR: WATSONX_PROJECT_ID does not look like a UUID v4.');
+  console.error(`       Got: "${PROJECT_ID}"`);
+  console.error('       Expected format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx');
+  console.error('       Find it in: watsonx.ai → your project → Manage → General → Project ID');
+  process.exit(1);
+}
+
+info(`WATSONX_PROJECT_ID format looks good (${PROJECT_ID.slice(0,8)}...)`);
 
 // ---------------------------------------------------------------------------
 // Config
@@ -81,7 +92,6 @@ function section(title) { console.log(`\n── ${title} ${'─'.repeat(Math.max
 section('Step 1: IAM token exchange');
 
 let bearerToken = null;
-let tokenExpiry = 0;
 
 try {
   const body = new URLSearchParams({
@@ -118,7 +128,6 @@ try {
 
   const json = await res.json();
   bearerToken = json.access_token;
-  tokenExpiry = Date.now() + json.expires_in * 1000;
   pass(`IAM token received (expires in ${json.expires_in}s, type: ${json.token_type})`);
   info('Token value hidden for security');
 
