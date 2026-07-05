@@ -1,0 +1,45 @@
+# ── Secrets — never commit ──────────────────────────────
+# API keys live in localStorage at runtime; nothing key-like
+# may ever be written to a tracked file.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+**/secrets/
+wrangler.toml.local
+
+# ── Dependencies & build output ─────────────────────────
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+coverage/
+
+# ── Generated at runtime (user content / exports) ───────
+# Uploaded artwork and exported gallery zips are user data,
+# not source. Only src/demo/ sample assets are committed.
+uploads/
+exports/
+*.zip
+
+# ── OS / editor noise ───────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# ── Logs & caches ───────────────────────────────────────
+*.log
+npm-debug.log*
+.cache/
+.eslintcache
+
+# ── Planning docs that stay local (optional) ────────────
+# Keep PRODUCT_PLAN.md / ROADMAP.md / AGENTS.md committed —
+# they're part of the submission story. BOB_PROMPT_*.md may
+# be committed too (good evidence of the Bob workflow).
