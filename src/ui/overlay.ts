@@ -63,8 +63,11 @@ const OVERLAY_HTML = `
     <p style="margin:0 0 0.5rem;font-size:0.95rem;">
       <strong>WASD</strong> &nbsp;·&nbsp; <strong>Mouse</strong> to look &nbsp;·&nbsp; <strong>Click</strong> to interact
     </p>
-    <p style="margin:0 0 2rem;font-size:0.85rem;color:#888;">
+    <p style="margin:0 0 0.4rem;font-size:0.85rem;color:#888;">
       Arrow keys also work for movement
+    </p>
+    <p style="margin:0 0 2rem;font-size:0.85rem;color:#888;">
+      Press <kbd style="background:#333;border-radius:4px;padding:0.1em 0.4em;font-family:inherit;">Esc</kbd> anytime to pause or exit
     </p>
 
     <button id="oh-enter-btn" style="
