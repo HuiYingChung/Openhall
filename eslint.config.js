@@ -57,7 +57,7 @@ const cfWorkerGlobals = {
 };
 
 export default [
-  { ignores: ['dist/', 'dist-viewer/', '.wrangler/'] },
+  { ignores: ['dist/', 'dist-viewer/', '.wrangler/', 'public/assets/'] },
   js.configs.recommended,
   // Source TypeScript files (browser context)
   {

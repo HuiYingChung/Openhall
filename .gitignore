@@ -12,6 +12,8 @@ wrangler.toml.local
 # ── Dependencies & build output ─────────────────────────
 node_modules/
 dist/
+dist-viewer/
+public/assets/viewer.js
 build/
 .vite/
 *.tsbuildinfo

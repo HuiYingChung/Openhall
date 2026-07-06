@@ -468,16 +468,17 @@ function buildArtworkPlane(
 
   const group = new THREE.Group();
 
-  // Canvas plane — load real texture if imagePath is an object URL or data URL
+  // Canvas plane — load texture for any real imagePath.
+  // Only use a placeholder color for explicit "placeholder:" paths or empty strings.
   const canvasGeo = new THREE.PlaneGeometry(displayWidth, displayHeight);
   let canvasMat: THREE.MeshStandardMaterial;
 
-  if (artwork.imagePath.startsWith('blob:') || artwork.imagePath.startsWith('data:') || artwork.imagePath.startsWith('http')) {
+  if (artwork.imagePath && !artwork.imagePath.startsWith('placeholder:')) {
     const texture = new THREE.TextureLoader().load(artwork.imagePath);
     texture.colorSpace = THREE.SRGBColorSpace;
     canvasMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.5 });
   } else {
-    // Placeholder solid color for demo mode
+    // Placeholder solid color — only for explicit placeholder: paths or empty imagePath
     canvasMat = new THREE.MeshStandardMaterial({
       color: getPlaceholderColor(artwork.imagePath),
       roughness: 0.5,

@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "worker:dev": "wrangler dev worker/token-exchange.ts --port 8787",
-    "build": "tsc && vite build",
-    "build:viewer": "tsc && vite build --config vite.viewer.config.ts",
+    "build:viewer": "tsc && vite build --config vite.viewer.config.ts && node scripts/copy-viewer.mjs",
+    "build": "npm run build:viewer && tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

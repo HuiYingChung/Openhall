@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import type { Gallery } from '../schema/gallery.schema';
+import { escapeHtml } from '../ui/escape-html';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,6 +42,7 @@ const HIGHLIGHT_EMISSIVE_OFF = new THREE.Color(0x000000);
 const DOLLY_DISTANCE = 2.0; // metres in front of artwork
 const DOLLY_DURATION = 0.6; // seconds
 const EYE_HEIGHT = 1.6;
+const MAX_RAYCAST_DISTANCE = 12; // metres — prevents picking through walls
 
 // ---------------------------------------------------------------------------
 // CrosshairDot — a small fixed dot in the centre of the screen
@@ -153,12 +155,23 @@ export class ArtworkInteractions {
     // Show crosshair while locked
     this.crosshair.style.display = 'block';
 
-    // Raycast from screen centre
+    // Raycast from screen centre against all scene objects (including walls) to
+    // detect occlusion, capped at MAX_RAYCAST_DISTANCE.
+    this.raycaster.far = MAX_RAYCAST_DISTANCE;
     this.raycaster.setFromCamera(this.screenCentre, this.opts.camera);
-    const meshes = Array.from(this.opts.artworkMeshes.values());
-    const hits = this.raycaster.intersectObjects(meshes, false);
+    const artworkSet = new Set(this.opts.artworkMeshes.values());
+    // Collect all meshes in the scene for occlusion testing
+    const allMeshes: THREE.Mesh[] = [];
+    this.opts.scene.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) allMeshes.push(obj);
+    });
+    const hits = this.raycaster.intersectObjects(allMeshes, false);
 
-    const hit = hits.length > 0 ? (hits[0].object as THREE.Mesh) : null;
+    // The nearest hit must be an artwork mesh; if it's a wall, the artwork is occluded
+    const nearestHit = hits.length > 0 ? hits[0] : null;
+    const hit = (nearestHit && artworkSet.has(nearestHit.object as THREE.Mesh))
+      ? (nearestHit.object as THREE.Mesh)
+      : null;
 
     if (hit !== this.hoveredMesh) {
       this.clearHighlight();
@@ -250,17 +263,17 @@ export class ArtworkInteractions {
     this.clearHighlight();
 
     const yearStr = aw.year != null ? `, ${aw.year}` : '';
-    const medStr = aw.medium ? `<p style="color:#aaa;font-size:0.82rem;margin:0.15rem 0 0.75rem;">${aw.medium}${yearStr}</p>` : '';
+    const medStr = aw.medium ? `<p style="color:#aaa;font-size:0.82rem;margin:0.15rem 0 0.75rem;">${escapeHtml(aw.medium)}${escapeHtml(yearStr)}</p>` : '';
     const statStr = aw.artistStatement
-      ? `<p style="color:#888;font-size:0.8rem;margin:0.75rem 0 0;font-style:italic;">"${aw.artistStatement}"</p>`
+      ? `<p style="color:#888;font-size:0.8rem;margin:0.75rem 0 0;font-style:italic;">&ldquo;${escapeHtml(aw.artistStatement)}&rdquo;</p>`
       : '';
 
     this.infoPanel.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;">
         <div style="flex:1;min-width:0;">
-          <p style="font-size:1.05rem;font-weight:700;margin:0;">${aw.title || 'Untitled'}</p>
+          <p style="font-size:1.05rem;font-weight:700;margin:0;">${escapeHtml(aw.title || 'Untitled')}</p>
           ${medStr}
-          <p style="font-size:0.88rem;line-height:1.55;margin:0;">${aw.label}</p>
+          <p style="font-size:0.88rem;line-height:1.55;margin:0;">${escapeHtml(aw.label)}</p>
           ${statStr}
         </div>
         <button id="oh-close-inspect" style="

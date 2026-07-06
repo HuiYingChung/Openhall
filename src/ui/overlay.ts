@@ -1,6 +1,7 @@
 /**
  * overlay.ts — Controls hint overlay and re-lock overlay.
  * mountHintOverlay: shown on first entry, calls onEnter() when clicked.
+ * mountHintOverlayTouchFallback: touch/no-pointer-lock variant with "Start Tour" CTA.
  * mountRelockOverlay: shown after Esc; clicking re-locks the pointer.
  */
 
@@ -73,6 +74,55 @@ const RELOCK_HTML = `
 export function mountHintOverlay(onEnter: () => void): { dismiss: () => void } {
   const container = document.createElement('div');
   container.innerHTML = OVERLAY_HTML;
+  document.body.appendChild(container);
+
+  const btn = container.querySelector('#oh-enter-btn') as HTMLButtonElement;
+  btn.addEventListener('click', () => {
+    onEnter();
+  });
+
+  function dismiss(): void {
+    if (container.parentNode) container.parentNode.removeChild(container);
+  }
+
+  return { dismiss };
+}
+
+/**
+ * Touch / no-pointer-lock fallback overlay.
+ * The CTA becomes "Start Tour" since free-walk requires pointer lock.
+ * Calling onEnter() starts the tour and the caller should call dismiss().
+ */
+export function mountHintOverlayTouchFallback(onEnter: () => void): { dismiss: () => void } {
+  const container = document.createElement('div');
+  container.innerHTML = `
+    <div id="oh-overlay" style="
+      position:fixed; inset:0;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      background:rgba(0,0,0,0.72);
+      color:#f0ece6;
+      font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+      user-select:none;
+      z-index:100;
+    ">
+      <h1 style="font-size:2rem;font-weight:700;margin:0 0 0.25em">Openhall</h1>
+      <p style="font-size:1rem;color:#aaa;margin:0 0 2rem">AI-generated 3D Gallery</p>
+      <p style="margin:0 0 2rem;font-size:0.95rem;text-align:center;max-width:260px;">
+        Tap to take a guided tour of the gallery
+      </p>
+      <button id="oh-enter-btn" style="
+        padding:0.75rem 2.5rem;
+        font-size:1rem;
+        background:#fff;
+        color:#111;
+        border:none;
+        border-radius:8px;
+        cursor:pointer;
+        font-weight:600;
+      ">Start Tour</button>
+    </div>
+  `;
   document.body.appendChild(container);
 
   const btn = container.querySelector('#oh-enter-btn') as HTMLButtonElement;

@@ -55,6 +55,11 @@ export const ArtworkSchema = z.object({
   label: z.string(),
   /** Optional short artist statement */
   artistStatement: z.string().optional(),
+  /**
+   * Image aspect ratio (width / height). Written by the bundler so the
+   * export viewer can size artwork planes correctly without re-reading the image.
+   */
+  aspectRatio: z.number().positive().optional(),
 });
 export type Artwork = z.infer<typeof ArtworkSchema>;
 

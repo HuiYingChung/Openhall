@@ -12,7 +12,8 @@ import { buildScene, disposeScene } from '../viewer/room-builder';
 import { FirstPersonControls } from '../viewer/controls';
 import { ArtworkInteractions } from '../viewer/interactions';
 import { GalleryTour } from '../viewer/tour';
-import { mountHintOverlay, mountRelockOverlay } from './overlay';
+import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay } from './overlay';
+import { escapeHtml } from './escape-html';
 import { sanitizePlacements } from './placement-sanity';
 import { resizeToDataUrl, createDisplayObjectUrl } from './image-utils';
 import {
@@ -90,11 +91,17 @@ export function bootApp(): void {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
+  /** True when pointer lock is available (false on iOS Safari). */
+  function supportsPointerLock(): boolean {
+    return 'pointerLockElement' in document;
+  }
+
   // Render loop
   const clock = new THREE.Clock();
   let controls: FirstPersonControls | null = null;
   let interactions: ArtworkInteractions | null = null;
   let tour: GalleryTour | null = null;
+  let suppressNextRelock = false; // set true when we deliberately unlock for inspect panel
   let currentScene: THREE.Scene = new THREE.Scene();
   currentScene.background = new THREE.Color(0x111111);
 
@@ -150,14 +157,14 @@ export function bootApp(): void {
         try {
           const { buildExportBundle, downloadZip } = await import('../export/bundler');
           const artworkUrls = new Map(data.artworks.map((a) => [a.id, a.displayObjectUrl]));
-          // viewer script URL: served by Vite as /src/viewer/viewer-entry.ts in dev,
-          // or as /dist-viewer/viewer.es.js in a full production build.
-          const viewerScriptUrl = import.meta.env.DEV
-            ? '/src/viewer/viewer-entry.ts'
-            : './assets/viewer.js';
+          const aspectRatios = new Map(data.artworks.map((a) => [a.id, a.aspectRatio]));
+          // Both dev and prod fetch from /assets/viewer.js (pre-built from public/).
+          // Run 'npm run build:viewer' once before testing export locally.
+          const viewerScriptUrl = '/assets/viewer.js';
           const { blob } = await buildExportBundle({
             gallery: data.gallery,
             artworkUrls,
+            aspectRatios,
             viewerScriptUrl,
             onProgress: (msg, pct) => { expBtn.textContent = `${msg} ${pct}%`; },
           });
@@ -206,6 +213,37 @@ export function bootApp(): void {
     tourBtn = btn;
   }
 
+  /** Show a persistent "Start Tour" button for touch devices (no pointer lock). */
+  function mountTourStartOverlay(gallery: Gallery) {
+    const existing = document.getElementById('oh-touch-tour-btn');
+    if (existing) return;
+    const btn = document.createElement('button');
+    btn.id = 'oh-touch-tour-btn';
+    btn.textContent = '🎯 Start Tour';
+    btn.style.cssText = `
+      position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:200;
+      background:rgba(0,0,0,0.85);border:1px solid rgba(255,255,255,0.3);
+      color:#f0ece6;padding:0.75rem 2rem;border-radius:8px;
+      font-size:1rem;cursor:pointer;font-weight:600;
+      font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+    `;
+    btn.addEventListener('click', () => {
+      btn.remove();
+      if (!data.gallery) return;
+      tour = new GalleryTour({
+        camera,
+        gallery,
+        onExit: (pos) => {
+          tour = null;
+          camera.position.copy(pos);
+          camera.position.y = 1.6;
+          mountTourStartOverlay(gallery);
+        },
+      });
+    });
+    document.body.appendChild(btn);
+  }
+
   function setState(state: AppState) {
     ui.innerHTML = '';
     switch (state) {
@@ -229,14 +267,27 @@ export function bootApp(): void {
               scene,
               artworkMeshes,
               gallery,
-              onInspectOpen: () => {},
-              onInspectClose: () => { controls?.lock(); },
+              onInspectOpen: () => {
+                // Unlock pointer on dolly so the Close button is visible and clickable
+                if (controls?.isLocked) {
+                  suppressNextRelock = true;
+                  controls.pointerLock.unlock();
+                }
+              },
+              onInspectClose: () => {
+                if (supportsPointerLock()) controls?.lock();
+              },
               getIsLocked: () => controls?.isLocked ?? false,
             });
 
             function wireRelockDemo() {
               const onUnlock = () => {
                 controls!.pointerLock.removeEventListener('unlock', onUnlock);
+                if (suppressNextRelock) {
+                  suppressNextRelock = false;
+                  return; // deliberate unlock for inspect panel
+                }
+                if (interactions?.isInspecting) return;
                 const { dismiss } = mountRelockOverlay(() => controls!.lock());
                 const onRelock = () => {
                   controls!.pointerLock.removeEventListener('lock', onRelock);
@@ -247,23 +298,43 @@ export function bootApp(): void {
               };
               controls!.pointerLock.addEventListener('unlock', onUnlock);
             }
-            wireRelockDemo();
 
-            // Show hint overlay then enter viewer
-            const { dismiss } = mountHintOverlay(() => controls!.lock());
-            const onLock = () => {
-              controls!.pointerLock.removeEventListener('lock', onLock);
-              dismiss();
+            if (supportsPointerLock()) {
+              wireRelockDemo();
+              // Show hint overlay then enter viewer
+              const { dismiss } = mountHintOverlay(() => controls!.lock());
+              const onLock = () => {
+                controls!.pointerLock.removeEventListener('lock', onLock);
+                dismiss();
+                setState('viewer');
+              };
+              controls!.pointerLock.addEventListener('lock', onLock);
+            } else {
+              // Touch/no-pointer-lock: go straight to tour via Start Tour overlay
               setState('viewer');
-            };
-            controls!.pointerLock.addEventListener('lock', onLock);
+              if (gallery.tour.length) {
+                const { dismiss } = mountHintOverlayTouchFallback(() => {
+                  dismiss();
+                  tour = new GalleryTour({
+                    camera,
+                    gallery,
+                    onExit: (pos) => {
+                      tour = null;
+                      camera.position.copy(pos);
+                      camera.position.y = 1.6;
+                      // Re-show Start Tour button (can't re-lock on touch)
+                      mountTourStartOverlay(gallery);
+                    },
+                  });
+                });
+              }
+            }
           }).catch((e) => alert(`Demo mode failed: ${String(e)}`));
         });
         break;
       case 'upload': renderUpload(ui, data, () => setState('generating'), () => setState('settings')); break;
       case 'generating': renderGenerating(ui, data, camera,
         (s, newControls, gallery, artworkMeshes) => {
-          // Bug A fix: store the built scene so the render loop uses it.
           // Dispose old scene first to prevent geometry/texture leaks on regeneration.
           disposeScene(currentScene);
           currentScene = s;
@@ -276,17 +347,30 @@ export function bootApp(): void {
             scene: s,
             artworkMeshes,
             gallery,
-            onInspectOpen: () => { /* controls update is gated by interactions.inspecting */ },
-            onInspectClose: () => { controls?.lock(); },
+            onInspectOpen: () => {
+              // Unlock pointer on dolly so the Close button is visible and clickable
+              if (controls?.isLocked) {
+                suppressNextRelock = true;
+                controls.pointerLock.unlock();
+              }
+            },
+            onInspectClose: () => {
+              if (supportsPointerLock()) controls?.lock();
+            },
             getIsLocked: () => controls?.isLocked ?? false,
           });
 
-          // Bug C fix: wire Esc → relock. Re-registers after each cycle so
+          // Wire Esc → relock. Re-registers after each cycle so
           // repeated Esc → click → Esc sequences all work.
           // Three.js EventDispatcher has no { once } option — we remove manually.
           function wireRelock() {
             const onUnlock = () => {
               controls!.pointerLock.removeEventListener('unlock', onUnlock);
+              if (suppressNextRelock) {
+                suppressNextRelock = false;
+                return; // deliberate unlock for inspect panel
+              }
+              if (interactions?.isInspecting) return;
               const { dismiss } = mountRelockOverlay(() => controls!.lock());
               const onRelock = () => {
                 controls!.pointerLock.removeEventListener('lock', onRelock);
@@ -297,7 +381,7 @@ export function bootApp(): void {
             };
             controls!.pointerLock.addEventListener('unlock', onUnlock);
           }
-          wireRelock();
+          if (supportsPointerLock()) wireRelock();
 
           setState('labels');
         },
@@ -554,14 +638,14 @@ function addThumbnail(grid: HTMLElement, artwork: UploadedArtwork, data: AppData
   card.innerHTML = `
     <div style="position:relative;">
       <img src="${artwork.displayObjectUrl}" style="width:100%;height:100px;object-fit:cover;display:block;" />
-      <button data-remove="${artwork.id}" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;padding:2px 6px;">✕</button>
+      <button data-remove="${escapeHtml(artwork.id)}" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;padding:2px 6px;">✕</button>
     </div>
     <div style="padding:0.4rem;">
-      <input data-field="title" data-id="${artwork.id}" placeholder="Title" value="${artwork.title}"
+      <input data-field="title" data-id="${escapeHtml(artwork.id)}" placeholder="Title" value="${escapeHtml(artwork.title)}"
         style="width:100%;background:#111;color:#f0ece6;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;box-sizing:border-box;" />
-      <input data-field="medium" data-id="${artwork.id}" placeholder="Medium" value="${artwork.medium}"
+      <input data-field="medium" data-id="${escapeHtml(artwork.id)}" placeholder="Medium" value="${escapeHtml(artwork.medium)}"
         style="width:100%;background:#111;color:#f0ece6;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;box-sizing:border-box;" />
-      <input data-field="year" data-id="${artwork.id}" placeholder="Year" type="number" value="${artwork.year ?? ''}"
+      <input data-field="year" data-id="${escapeHtml(artwork.id)}" placeholder="Year" type="number" value="${escapeHtml(String(artwork.year ?? ''))}"
         style="width:100%;background:#111;color:#f0ece6;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:0.75rem;box-sizing:border-box;" />
     </div>`;
 
@@ -711,9 +795,9 @@ function renderLabels(
     const block = document.createElement('div');
     block.style.cssText = 'margin-bottom:1.25rem;';
     block.innerHTML = `
-      <p style="font-size:0.85rem;font-weight:600;margin:0 0 0.25rem;">${aw.title || 'Untitled'} <span style="color:#666;font-weight:400;">${aw.medium ? `· ${aw.medium}` : ''}</span></p>
-      <textarea data-id="${aw.id}" rows="3"
-        style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.85rem;resize:vertical;box-sizing:border-box;">${aw.label}</textarea>`;
+      <p style="font-size:0.85rem;font-weight:600;margin:0 0 0.25rem;">${escapeHtml(aw.title || 'Untitled')} <span style="color:#666;font-weight:400;">${aw.medium ? `· ${escapeHtml(aw.medium)}` : ''}</span></p>
+      <textarea data-id="${escapeHtml(aw.id)}" rows="3"
+        style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.85rem;resize:vertical;box-sizing:border-box;">${escapeHtml(aw.label)}</textarea>`;
     block.querySelector('textarea')!.addEventListener('input', (e) => {
       const id = (e.target as HTMLTextAreaElement).dataset['id'];
       const galleryAw = data.gallery!.artworks.find((a) => a.id === id);
@@ -723,17 +807,21 @@ function renderLabels(
   }
 
   container.querySelector('#oh-enter-gallery')!.addEventListener('click', () => {
-    // Bug B fix: mount hint overlay, lock pointer on button click,
-    // dismiss the overlay only once the pointer lock actually succeeds.
     const c = getControls();
     if (!c) { onEnterViewer(); return; }
 
+    if (!('pointerLockElement' in document)) {
+      // Touch / no-pointer-lock: enter viewer directly (tour is accessible via touch UI)
+      onEnterViewer();
+      return;
+    }
+
+    // Show hint overlay; dismiss only once pointer lock actually succeeds.
+    // Three.js EventDispatcher has no { once } option — we remove manually.
     const { dismiss } = mountHintOverlay(() => {
       c.lock();
     });
 
-    // Dismiss the overlay and transition to viewer state once pointer is locked.
-    // Three.js EventDispatcher has no { once } option — we remove manually.
     const onLock = () => {
       c.pointerLock.removeEventListener('lock', onLock);
       dismiss();

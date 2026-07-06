@@ -84,3 +84,50 @@ describe('buildScene doorway passability', () => {
     expect(px).toBeGreaterThan(12.3);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Texture-branch decision — Fix 1b regression
+// ---------------------------------------------------------------------------
+
+describe('buildScene texture branch', () => {
+  it('builds artworkMeshes for each placed artwork', () => {
+    const gallery = parsedSampleGallery();
+    const { artworkMeshes } = buildScene(gallery);
+    // All artworks in sample-gallery should produce a mesh
+    for (const aw of gallery.artworks) {
+      expect(artworkMeshes.has(aw.id)).toBe(true);
+    }
+  });
+
+  it('uses aspectRatio from aspectRatios map when provided', () => {
+    const gallery = parsedSampleGallery();
+    // Provide a very tall aspect ratio (0.25) for aw-01
+    const aspectRatios = new Map([['aw-01', 0.25]]);
+    const { artworkMeshes } = buildScene(gallery, aspectRatios);
+    const mesh = artworkMeshes.get('aw-01');
+    expect(mesh).toBeDefined();
+    // displayWidth=1.4, ratio=0.25 → height=5.6
+    // Check mesh dimensions via bounding box (PlaneGeometry.parameters not typed)
+    mesh!.geometry.computeBoundingBox();
+    const bb = mesh!.geometry.boundingBox!;
+    const w = bb.max.x - bb.min.x;
+    const h = bb.max.y - bb.min.y;
+    expect(w).toBeCloseTo(1.4, 2);
+    expect(h).toBeCloseTo(5.6, 2); // 1.4 / 0.25
+  });
+
+  it('falls back to 0.75 aspect ratio when no aspectRatios map provided', () => {
+    const gallery = parsedSampleGallery();
+    const { artworkMeshes } = buildScene(gallery);
+    const mesh = artworkMeshes.get('aw-01');
+    expect(mesh).toBeDefined();
+    // Without aspectRatios map: ratio = undefined → 0.75 fallback
+    // displayWidth=1.4 → height = 1.4 / 0.75 ≈ 1.867
+    mesh!.geometry.computeBoundingBox();
+    const bb = mesh!.geometry.boundingBox!;
+    const w = bb.max.x - bb.min.x;
+    const h = bb.max.y - bb.min.y;
+    expect(w).toBeCloseTo(1.4, 2);
+    expect(h).toBeCloseTo(1.4 / 0.75, 2);
+  });
+});

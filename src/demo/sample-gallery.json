@@ -48,52 +48,58 @@
   "artworks": [
     {
       "id": "aw-01",
-      "imagePath": "images/placeholder-red.png",
+      "imagePath": "placeholder:red",
       "title": "Crimson Study I",
       "medium": "Oil on canvas",
       "year": 2024,
       "label": "A bold exploration of warm hues and geometric tension, this work invites the viewer to consider the relationship between colour and form.",
-      "artistStatement": "I paint in order to see."
+      "artistStatement": "I paint in order to see.",
+      "aspectRatio": 1.33
     },
     {
       "id": "aw-02",
-      "imagePath": "images/placeholder-blue.png",
+      "imagePath": "placeholder:blue",
       "title": "Cerulean Drift",
       "medium": "Acrylic on board",
       "year": 2024,
-      "label": "Cool blues dissolve at the edges, suggesting an atmosphere of quiet contemplation."
+      "label": "Cool blues dissolve at the edges, suggesting an atmosphere of quiet contemplation.",
+      "aspectRatio": 1.5
     },
     {
       "id": "aw-03",
-      "imagePath": "images/placeholder-green.png",
+      "imagePath": "placeholder:green",
       "title": "Verdant Threshold",
       "medium": "Mixed media",
       "year": 2023,
-      "label": "Layered greens evoke the threshold between the natural world and cultivated space."
+      "label": "Layered greens evoke the threshold between the natural world and cultivated space.",
+      "aspectRatio": 0.75
     },
     {
       "id": "aw-04",
-      "imagePath": "images/placeholder-yellow.png",
+      "imagePath": "placeholder:yellow",
       "title": "Aureate Plain",
       "medium": "Watercolour",
       "year": 2023,
-      "label": "Delicate washes of gold describe an open, luminous landscape."
+      "label": "Delicate washes of gold describe an open, luminous landscape.",
+      "aspectRatio": 1.77
     },
     {
       "id": "aw-05",
-      "imagePath": "images/placeholder-purple.png",
+      "imagePath": "placeholder:purple",
       "title": "Violet Passage",
       "medium": "Digital print",
       "year": 2024,
-      "label": "A digital meditation on transition — the violet hour between day and night."
+      "label": "A digital meditation on transition — the violet hour between day and night.",
+      "aspectRatio": 1.0
     },
     {
       "id": "aw-06",
-      "imagePath": "images/placeholder-orange.png",
+      "imagePath": "placeholder:orange",
       "title": "Ember Field",
       "medium": "Oil on canvas",
       "year": 2022,
-      "label": "Rich oranges and ember tones burn across the surface, alluding to cycles of growth and decay."
+      "label": "Rich oranges and ember tones burn across the surface, alluding to cycles of growth and decay.",
+      "aspectRatio": 1.2
     }
   ],
   "placements": [

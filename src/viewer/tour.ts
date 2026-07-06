@@ -1,3 +1,5 @@
+import { escapeHtml } from '../ui/escape-html';
+
 /**
  * tour.ts — Guided gallery tour mode.
  *
@@ -273,10 +275,10 @@ export class GalleryTour {
     const counter = `${this.index + 1} / ${this.waypoints.length}`;
 
     this.labelBox.innerHTML = `
-      ${title ? `<p style="font-size:1rem;font-weight:700;margin:0 0 0.1rem;">${title}</p>` : ''}
-      ${medium ? `<p style="font-size:0.78rem;color:#aaa;margin:0 0 0.5rem;">${medium}${year}</p>` : ''}
-      ${label ? `<p style="font-size:0.85rem;line-height:1.5;margin:0 0 0.5rem;">${label}</p>` : ''}
-      <p style="font-size:0.72rem;color:#666;margin:0;">${counter}</p>
+      ${title ? `<p style="font-size:1rem;font-weight:700;margin:0 0 0.1rem;">${escapeHtml(title)}</p>` : ''}
+      ${medium ? `<p style="font-size:0.78rem;color:#aaa;margin:0 0 0.5rem;">${escapeHtml(medium)}${escapeHtml(year)}</p>` : ''}
+      ${label ? `<p style="font-size:0.85rem;line-height:1.5;margin:0 0 0.5rem;">${escapeHtml(label)}</p>` : ''}
+      <p style="font-size:0.72rem;color:#666;margin:0;">${escapeHtml(counter)}</p>
     `;
     this.labelBox.style.display = 'block';
   }
