@@ -1,0 +1,7 @@
+name = "openhall-token-exchange"
+main = "worker/token-exchange.ts"
+compatibility_date = "2024-05-31"
+
+# Local dev only — no deployment config needed for local testing.
+# To deploy: `npx wrangler deploy` (free Cloudflare Workers tier).
+# Optionally set ALLOWED_ORIGINS in [vars] to restrict CORS in production.
