@@ -34,9 +34,12 @@ export function shouldShowRelockOverlay(opts: {
 function buildHintHtml(showClose: boolean): string {
   const closeBtn = showClose ? `
     <button id="oh-overlay-close" style="
-      position:absolute;top:1rem;right:1rem;
-      background:none;border:none;color:#aaa;
-      font-size:1.5rem;line-height:1;cursor:pointer;padding:0.25rem 0.5rem;
+      position:absolute;top:-2.75rem;right:-2.75rem;
+      width:2.25rem;height:2.25rem;padding:0;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.35);
+      border-radius:50%;color:#ccc;
+      font-size:1.3rem;line-height:1;cursor:pointer;
     " aria-label="Close">&times;</button>
   ` : '';
   return `
@@ -50,6 +53,7 @@ function buildHintHtml(showClose: boolean): string {
     user-select:none;
     z-index:100;
   ">
+    <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
     ${closeBtn}
     <h1 style="font-size:2rem;font-weight:700;margin:0 0 0.25em">Openhall</h1>
     <p style="font-size:1rem;color:#aaa;margin:0 0 2rem">AI-generated 3D Gallery</p>
@@ -89,6 +93,7 @@ function buildHintHtml(showClose: boolean): string {
       cursor:pointer;
       font-weight:600;
     ">Click to Enter</button>
+    </div>
   </div>
 `;
 }
