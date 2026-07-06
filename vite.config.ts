@@ -7,3 +7,7 @@ export default defineConfig({
     outDir: 'dist',
   },
 });
+
+// The viewer-only export build is invoked separately:
+//   npx vite build --config vite.viewer.config.ts
+// See vite.viewer.config.ts
