@@ -31,7 +31,15 @@ export function shouldShowRelockOverlay(opts: {
   return 'show-overlay';
 }
 
-const OVERLAY_HTML = `
+function buildHintHtml(showClose: boolean): string {
+  const closeBtn = showClose ? `
+    <button id="oh-overlay-close" style="
+      position:absolute;top:1rem;right:1rem;
+      background:none;border:none;color:#aaa;
+      font-size:1.5rem;line-height:1;cursor:pointer;padding:0.25rem 0.5rem;
+    " aria-label="Close">&times;</button>
+  ` : '';
+  return `
   <div id="oh-overlay" style="
     position:fixed; inset:0;
     display:flex; flex-direction:column;
@@ -42,6 +50,7 @@ const OVERLAY_HTML = `
     user-select:none;
     z-index:100;
   ">
+    ${closeBtn}
     <h1 style="font-size:2rem;font-weight:700;margin:0 0 0.25em">Openhall</h1>
     <p style="font-size:1rem;color:#aaa;margin:0 0 2rem">AI-generated 3D Gallery</p>
 
@@ -82,6 +91,7 @@ const OVERLAY_HTML = `
     ">Click to Enter</button>
   </div>
 `;
+}
 
 /**
  * Build RELOCK_HTML — if onExitToMenu is provided, append the "Create your
@@ -122,9 +132,12 @@ function buildRelockHtml(showExitBtn: boolean): string {
   `;
 }
 
-export function mountHintOverlay(onEnter: () => void): { dismiss: () => void } {
+export function mountHintOverlay(
+  onEnter: () => void,
+  onClose?: () => void
+): { dismiss: () => void } {
   const container = document.createElement('div');
-  container.innerHTML = OVERLAY_HTML;
+  container.innerHTML = buildHintHtml(!!onClose);
   document.body.appendChild(container);
 
   const btn = container.querySelector('#oh-enter-btn') as HTMLButtonElement;
@@ -134,6 +147,15 @@ export function mountHintOverlay(onEnter: () => void): { dismiss: () => void } {
 
   function dismiss(): void {
     if (container.parentNode) container.parentNode.removeChild(container);
+  }
+
+  if (onClose) {
+    const closeBtn = container.querySelector('#oh-overlay-close');
+    closeBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dismiss();
+      onClose();
+    });
   }
 
   return { dismiss };

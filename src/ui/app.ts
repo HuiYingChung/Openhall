@@ -987,11 +987,16 @@ function renderLabels(
 
     // Show hint overlay; dismiss only once pointer lock actually succeeds.
     // Three.js EventDispatcher has no { once } option — we remove manually.
+    // onLock declared before mountHintOverlay so the onClose closure can reference it.
+    let onLock: () => void;
     const { dismiss } = mountHintOverlay(() => {
       c.lock();
+    }, () => {
+      // × button: overlay already dismissed by mountHintOverlay — labels screen reappears
+      c.pointerLock.removeEventListener('lock', onLock);
     });
 
-    const onLock = () => {
+    onLock = () => {
       c.pointerLock.removeEventListener('lock', onLock);
       dismiss();
       onEnterViewer();
