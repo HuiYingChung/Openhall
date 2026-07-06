@@ -110,7 +110,7 @@ export class ArtworkInteractions {
   private dollyFromQuat = new THREE.Quaternion();
   private dollyToQuat = new THREE.Quaternion();
   private dollyElapsed = 0;
-  private boundClick: () => void;
+  private boundClick: (e: MouseEvent) => void;
   private boundKeyDown: (e: KeyboardEvent) => void;
   private opts: InteractionOptions;
 
@@ -119,7 +119,7 @@ export class ArtworkInteractions {
     this.crosshair = createCrosshairDot();
     this.infoPanel = createInfoPanel();
 
-    this.boundClick = this.onClick.bind(this);
+    this.boundClick = this.onClick.bind(this) as (e: MouseEvent) => void;
     this.boundKeyDown = this.onKeyDown.bind(this);
     document.addEventListener('click', this.boundClick);
     document.addEventListener('keydown', this.boundKeyDown);
@@ -193,7 +193,14 @@ export class ArtworkInteractions {
     }
   }
 
-  private onClick(): void {
+  private onClick(e: MouseEvent): void {
+    // Guard 1: keyboard-activated clicks (Enter/Space on a focused button) have
+    // detail === 0; real mouse clicks have detail >= 1. Ignore synthetic ones so
+    // Tab → Enter on the Tour button does not also trigger a dolly.
+    if (e.detail === 0) return;
+    // Guard 2: clicks whose target is UI chrome should never open the inspect panel.
+    if (e.target instanceof HTMLElement &&
+        e.target.closest('button, #oh-ui, #oh-info-panel, #oh-tour-hud')) return;
     if (!this.opts.getIsLocked()) return;
     if (this.inspecting || this.dollyActive) return;
     if (!this.hoveredMesh) return;
