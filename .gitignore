@@ -43,3 +43,8 @@ npm-debug.log*
 # Keep PRODUCT_PLAN.md / ROADMAP.md / AGENTS.md committed —
 # they're part of the submission story. BOB_PROMPT_*.md may
 # be committed too (good evidence of the Bob workflow).
+
+.bob-*.log
+
+# -- Wrangler local state
+.wrangler/
