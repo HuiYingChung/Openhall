@@ -3,7 +3,33 @@
  * mountHintOverlay: shown on first entry, calls onEnter() when clicked.
  * mountHintOverlayTouchFallback: touch/no-pointer-lock variant with "Start Tour" CTA.
  * mountRelockOverlay: shown after Esc; clicking re-locks the pointer.
+ * shouldShowRelockOverlay: pure decision function — unit-testable.
  */
+
+// ---------------------------------------------------------------------------
+// Pure decision function for onUnlock handlers
+// ---------------------------------------------------------------------------
+
+/**
+ * Decides what an onUnlock handler should do.
+ *
+ * @returns
+ *   'stay-armed'   — keep the listener registered, do nothing else
+ *   'clear-suppress' — was a deliberate suppress, clear the flag and stay armed
+ *   'show-overlay' — remove the listener and mount the Paused overlay
+ */
+export type RelockDecision = 'stay-armed' | 'clear-suppress' | 'show-overlay';
+
+export function shouldShowRelockOverlay(opts: {
+  tourActive: boolean;
+  suppress: boolean;
+  inspecting: boolean;
+}): RelockDecision {
+  if (opts.tourActive) return 'stay-armed';
+  if (opts.suppress) return 'clear-suppress';
+  if (opts.inspecting) return 'stay-armed';
+  return 'show-overlay';
+}
 
 const OVERLAY_HTML = `
   <div id="oh-overlay" style="
@@ -68,6 +94,7 @@ const RELOCK_HTML = `
   ">
     <p style="font-size:1.2rem;margin:0 0 0.5rem;font-weight:600;">Paused</p>
     <p style="font-size:0.9rem;color:#aaa;margin:0;">Click anywhere to continue</p>
+    <p style="font-size:0.75rem;color:#666;margin:0.5rem 0 0;">(if nothing happens, click once more)</p>
   </div>
 `;
 
@@ -140,17 +167,34 @@ export function mountHintOverlayTouchFallback(onEnter: () => void): { dismiss: (
 /**
  * Mount a minimal "click to continue" overlay after pointer unlock (Esc).
  * Removes itself when the user clicks and re-lock succeeds.
+ *
+ * Browsers enforce a ~1–2 s pointer-lock cooldown after Esc; if the first
+ * requestPointerLock() is rejected, we auto-retry once after 1.5 s so the
+ * user doesn't get stuck on a silent failure.
  */
 export function mountRelockOverlay(onEnter: () => void): { dismiss: () => void } {
   const container = document.createElement('div');
   container.innerHTML = RELOCK_HTML;
   document.body.appendChild(container);
 
+  // One-retry: if pointerlockerror fires (browser cooldown), retry after 1.5 s
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  const onPointerLockError = () => {
+    if (retryTimer !== null) return; // already queued
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      onEnter();
+    }, 1500);
+  };
+  document.addEventListener('pointerlockerror', onPointerLockError);
+
   container.addEventListener('click', () => {
     onEnter();
   });
 
   function dismiss(): void {
+    if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
+    document.removeEventListener('pointerlockerror', onPointerLockError);
     if (container.parentNode) container.parentNode.removeChild(container);
   }
 

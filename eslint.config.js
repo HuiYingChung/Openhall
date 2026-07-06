@@ -29,6 +29,7 @@ const browserGlobals = {
   HTMLAnchorElement: 'readonly',
   requestAnimationFrame: 'readonly',
   setTimeout: 'readonly',
+  clearTimeout: 'readonly',
   KeyboardEvent: 'readonly',
   MouseEvent: 'readonly',
   PointerEvent: 'readonly',
