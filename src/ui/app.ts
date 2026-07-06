@@ -18,6 +18,7 @@ import {
   loadWatsonxSettings,
   saveWatsonxSettings,
 } from '../ai/watsonx';
+import { mountRelockOverlay } from './overlay';
 import {
   OpenAICompatProvider,
   loadOpenAISettings,
@@ -40,6 +41,28 @@ interface AppData {
   preset: StylePreset;
   analyses: WorkAnalysis[];
   gallery: Gallery | null;
+}
+
+// ---------------------------------------------------------------------------
+// Testable helper — extracted so Bug A regression can be unit-tested
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply the result of the generating stage: store the scene and controls
+ * into the mutable refs provided by bootApp.
+ *
+ * Extracted as a named export so it can be unit-tested independently of the
+ * DOM-heavy bootApp. The render loop reads `sceneRef.current` every frame,
+ * so updating it here is what makes the gallery visible.
+ */
+export function applyGeneratingResult(
+  sceneRef: { current: THREE.Scene },
+  controlsRef: { current: FirstPersonControls | null },
+  scene: THREE.Scene,
+  newControls: FirstPersonControls
+): void {
+  sceneRef.current = scene;
+  controlsRef.current = newControls;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,14 +123,38 @@ export function bootApp(): void {
       case 'settings': renderSettings(ui, data, () => setState('upload')); break;
       case 'upload': renderUpload(ui, data, () => setState('generating'), () => setState('settings')); break;
       case 'generating': renderGenerating(ui, data, camera,
-        (_s, newControls) => { controls = newControls; setState('labels'); },
+        (s, newControls) => {
+          // Bug A fix: store the built scene so the render loop uses it.
+          currentScene = s;
+          controls = newControls;
+
+          // Bug C fix: wire Esc → relock. Re-registers after each cycle so
+          // repeated Esc → click → Esc sequences all work.
+          // Three.js EventDispatcher has no { once } option — we remove manually.
+          function wireRelock() {
+            const onUnlock = () => {
+              controls!.pointerLock.removeEventListener('unlock', onUnlock);
+              const { dismiss } = mountRelockOverlay(() => controls!.lock());
+              const onRelock = () => {
+                controls!.pointerLock.removeEventListener('lock', onRelock);
+                dismiss();
+                wireRelock(); // re-arm for next Esc
+              };
+              controls!.pointerLock.addEventListener('lock', onRelock);
+            };
+            controls!.pointerLock.addEventListener('unlock', onUnlock);
+          }
+          wireRelock();
+
+          setState('labels');
+        },
         (err) => { alert(`Generation failed:\n${err}`); setState('upload'); }); break;
       case 'viewer': {
         // Just remove UI and let the viewer run
         ui.innerHTML = '';
         break;
       }
-      case 'labels': renderLabels(ui, data, () => setState('viewer')); break;
+      case 'labels': renderLabels(ui, data, () => setState('viewer'), () => controls); break;
     }
   }
 
@@ -476,7 +523,8 @@ function renderGenerating(
 function renderLabels(
   container: HTMLElement,
   data: AppData,
-  onEnterViewer: () => void
+  onEnterViewer: () => void,
+  getControls: () => FirstPersonControls | null
 ): void {
   if (!data.gallery) { onEnterViewer(); return; }
 
@@ -510,15 +558,22 @@ function renderLabels(
   }
 
   container.querySelector('#oh-enter-gallery')!.addEventListener('click', () => {
-    // Mount hint overlay then enter
-    const { dismiss: dismissHint } = mountHintOverlay(() => {
-      if (data.gallery) {
-        // controls are already set — just clear the UI
-        onEnterViewer();
-      }
+    // Bug B fix: mount hint overlay, lock pointer on button click,
+    // dismiss the overlay only once the pointer lock actually succeeds.
+    const c = getControls();
+    if (!c) { onEnterViewer(); return; }
+
+    const { dismiss } = mountHintOverlay(() => {
+      c.lock();
     });
-    // Auto-dismiss handled by pointer lock event in bootApp
-    void dismissHint; // used indirectly
-    onEnterViewer();
+
+    // Dismiss the overlay and transition to viewer state once pointer is locked.
+    // Three.js EventDispatcher has no { once } option — we remove manually.
+    const onLock = () => {
+      c.pointerLock.removeEventListener('lock', onLock);
+      dismiss();
+      onEnterViewer();
+    };
+    c.pointerLock.addEventListener('lock', onLock);
   });
 }
