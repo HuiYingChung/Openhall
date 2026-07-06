@@ -384,7 +384,8 @@ export function bootApp(): void {
   function setState(state: AppState) {
     ui.innerHTML = '';
     switch (state) {
-      case 'settings':
+      case 'settings': {
+        const hasKey = !!(loadWatsonxSettings()?.apiKey || loadOpenAISettings()?.apiKey);
         renderSettings(ui, data, () => setState('upload'), () => {
           // Demo mode: load gallery + build scene + enter viewer directly (no key needed)
           loadDemoGallery(data).then((gallery) => {
@@ -473,8 +474,10 @@ export function bootApp(): void {
               }
             }
           }).catch((e) => alert(`Demo mode failed: ${String(e)}`));
-        });
+        }, hasKey ? () => setState('upload') : undefined);
         break;
+      }
+
       case 'upload': renderUpload(ui, data, () => setState('generating'), () => setState('settings')); break;
       case 'generating': renderGenerating(ui, data, camera,
         (s, newControls, gallery, artworkMeshes) => {
@@ -541,7 +544,7 @@ export function bootApp(): void {
         if (data.gallery) showViewerButtons(data.gallery);
         break;
       }
-      case 'labels': renderLabels(ui, data, () => setState('viewer'), () => controls); break;
+      case 'labels': renderLabels(ui, data, () => setState('viewer'), () => controls, exitToMenu); break;
     }
   }
 
@@ -559,7 +562,8 @@ function renderSettings(
   container: HTMLElement,
   _data: AppData,
   onDone: () => void,
-  onDemo: () => void
+  onDemo: () => void,
+  onCancel?: () => void
 ): void {
   const wx = loadWatsonxSettings();
   const oai = loadOpenAISettings();
@@ -607,6 +611,7 @@ function renderSettings(
         </div>
 
         <div style="display:flex;gap:0.75rem;">
+          ${onCancel ? `<button id="oh-cancel-settings" style="flex:0 0 auto;padding:0.7rem 1.2rem;background:none;border:1px solid #444;color:#aaa;border-radius:8px;font-size:1rem;cursor:pointer;">Cancel</button>` : ''}
           <button id="oh-save-settings" style="flex:1;padding:0.7rem;background:#fff;color:#111;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;">Save & Continue</button>
         </div>
         <p style="font-size:0.75rem;color:#555;margin:1rem 0 0;text-align:center;">No key? Try the <button id="oh-demo-btn" style="background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;font-size:0.75rem;">demo mode</button> instead.</p>
@@ -646,6 +651,12 @@ function renderSettings(
     }
     onDone();
   });
+
+  if (onCancel) {
+    container.querySelector('#oh-cancel-settings')?.addEventListener('click', () => {
+      onCancel!();
+    });
+  }
 
   container.querySelector('#oh-demo-btn')!.addEventListener('click', () => {
     onDemo();
@@ -922,7 +933,8 @@ function renderLabels(
   container: HTMLElement,
   data: AppData,
   onEnterViewer: () => void,
-  getControls: () => FirstPersonControls | null
+  getControls: () => FirstPersonControls | null,
+  onBack: () => void
 ): void {
   if (!data.gallery) { onEnterViewer(); return; }
 
@@ -933,9 +945,13 @@ function renderLabels(
         <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Review Wall Labels</h2>
         <p style="color:#888;font-size:0.85rem;margin:0 0 1.5rem;">Edit any label before entering the gallery. Changes are saved automatically.</p>
         <div id="oh-labels-list"></div>
-        <button id="oh-enter-gallery" style="width:100%;padding:0.85rem;background:#fff;color:#111;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;margin-top:1rem;">
-          Enter Gallery →
-        </button>
+        <div style="display:flex;gap:0.75rem;margin-top:1rem;">
+          <button id="oh-back-labels" style="flex:0 0 auto;padding:0.85rem 1.2rem;background:none;border:1px solid #444;color:#aaa;border-radius:8px;font-size:1rem;cursor:pointer;">&larr; Back to edit</button>
+          <button id="oh-enter-gallery" style="flex:1;padding:0.85rem;background:#fff;color:#111;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">
+            Enter Gallery →
+          </button>
+        </div>
+        <p style="font-size:0.75rem;color:#666;margin:0.5rem 0 0;">Back keeps your uploads and details, but you'll need to generate again.</p>
       </div>
     </div>`;
 
@@ -954,6 +970,10 @@ function renderLabels(
     });
     list.appendChild(block);
   }
+
+  container.querySelector('#oh-back-labels')!.addEventListener('click', () => {
+    onBack();
+  });
 
   container.querySelector('#oh-enter-gallery')!.addEventListener('click', () => {
     const c = getControls();
