@@ -137,6 +137,65 @@ export function bootApp(): void {
   ui.id = 'oh-ui';
   document.body.appendChild(ui);
 
+  // ---------------------------------------------------------------------------
+  // Inline SVG icon helpers — 16 px, stroke="currentColor", fill="none"
+  // ---------------------------------------------------------------------------
+
+  /** Download arrow (⬇) */
+  function svgDownload(): string {
+    return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;" aria-hidden="true"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M2 12h12"/></svg>`;
+  }
+
+  /** Route/pin glyph (🎯) */
+  function svgTour(): string {
+    return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;" aria-hidden="true"><circle cx="8" cy="6.5" r="2.5"/><path d="M8 14C8 14 2.5 10 2.5 6.5a5.5 5.5 0 0 1 11 0C13.5 10 8 14 8 14z"/></svg>`;
+  }
+
+  /** Left arrow (← Menu) */
+  function svgArrowLeft(): string {
+    return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;" aria-hidden="true"><path d="M10 13L4 8l6-5"/></svg>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Exit-to-menu: full teardown → setState(upload or settings)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Tear down the active viewer session and return to the upload/settings screen.
+   * Called from both the "← Menu" HUD button and the "Create your own gallery"
+   * button inside the Paused overlay. No-op if no viewer session is running.
+   */
+  function exitToMenu(): void {
+    // Dismiss any lingering Paused overlay
+    if (activeRelockDismiss) { activeRelockDismiss(); activeRelockDismiss = null; }
+    // Dispose the tour (removes HUD)
+    if (tour) { tour.dispose(); tour = null; }
+    // Dispose interactions (removes DOM elements + Three.js objects)
+    interactions?.dispose(); interactions = null;
+    // Unlock and dispose controls
+    if (controls?.isLocked) controls.pointerLock.unlock();
+    controls?.dispose(); controls = null;
+    // Dispose the Three.js scene (geometries, materials, textures)
+    disposeScene(currentScene);
+    currentScene = new THREE.Scene();
+    currentScene.background = new THREE.Color(0x111111);
+    // Remove viewer HUD buttons
+    document.getElementById('oh-export-btn')?.remove();
+    document.getElementById('oh-menu-btn')?.remove();
+    if (tourBtn) { tourBtn.remove(); tourBtn = null; }
+    document.getElementById('oh-touch-tour-btn')?.remove();
+    document.getElementById('oh-crosshair')?.remove();
+    // Reset suppressNextRelock so the next session starts clean
+    suppressNextRelock = false;
+    // Navigate: go to upload if there is a stored key, settings otherwise
+    const hasKey = !!(loadWatsonxSettings()?.apiKey || loadOpenAISettings()?.apiKey);
+    setState(hasKey ? 'upload' : 'settings');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Viewer HUD buttons
+  // ---------------------------------------------------------------------------
+
   // Tour HUD button and Export button (shown when in viewer state)
   let tourBtn: HTMLElement | null = null;
 
@@ -147,24 +206,64 @@ export function bootApp(): void {
     showViewerButtons(gallery);
   }
 
+  /** HUD button shared style. */
+  const HUD_BTN_CSS = `
+    background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.25);
+    color:#f0ece6;padding:0.45rem 0.9rem;border-radius:8px;
+    font-size:0.88rem;cursor:pointer;
+    font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+    display:inline-flex;align-items:center;
+  `;
+
   function showViewerButtons(gallery: Gallery): void {
-    // Export button — always shown
+    // ← Menu button — always shown
+    if (!document.getElementById('oh-menu-btn')) {
+      const menuBtn = document.createElement('button');
+      menuBtn.id = 'oh-menu-btn';
+      menuBtn.innerHTML = `${svgArrowLeft()}Menu`;
+      menuBtn.style.cssText = `position:fixed;top:1rem;left:1rem;z-index:200;${HUD_BTN_CSS}`;
+      menuBtn.addEventListener('click', () => exitToMenu());
+      document.body.appendChild(menuBtn);
+    }
+
+    // Export button
     if (!document.getElementById('oh-export-btn')) {
       const expBtn = document.createElement('button');
       expBtn.id = 'oh-export-btn';
-      expBtn.textContent = '⬇ Export';
-      expBtn.style.cssText = `
-        position:fixed;top:1rem;left:1rem;z-index:200;
-        background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.25);
-        color:#f0ece6;padding:0.45rem 0.9rem;border-radius:8px;
-        font-size:0.88rem;cursor:pointer;
-        font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
-      `;
+      expBtn.innerHTML = `${svgDownload()}Export`;
+      expBtn.style.cssText = `position:fixed;top:1rem;left:6rem;z-index:200;${HUD_BTN_CSS}`;
       expBtn.addEventListener('click', async () => {
         if (!data.gallery) return;
         expBtn.disabled = true;
-        expBtn.textContent = 'Building…';
+        expBtn.innerHTML = 'Building…';
         try {
+          // Dev-only staleness guard: warn if viewer.js is > 24 h old.
+          if (import.meta.env.DEV) {
+            try {
+              const metaRes = await fetch('/assets/viewer.meta.json');
+              if (metaRes.ok) {
+                const meta = await metaRes.json() as { builtAt?: string };
+                if (meta.builtAt) {
+                  const ageMs = Date.now() - new Date(meta.builtAt).getTime();
+                  const ageH = Math.round(ageMs / 36e5);
+                  if (ageMs > 24 * 60 * 60 * 1000) {
+                    const proceed = confirm(
+                      `viewer.js was built ${ageH}h ago — source may have changed.\n` +
+                      `Export anyway? (run npm run build:viewer to refresh)`
+                    );
+                    if (!proceed) {
+                      expBtn.disabled = false;
+                      expBtn.innerHTML = `${svgDownload()}Export`;
+                      return;
+                    }
+                  }
+                }
+              }
+            } catch {
+              // meta fetch failed — not a blocking error, proceed silently
+            }
+          }
+
           const { buildExportBundle, downloadZip } = await import('../export/bundler');
           const artworkUrls = new Map(data.artworks.map((a) => [a.id, a.displayObjectUrl]));
           const aspectRatios = new Map(data.artworks.map((a) => [a.id, a.aspectRatio]));
@@ -186,7 +285,7 @@ export function bootApp(): void {
             }
           }
           if (demoFetches.length > 0) {
-            expBtn.textContent = 'Fetching demo images…';
+            expBtn.innerHTML = 'Fetching demo images…';
             await Promise.all(demoFetches);
           }
 
@@ -198,14 +297,14 @@ export function bootApp(): void {
             artworkUrls,
             aspectRatios,
             viewerScriptUrl,
-            onProgress: (msg, pct) => { expBtn.textContent = `${msg} ${pct}%`; },
+            onProgress: (msg, pct) => { expBtn.innerHTML = `${msg} ${pct}%`; },
           });
           downloadZip(blob);
         } catch (e) {
           alert(`Export failed: ${String(e)}`);
         } finally {
           expBtn.disabled = false;
-          expBtn.textContent = '⬇ Export';
+          expBtn.innerHTML = `${svgDownload()}Export`;
         }
       });
       document.body.appendChild(expBtn);
@@ -216,14 +315,8 @@ export function bootApp(): void {
     if (tourBtn) return;
     const btn = document.createElement('button');
     btn.id = 'oh-tour-btn';
-    btn.textContent = '🎯 Tour';
-    btn.style.cssText = `
-      position:fixed;top:1rem;right:1rem;z-index:200;
-      background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.25);
-      color:#f0ece6;padding:0.45rem 0.9rem;border-radius:8px;
-      font-size:0.88rem;cursor:pointer;
-      font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
-    `;
+    btn.innerHTML = `${svgTour()}Tour`;
+    btn.style.cssText = `position:fixed;top:1rem;right:1rem;z-index:200;${HUD_BTN_CSS}`;
     btn.addEventListener('click', () => {
       if (!data.gallery) return;
       // Bug 2: dismiss any lingering Paused overlay before the tour begins
@@ -258,13 +351,14 @@ export function bootApp(): void {
     if (existing) return;
     const btn = document.createElement('button');
     btn.id = 'oh-touch-tour-btn';
-    btn.textContent = '🎯 Start Tour';
+    btn.innerHTML = `${svgTour()}Start Tour`;
     btn.style.cssText = `
       position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:200;
       background:rgba(0,0,0,0.85);border:1px solid rgba(255,255,255,0.3);
       color:#f0ece6;padding:0.75rem 2rem;border-radius:8px;
       font-size:1rem;cursor:pointer;font-weight:600;
       font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+      display:inline-flex;align-items:center;
     `;
     btn.addEventListener('click', () => {
       btn.remove();
@@ -334,7 +428,7 @@ export function bootApp(): void {
                 if (decision === 'stay-armed') return;
                 // decision === 'show-overlay'
                 controls!.pointerLock.removeEventListener('unlock', onUnlock);
-                const { dismiss } = mountRelockOverlay(() => controls!.lock());
+                const { dismiss } = mountRelockOverlay(() => controls!.lock(), exitToMenu);
                 // Bug 2: track so the tour-start handler can dismiss it
                 activeRelockDismiss = dismiss;
                 const onRelock = () => {
@@ -423,7 +517,7 @@ export function bootApp(): void {
               if (decision === 'stay-armed') return;
               // decision === 'show-overlay'
               controls!.pointerLock.removeEventListener('unlock', onUnlock);
-              const { dismiss } = mountRelockOverlay(() => controls!.lock());
+              const { dismiss } = mountRelockOverlay(() => controls!.lock(), exitToMenu);
               // Bug 2: track so the tour-start handler can dismiss it
               activeRelockDismiss = dismiss;
               const onRelock = () => {
@@ -475,7 +569,7 @@ function renderSettings(
     <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
       background:rgba(0,0,0,0.88);z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;">
       <div style="background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto;">
-        <h2 style="margin:0 0 0.25rem;font-size:1.4rem;">⚙️ API Settings</h2>
+        <h2 style="margin:0 0 0.25rem;font-size:1.4rem;">API Settings</h2>
         <p style="color:#888;font-size:0.85rem;margin:0 0 1.5rem;">Keys are stored in your browser only and never sent anywhere except directly to the AI provider.</p>
 
         <label style="display:block;margin-bottom:0.5rem;font-size:0.9rem;">Provider</label>
@@ -585,7 +679,7 @@ function renderUpload(
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
           <h1 style="margin:0;font-size:1.6rem;font-weight:700;">Openhall</h1>
-          <button id="oh-to-settings" style="background:none;border:1px solid #444;color:#aaa;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.85rem;">⚙️ Settings</button>
+          <button id="oh-to-settings" style="background:none;border:1px solid #444;color:#aaa;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.85rem;">Settings</button>
         </div>
 
         <div id="oh-dropzone" style="border:2px dashed #444;border-radius:12px;padding:3rem 1rem;text-align:center;cursor:pointer;transition:border-color 0.2s;margin-bottom:1rem;">

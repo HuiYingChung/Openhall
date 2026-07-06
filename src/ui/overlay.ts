@@ -80,23 +80,44 @@ const OVERLAY_HTML = `
   </div>
 `;
 
-const RELOCK_HTML = `
-  <div id="oh-relock" style="
-    position:fixed; inset:0;
-    display:flex; flex-direction:column;
-    align-items:center; justify-content:center;
-    background:rgba(0,0,0,0.6);
-    color:#f0ece6;
-    font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
-    user-select:none;
-    z-index:100;
-    cursor:pointer;
-  ">
-    <p style="font-size:1.2rem;margin:0 0 0.5rem;font-weight:600;">Paused</p>
-    <p style="font-size:0.9rem;color:#aaa;margin:0;">Click anywhere to continue</p>
-    <p style="font-size:0.75rem;color:#666;margin:0.5rem 0 0;">(if nothing happens, click once more)</p>
-  </div>
-`;
+/**
+ * Build RELOCK_HTML — if onExitToMenu is provided, append the "Create your
+ * own gallery" button so the demo visitor has a clear next step.
+ */
+function buildRelockHtml(showExitBtn: boolean): string {
+  const exitBtn = showExitBtn ? `
+    <button id="oh-relock-exit-btn" style="
+      margin-top:1.5rem;
+      padding:0.6rem 1.6rem;
+      font-size:0.9rem;
+      background:#fff;
+      color:#111;
+      border:none;
+      border-radius:8px;
+      cursor:pointer;
+      font-weight:600;
+      font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+    ">Create your own gallery &rarr;</button>
+  ` : '';
+  return `
+    <div id="oh-relock" style="
+      position:fixed; inset:0;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      background:rgba(0,0,0,0.6);
+      color:#f0ece6;
+      font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+      user-select:none;
+      z-index:100;
+      cursor:pointer;
+    ">
+      <p style="font-size:1.2rem;margin:0 0 0.5rem;font-weight:600;">Paused</p>
+      <p style="font-size:0.9rem;color:#aaa;margin:0;">Click anywhere to continue walking</p>
+      <p style="font-size:0.75rem;color:#666;margin:0.5rem 0 0;">(if nothing happens, click again)</p>
+      ${exitBtn}
+    </div>
+  `;
+}
 
 export function mountHintOverlay(onEnter: () => void): { dismiss: () => void } {
   const container = document.createElement('div');
@@ -172,9 +193,12 @@ export function mountHintOverlayTouchFallback(onEnter: () => void): { dismiss: (
  * requestPointerLock() is rejected, we auto-retry once after 1.5 s so the
  * user doesn't get stuck on a silent failure.
  */
-export function mountRelockOverlay(onEnter: () => void): { dismiss: () => void } {
+export function mountRelockOverlay(
+  onEnter: () => void,
+  onExitToMenu?: () => void
+): { dismiss: () => void } {
   const container = document.createElement('div');
-  container.innerHTML = RELOCK_HTML;
+  container.innerHTML = buildRelockHtml(!!onExitToMenu);
   document.body.appendChild(container);
 
   // One-retry: if pointerlockerror fires (browser cooldown), retry after 1.5 s
@@ -187,6 +211,19 @@ export function mountRelockOverlay(onEnter: () => void): { dismiss: () => void }
     }, 1500);
   };
   document.addEventListener('pointerlockerror', onPointerLockError);
+
+  // "Create your own gallery" exit button — stops propagation so it doesn't
+  // also trigger the container click (which would attempt to re-lock).
+  if (onExitToMenu) {
+    const exitBtn = container.querySelector('#oh-relock-exit-btn');
+    if (exitBtn) {
+      exitBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dismiss();
+        onExitToMenu();
+      });
+    }
+  }
 
   container.addEventListener('click', () => {
     onEnter();

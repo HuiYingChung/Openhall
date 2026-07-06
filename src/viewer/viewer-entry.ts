@@ -128,19 +128,25 @@ async function bootViewer() {
     });
   }
 
+  /** Tour pin glyph — matches app.ts svgTour() */
+  function svgTour(): string {
+    return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;" aria-hidden="true"><circle cx="8" cy="6.5" r="2.5"/><path d="M8 14C8 14 2.5 10 2.5 6.5a5.5 5.5 0 0 1 11 0C13.5 10 8 14 8 14z"/></svg>`;
+  }
+
   function mountTourButton() {
     if (!gallery.tour.length) return;
     const existing = document.getElementById('oh-tour-btn-viewer');
     if (existing) return;
     const tourBtn = document.createElement('button');
     tourBtn.id = 'oh-tour-btn-viewer';
-    tourBtn.textContent = '🎯 Tour';
+    tourBtn.innerHTML = `${svgTour()}Tour`;
     tourBtn.style.cssText = `
       position:fixed;top:1rem;right:1rem;z-index:200;
       background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.25);
       color:#f0ece6;padding:0.45rem 0.9rem;border-radius:8px;
       font-size:0.88rem;cursor:pointer;
       font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+      display:inline-flex;align-items:center;
     `;
     tourBtn.addEventListener('click', () => {
       tourBtn.remove();
