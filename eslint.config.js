@@ -13,22 +13,29 @@ const browserGlobals = {
   localStorage: 'readonly',
   URL: 'readonly',
   URLSearchParams: 'readonly',
+  Blob: 'readonly',
   File: 'readonly',
   FileList: 'readonly',
   Image: 'readonly',
+  Response: 'readonly',
+  Request: 'readonly',
+  RequestInfo: 'readonly',
   HTMLElement: 'readonly',
   HTMLButtonElement: 'readonly',
   HTMLCanvasElement: 'readonly',
   HTMLInputElement: 'readonly',
   HTMLSelectElement: 'readonly',
   HTMLTextAreaElement: 'readonly',
+  HTMLAnchorElement: 'readonly',
   requestAnimationFrame: 'readonly',
   setTimeout: 'readonly',
   KeyboardEvent: 'readonly',
   MouseEvent: 'readonly',
   PointerEvent: 'readonly',
+  TouchEvent: 'readonly',
   Event: 'readonly',
   DataTransfer: 'readonly',
+  navigator: 'readonly',
 };
 
 // Node globals for scripts/
@@ -44,11 +51,13 @@ const cfWorkerGlobals = {
   fetch: 'readonly',
   Request: 'readonly',
   Response: 'readonly',
+  URL: 'readonly',
   URLSearchParams: 'readonly',
   console: 'readonly',
 };
 
 export default [
+  { ignores: ['dist/', 'dist-viewer/', '.wrangler/'] },
   js.configs.recommended,
   // Source TypeScript files (browser context)
   {
