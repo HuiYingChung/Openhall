@@ -181,7 +181,8 @@ export function bootApp(): void {
     disposeScene(currentScene);
     currentScene = new THREE.Scene();
     currentScene.background = new THREE.Color(0x111111);
-    // Remove viewer HUD buttons
+    // Remove viewer HUD buttons (container removes its children too)
+    document.getElementById('oh-hud-left')?.remove();
     document.getElementById('oh-export-btn')?.remove();
     document.getElementById('oh-menu-btn')?.remove();
     if (tourBtn) { tourBtn.remove(); tourBtn = null; }
@@ -217,15 +218,27 @@ export function bootApp(): void {
     display:inline-flex;align-items:center;
   `;
 
+  /** Top-left HUD container — flex row so buttons never overlap. */
+  function ensureHudLeft(): HTMLElement {
+    let c = document.getElementById('oh-hud-left');
+    if (!c) {
+      c = document.createElement('div');
+      c.id = 'oh-hud-left';
+      c.style.cssText = 'position:fixed;top:1rem;left:1rem;z-index:200;display:flex;gap:0.5rem;';
+      document.body.appendChild(c);
+    }
+    return c;
+  }
+
   function showViewerButtons(gallery: Gallery): void {
     // ← Menu button — always shown
     if (!document.getElementById('oh-menu-btn')) {
       const menuBtn = document.createElement('button');
       menuBtn.id = 'oh-menu-btn';
       menuBtn.innerHTML = `${svgArrowLeft()}Menu`;
-      menuBtn.style.cssText = `position:fixed;top:1rem;left:1rem;z-index:200;${HUD_BTN_CSS}`;
+      menuBtn.style.cssText = HUD_BTN_CSS;
       menuBtn.addEventListener('click', () => exitToMenu());
-      document.body.appendChild(menuBtn);
+      ensureHudLeft().appendChild(menuBtn);
     }
 
     // Export button
@@ -233,7 +246,7 @@ export function bootApp(): void {
       const expBtn = document.createElement('button');
       expBtn.id = 'oh-export-btn';
       expBtn.innerHTML = `${svgDownload()}Export`;
-      expBtn.style.cssText = `position:fixed;top:1rem;left:6rem;z-index:200;${HUD_BTN_CSS}`;
+      expBtn.style.cssText = HUD_BTN_CSS;
       expBtn.addEventListener('click', async () => {
         if (!data.gallery) return;
         expBtn.disabled = true;
@@ -312,7 +325,7 @@ export function bootApp(): void {
           expBtn.innerHTML = `${svgDownload()}Export`;
         }
       });
-      document.body.appendChild(expBtn);
+      ensureHudLeft().appendChild(expBtn);
     }
 
     // Tour button — only if tour waypoints exist
@@ -386,13 +399,9 @@ export function bootApp(): void {
     document.body.appendChild(btn);
   }
 
-  function setState(state: AppState) {
-    ui.innerHTML = '';
-    switch (state) {
-      case 'settings': {
-        const hasKey = !!(loadWatsonxSettings()?.apiKey || loadOpenAISettings()?.apiKey);
-        renderSettings(ui, data, () => setState('upload'), () => {
-          // Demo mode: load gallery + build scene + enter viewer directly (no key needed)
+  /** Demo mode: load the sample gallery + build scene + enter viewer (no key needed).
+   *  Reachable from both the Settings screen and the upload/home screen. */
+  function startDemo(): void {
           loadDemoGallery(data).then((gallery) => {
             const { scene, roomLayouts, artworkMeshes } = buildScene(gallery);
             const allAABBs = roomLayouts.flatMap((r) => r.wallAABBs);
@@ -486,11 +495,18 @@ export function bootApp(): void {
               }
             }
           }).catch((e) => alert(`Demo mode failed: ${String(e)}`));
-        }, hasKey ? () => setState('upload') : undefined);
+  }
+
+  function setState(state: AppState) {
+    ui.innerHTML = '';
+    switch (state) {
+      case 'settings': {
+        const hasKey = !!(loadWatsonxSettings()?.apiKey || loadOpenAISettings()?.apiKey);
+        renderSettings(ui, data, () => setState('upload'), startDemo, hasKey ? () => setState('upload') : undefined);
         break;
       }
 
-      case 'upload': renderUpload(ui, data, () => setState('generating'), () => setState('settings')); break;
+      case 'upload': renderUpload(ui, data, () => setState('generating'), () => setState('settings'), startDemo); break;
       case 'generating': renderGenerating(ui, data, camera,
         (s, newControls, gallery, artworkMeshes) => {
           // Dispose old scene first to prevent geometry/texture leaks on regeneration.
@@ -704,17 +720,30 @@ function renderUpload(
   container: HTMLElement,
   data: AppData,
   onGenerate: () => void,
-  onSettings: () => void
+  onSettings: () => void,
+  onDemo: () => void
 ): void {
   container.innerHTML = `
     <div style="position:fixed;inset:0;display:flex;flex-direction:column;
       background:#0d0d0d;z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;overflow-y:auto;">
       <div style="max-width:760px;margin:0 auto;padding:2rem;width:100%;box-sizing:border-box;">
 
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
           <h1 style="margin:0;font-size:1.6rem;font-weight:700;">Openhall</h1>
           <button id="oh-to-settings" style="background:none;border:1px solid #444;color:#aaa;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.85rem;">Settings</button>
         </div>
+
+        <p style="color:#aaa;font-size:0.92rem;margin:0 0 0.8rem;">Turn up to 10 artworks into a walkable 3D gallery — fully AI-generated, exportable as a website you own.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:0.35rem 1.2rem;margin-bottom:0.6rem;color:#888;font-size:0.8rem;">
+          <span><span style="color:#ddd;font-weight:600;">1</span> · Upload your artworks</span>
+          <span><span style="color:#ddd;font-weight:600;">2</span> · Describe the show and pick a style</span>
+          <span><span style="color:#ddd;font-weight:600;">3</span> · AI designs the gallery</span>
+          <span><span style="color:#ddd;font-weight:600;">4</span> · Walk through it, then export</span>
+        </div>
+        <p style="color:#888;font-size:0.8rem;margin:0 0 1.5rem;">
+          First time here? Add your AI API key via the <span style="color:#ccc;">Settings</span> button (top right) —
+          or <button id="oh-home-demo" style="background:none;border:none;color:#ccc;text-decoration:underline;cursor:pointer;font-size:0.8rem;padding:0;">view the demo gallery</button> first, no key needed.
+        </p>
 
         <div id="oh-dropzone" style="border:2px dashed #444;border-radius:12px;padding:3rem 1rem;text-align:center;cursor:pointer;transition:border-color 0.2s;margin-bottom:1rem;">
           <p style="font-size:1.1rem;margin:0 0 0.5rem;">Drop artworks here, or click to browse</p>
@@ -724,7 +753,8 @@ function renderUpload(
 
         <div id="oh-thumbnail-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:1rem;margin-bottom:1.5rem;"></div>
 
-        <label style="display:block;font-size:0.9rem;margin-bottom:0.35rem;">Describe your exhibition in one sentence</label>
+        <label style="display:block;font-size:0.9rem;margin-bottom:0.2rem;">Describe your exhibition in one sentence</label>
+        <p style="font-size:0.75rem;color:#777;margin:0 0 0.5rem;">This shapes how your works are grouped into rooms, the tour order, and the tone of the wall labels.</p>
         <textarea id="oh-brief" rows="2" placeholder="e.g. A series of abstract landscapes exploring the tension between the natural world and urban decay"
           style="width:100%;padding:0.6rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:8px;font-size:0.95rem;resize:vertical;margin-bottom:1rem;box-sizing:border-box;">${data.userBrief}</textarea>
 
@@ -745,6 +775,7 @@ function renderUpload(
   const presetsEl = container.querySelector('#oh-presets') as HTMLElement;
 
   container.querySelector('#oh-to-settings')!.addEventListener('click', onSettings);
+  container.querySelector('#oh-home-demo')!.addEventListener('click', onDemo);
 
   // Preset buttons
   const presetKeys = Object.keys(PRESETS) as StylePreset[];

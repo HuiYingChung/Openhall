@@ -10,6 +10,7 @@ import {
   benchSpec,
   FLOOR_FINISH,
   buildFloorMaterial,
+  pickEntranceWall,
   type StyleFamily,
 } from './decor';
 import type { Room } from '../schema/gallery.schema';
@@ -124,6 +125,38 @@ describe('frameBarSpecs', () => {
     const [top, bottom, left, right] = bars;
     expect(top.y).toBeCloseTo(-bottom.y);
     expect(left.x).toBeCloseTo(-right.x);
+  });
+});
+
+describe('pickEntranceWall', () => {
+  const noArt = new Map<string, number[]>();
+
+  it('prefers the west wall when free', () => {
+    expect(pickEntranceWall(makeRoom(12, 10), new Set(), noArt)).toBe('w');
+  });
+
+  it('skips walls with doorways', () => {
+    expect(pickEntranceWall(makeRoom(12, 10), new Set(['w']), noArt)).toBe('s');
+    expect(pickEntranceWall(makeRoom(12, 10), new Set(['w', 's', 'n']), noArt)).toBe('e');
+  });
+
+  it('coexists with artworks far from the wall centre (demo room-a case)', () => {
+    // n wall art at ±3 m — centre is free, portal fits
+    const offsets = new Map<string, number[]>([
+      ['w', [0]],
+      ['s', [0]],
+      ['n', [-3, 3]],
+    ]);
+    expect(pickEntranceWall(makeRoom(12, 10), new Set(['e']), offsets)).toBe('n');
+  });
+
+  it('rejects walls with artwork near the centre', () => {
+    const offsets = new Map<string, number[]>([['w', [1.5]], ['s', [0]], ['n', [-2.0]]]);
+    expect(pickEntranceWall(makeRoom(12, 10), new Set(['e']), offsets)).toBeNull();
+  });
+
+  it('skips walls shorter than 4 m', () => {
+    expect(pickEntranceWall(makeRoom(12, 3), new Set(), noArt)).toBe('s');
   });
 });
 

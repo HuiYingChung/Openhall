@@ -75,22 +75,76 @@ function createInfoPanel(): HTMLElement {
   panel.id = 'oh-info-panel';
   panel.style.cssText = `
     position:fixed;
-    bottom:2rem;left:50%;
-    transform:translateX(-50%);
+    bottom:2rem;right:2rem;
     background:rgba(0,0,0,0.82);
     border:1px solid rgba(255,255,255,0.12);
     border-radius:12px;
     padding:1.25rem 1.5rem;
     color:#f0ece6;
     font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
-    max-width:min(520px,88vw);
+    max-width:min(440px,88vw);
     min-width:240px;
+    max-height:60vh;
+    overflow-y:auto;
     z-index:300;
     display:none;
     backdrop-filter:blur(6px);
+    cursor:grab;
+    touch-action:none;
   `;
+  wirePanelDrag(panel);
   document.body.appendChild(panel);
   return panel;
+}
+
+/**
+ * Make a fixed-position panel draggable so it never blocks the artwork.
+ * Drag anywhere on the card except buttons. Position persists for the
+ * lifetime of the element. Shared by the inspect panel and the tour label.
+ */
+export function wirePanelDrag(panel: HTMLElement): void {
+  let dragging = false;
+  let startX = 0;
+  let startY = 0;
+  let startLeft = 0;
+  let startTop = 0;
+
+  panel.addEventListener('pointerdown', (e) => {
+    if (e.target instanceof HTMLElement && e.target.closest('button, a')) return;
+    const rect = panel.getBoundingClientRect();
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startLeft = rect.left;
+    startTop = rect.top;
+    // Switch from bottom/right anchoring to explicit left/top
+    panel.style.left = `${rect.left}px`;
+    panel.style.top = `${rect.top}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.transform = 'none';
+    panel.setPointerCapture(e.pointerId);
+    panel.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  panel.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const rect = panel.getBoundingClientRect();
+    const left = Math.min(Math.max(startLeft + e.clientX - startX, 8), window.innerWidth - rect.width - 8);
+    const top = Math.min(Math.max(startTop + e.clientY - startY, 8), window.innerHeight - rect.height - 8);
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+  });
+
+  const endDrag = (e: PointerEvent) => {
+    if (!dragging) return;
+    dragging = false;
+    panel.style.cursor = 'grab';
+    if (panel.hasPointerCapture(e.pointerId)) panel.releasePointerCapture(e.pointerId);
+  };
+  panel.addEventListener('pointerup', endDrag);
+  panel.addEventListener('pointercancel', endDrag);
 }
 
 // ---------------------------------------------------------------------------
@@ -257,9 +311,19 @@ export class ArtworkInteractions {
     this.opts.onInspectOpen();
     // Store which artwork we're inspecting
     this.currentArtworkId = artworkId;
+
+    // Kill specular glare on the canvas while inspecting — the viewer should
+    // see the flat artwork, not a varnished surface catching the lights.
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    this.glareMesh = mesh;
+    this.glarePrev = { envMapIntensity: mat.envMapIntensity, roughness: mat.roughness };
+    mat.envMapIntensity = 0;
+    mat.roughness = 1;
   }
 
   private currentArtworkId: string | null = null;
+  private glareMesh: THREE.Mesh | null = null;
+  private glarePrev: { envMapIntensity: number; roughness: number } | null = null;
 
   private showInfoPanel(): void {
     if (!this.currentArtworkId) return;
@@ -288,7 +352,7 @@ export class ArtworkInteractions {
           color:#f0ece6;border-radius:6px;padding:0.3rem 0.6rem;cursor:pointer;
           font-size:0.8rem;white-space:nowrap;">✕ Close</button>
       </div>
-      <p style="font-size:0.72rem;color:#555;margin:0.75rem 0 0;">Press <kbd style="background:#222;border:1px solid #444;border-radius:3px;padding:1px 4px;">Esc</kbd> to close</p>
+      <p style="font-size:0.72rem;color:#555;margin:0.75rem 0 0;">Press <kbd style="background:#222;border:1px solid #444;border-radius:3px;padding:1px 4px;">Esc</kbd> to close &nbsp;·&nbsp; drag this card to move it</p>
     `;
     this.infoPanel.style.display = 'block';
 
@@ -303,6 +367,14 @@ export class ArtworkInteractions {
     this.inspecting = false;
     this.dollyActive = false;
     this.currentArtworkId = null;
+    // Restore the canvas material's normal (subtle) reflectivity
+    if (this.glareMesh && this.glarePrev) {
+      const mat = this.glareMesh.material as THREE.MeshStandardMaterial;
+      mat.envMapIntensity = this.glarePrev.envMapIntensity;
+      mat.roughness = this.glarePrev.roughness;
+    }
+    this.glareMesh = null;
+    this.glarePrev = null;
     this.opts.onInspectClose();
   }
 

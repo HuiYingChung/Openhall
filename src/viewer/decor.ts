@@ -332,6 +332,134 @@ export function buildBaseboardSegment(
 }
 
 // ---------------------------------------------------------------------------
+// Fake entrance portal — purely visual, makes the hall read as a real venue
+// ---------------------------------------------------------------------------
+
+export type WallSide = 'n' | 's' | 'e' | 'w';
+
+/**
+ * Pick a wall of the room for the fake entrance (centred, ~1.9 m wide).
+ * A wall qualifies when it has no doorway, is ≥ 4 m long, and every artwork
+ * on it sits at least CLEARANCE from the wall centre (art and portal can
+ * share a long wall). Preference order keeps the portal on the "outside"
+ * end of the linear room chain. Pure — unit-testable.
+ */
+export function pickEntranceWall(
+  room: Room,
+  doorwayWalls: Set<string>,
+  artworkOffsets: Map<string, number[]>
+): WallSide | null {
+  const order: WallSide[] = ['w', 's', 'n', 'e'];
+  const CLEARANCE = 2.2;
+  for (const side of order) {
+    if (doorwayWalls.has(side)) continue;
+    const len = side === 'n' || side === 's' ? room.width : room.depth;
+    if (len < 4) continue;
+    const offs = artworkOffsets.get(side) ?? [];
+    if (offs.some((o) => Math.abs(o) < CLEARANCE)) continue;
+    return side;
+  }
+  return null;
+}
+
+const ENTRANCE_DOOR_COLORS: Record<StyleFamily, { leaf: number; handle: number }> = {
+  'white-cube': { leaf: 0x2e2e2e, handle: 0xd8d8d8 },
+  industrial: { leaf: 0x3a3a3a, handle: 0xb8b8b8 },
+  'warm-wood': { leaf: 0x6a4a2c, handle: 0xb08d57 },
+  'dark-dramatic': { leaf: 0x101010, handle: 0xc9a227 },
+};
+
+/**
+ * Build the fake entrance: dark recess + closed double doors + jambs/lintel
+ * + handles + a soft glowing plate above. Flush with the wall — collision is
+ * already handled by the wall AABB, so visitors can't walk "through" it.
+ */
+export function buildFakeEntrance(
+  scene: THREE.Scene,
+  family: StyleFamily,
+  room: Room,
+  originX: number,
+  originZ: number,
+  side: WallSide
+): void {
+  const p = DECOR_PARAMS[family];
+  const colors = ENTRANCE_DOOR_COLORS[family];
+  const g = new THREE.Group();
+
+  // Dark recess (reads as a vestibule beyond the doors)
+  const recess = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.7, 2.35),
+    stdMat(0x0a0a0a, 1, 0)
+  );
+  recess.position.set(0, 1.175, 0.005);
+  g.add(recess);
+
+  // Double door leaves with a thin centre gap
+  const leafMat = stdMat(colors.leaf, 0.55, family === 'industrial' ? 0.6 : 0.15);
+  for (const dir of [-1, 1]) {
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.78, 2.16, 0.045), leafMat);
+    leaf.position.set(dir * 0.405, 1.08, 0.035);
+    g.add(leaf);
+  }
+
+  // Handles — vertical bars near the centre gap
+  const handleMat = stdMat(colors.handle, 0.3, 0.85);
+  for (const dir of [-1, 1]) {
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.3, 10), handleMat);
+    handle.position.set(dir * 0.09, 1.05, 0.075);
+    g.add(handle);
+  }
+
+  // Jambs + lintel, in the family's frame material
+  const frameMat = stdMat(p.frame.color, p.frame.roughness, p.frame.metalness);
+  for (const dir of [-1, 1]) {
+    const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.42, 0.14), frameMat);
+    jamb.position.set(dir * 0.91, 1.21, 0.03);
+    g.add(jamb);
+  }
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.14, 0.14), frameMat);
+  lintel.position.set(0, 2.49, 0.03);
+  g.add(lintel);
+
+  // Soft glowing plate above the lintel — entrance light
+  const glow = new THREE.Mesh(
+    new THREE.BoxGeometry(0.55, 0.09, 0.05),
+    new THREE.MeshStandardMaterial({
+      color: 0xfff4e0,
+      emissive: 0xffedca,
+      emissiveIntensity: 0.9,
+      roughness: 1,
+    })
+  );
+  glow.position.set(0, 2.63, 0.05);
+  g.add(glow);
+
+  // Place on the chosen wall, centred, facing into the room
+  const cx = originX + room.width / 2;
+  const cz = originZ + room.depth / 2;
+  const inset = 0.03;
+  switch (side) {
+    case 'n':
+      g.position.set(cx, 0, originZ + inset);
+      g.rotation.y = 0;
+      break;
+    case 's':
+      g.position.set(cx, 0, originZ + room.depth - inset);
+      g.rotation.y = Math.PI;
+      break;
+    case 'w':
+      g.position.set(originX + inset, 0, cz);
+      g.rotation.y = Math.PI / 2;
+      break;
+    case 'e':
+      g.position.set(originX + room.width - inset, 0, cz);
+      g.rotation.y = -Math.PI / 2;
+      break;
+  }
+  scene.add(g);
+}
+
+// ---------------------------------------------------------------------------
 // Floors — per-material procedural texture + finish (reflectivity)
 // ---------------------------------------------------------------------------
 

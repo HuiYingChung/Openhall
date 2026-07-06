@@ -18,6 +18,7 @@ import { escapeHtml } from '../ui/escape-html';
 
 import * as THREE from 'three';
 import type { TourWaypoint, Gallery } from '../schema/gallery.schema';
+import { wirePanelDrag } from './interactions';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,20 +59,58 @@ function createTourHud(): HTMLElement {
   return hud;
 }
 
-function createLabelBox(): HTMLElement {
+/**
+ * Tour label. Two layouts so it never blocks the artwork:
+ * - Desktop: floating card above the buttons, draggable anywhere (shared
+ *   wirePanelDrag util from interactions.ts).
+ * - Touch: full-width bottom sheet, capped height, scrolls vertically —
+ *   the artwork stays visible above it.
+ */
+function createLabelBox(isTouch: boolean): HTMLElement {
   const box = document.createElement('div');
   box.id = 'oh-tour-label';
-  box.style.cssText = `
-    background:rgba(0,0,0,0.8);
-    border:1px solid rgba(255,255,255,0.12);
-    border-radius:10px;
-    padding:0.9rem 1.25rem;
-    color:#f0ece6;
-    max-width:min(440px,80vw);
-    text-align:center;
-    display:none;
-    backdrop-filter:blur(4px);
-  `;
+  if (isTouch) {
+    box.style.cssText = `
+      position:fixed;
+      left:0;right:0;bottom:0;
+      background:rgba(0,0,0,0.88);
+      border:1px solid rgba(255,255,255,0.12);
+      border-bottom:none;
+      border-radius:14px 14px 0 0;
+      padding:0.9rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px));
+      color:#f0ece6;
+      font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+      max-height:38vh;
+      overflow-y:auto;
+      text-align:left;
+      display:none;
+      z-index:290;
+      backdrop-filter:blur(4px);
+    `;
+  } else {
+    box.style.cssText = `
+      position:fixed;
+      bottom:7.5rem;left:50%;
+      transform:translateX(-50%);
+      background:rgba(0,0,0,0.8);
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius:10px;
+      padding:0.9rem 1.25rem;
+      color:#f0ece6;
+      font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+      max-width:min(440px,80vw);
+      max-height:45vh;
+      overflow-y:auto;
+      text-align:left;
+      display:none;
+      z-index:290;
+      backdrop-filter:blur(4px);
+      cursor:grab;
+      touch-action:none;
+      pointer-events:all;
+    `;
+    wirePanelDrag(box);
+  }
   return box;
 }
 
@@ -131,6 +170,10 @@ class TouchLook {
   }
 
   private onStart(e: TouchEvent): void {
+    // Touches that start on the label sheet, HUD, or any button belong to
+    // scrolling/tapping — never to camera look.
+    if (e.target instanceof HTMLElement &&
+        e.target.closest('#oh-tour-label, #oh-tour-hud, button')) return;
     if (e.touches.length === 1) {
       this.lastX = e.touches[0].clientX;
       this.lastY = e.touches[0].clientY;
@@ -184,6 +227,7 @@ export class GalleryTour {
 
   private hud: HTMLElement;
   private labelBox: HTMLElement;
+  private isTouch = false;
   private touchLook: TouchLook | null = null;
   private onExitCb: (position: THREE.Vector3) => void;
 
@@ -198,9 +242,12 @@ export class GalleryTour {
     this.waypoints = opts.gallery.tour;
     this.onExitCb = opts.onExit;
 
+    this.isTouch = GalleryTour.isTouchDevice();
     this.hud = createTourHud();
-    this.labelBox = createLabelBox();
-    this.hud.appendChild(this.labelBox);
+    // The label lives outside the HUD: desktop = draggable floating card,
+    // touch = bottom sheet. The HUD keeps only the buttons.
+    this.labelBox = createLabelBox(this.isTouch);
+    document.body.appendChild(this.labelBox);
 
     const btns = createButtons(
       () => this.prev(),
@@ -209,7 +256,7 @@ export class GalleryTour {
     );
     this.hud.appendChild(btns);
 
-    if (GalleryTour.isTouchDevice()) {
+    if (this.isTouch) {
       this.touchLook = new TouchLook(this.camera);
     }
 
@@ -262,6 +309,8 @@ export class GalleryTour {
     this.hideLabel();
   }
 
+  private sheetCollapsed = false;
+
   private showLabel(): void {
     const wp = this.waypoints[this.index];
     const artwork = wp.artworkId
@@ -274,17 +323,49 @@ export class GalleryTour {
     const label = artwork?.label ?? '';
     const counter = `${this.index + 1} / ${this.waypoints.length}`;
 
-    this.labelBox.innerHTML = `
-      ${title ? `<p style="font-size:1rem;font-weight:700;margin:0 0 0.1rem;">${escapeHtml(title)}</p>` : ''}
-      ${medium ? `<p style="font-size:0.78rem;color:#aaa;margin:0 0 0.5rem;">${escapeHtml(medium)}${escapeHtml(year)}</p>` : ''}
+    const bodyHtml = `
+      ${medium ? `<p style="font-size:0.78rem;color:#aaa;margin:0.35rem 0 0.5rem;">${escapeHtml(medium)}${escapeHtml(year)}</p>` : ''}
       ${label ? `<p style="font-size:0.85rem;line-height:1.5;margin:0 0 0.5rem;">${escapeHtml(label)}</p>` : ''}
       <p style="font-size:0.72rem;color:#666;margin:0;">${escapeHtml(counter)}</p>
+    `;
+
+    if (this.isTouch) {
+      // Bottom sheet with a collapse/expand toggle: minimised, only the
+      // title bar remains and the artwork is fully visible.
+      const chev = this.sheetCollapsed
+        ? '<path d="M3 10l5-5 5 5"/>'
+        : '<path d="M3 6l5 5 5-5"/>';
+      this.labelBox.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;">
+          <p style="font-size:1rem;font-weight:700;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(title || 'Untitled')}</p>
+          <button id="oh-tour-collapse" aria-label="${this.sheetCollapsed ? 'Expand label' : 'Collapse label'}" style="
+            flex-shrink:0;background:none;border:none;color:#aaa;cursor:pointer;
+            padding:0.45rem;line-height:0;">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${chev}</svg>
+          </button>
+        </div>
+        <div style="display:${this.sheetCollapsed ? 'none' : 'block'};">${bodyHtml}</div>
+      `;
+      this.labelBox.querySelector('#oh-tour-collapse')!.addEventListener('click', () => {
+        this.sheetCollapsed = !this.sheetCollapsed;
+        this.showLabel(); // re-render in the new state
+      });
+      this.labelBox.style.display = 'block';
+      // Lift the buttons above the sheet (offsetHeight forces a sync layout)
+      this.hud.style.bottom = `${this.labelBox.offsetHeight + 14}px`;
+      return;
+    }
+
+    this.labelBox.innerHTML = `
+      ${title ? `<p style="font-size:1rem;font-weight:700;margin:0 0 0.1rem;">${escapeHtml(title)}</p>` : ''}
+      ${bodyHtml}
     `;
     this.labelBox.style.display = 'block';
   }
 
   private hideLabel(): void {
     this.labelBox.style.display = 'none';
+    if (this.isTouch) this.hud.style.bottom = '2rem';
   }
 
   next(): void {
@@ -301,9 +382,10 @@ export class GalleryTour {
     this.onExitCb(pos);
   }
 
-  /** Clean up HUD, touch listeners. */
+  /** Clean up HUD, label box, touch listeners. */
   dispose(): void {
     if (this.hud.parentNode) this.hud.parentNode.removeChild(this.hud);
+    if (this.labelBox.parentNode) this.labelBox.parentNode.removeChild(this.labelBox);
     this.touchLook?.dispose();
   }
 }

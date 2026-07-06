@@ -18,6 +18,8 @@ import {
   buildBench,
   buildFloorMaterial,
   makeStudioEnvTexture,
+  pickEntranceWall,
+  buildFakeEntrance,
   type StyleFamily,
 } from './decor';
 
@@ -244,6 +246,36 @@ export function buildScene(
       roomId: room.id,
       wallAABBs,
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Fake entrance portal on the first room — purely visual (makes the space
+  // read as a real venue). Picks a wall with no doorway and no artwork.
+  // -------------------------------------------------------------------------
+  {
+    const entryRoom = gallery.rooms[0];
+    const entryOrigin = roomOrigins.get(entryRoom.id)!;
+    const doorwayWalls = new Set<string>();
+    for (const d of entryRoom.doorways) doorwayWalls.add(d.wall);
+    for (const d of inboundDoorways.get(entryRoom.id) ?? []) doorwayWalls.add(d.wall);
+    const artworkOffsets = new Map<string, number[]>();
+    for (const pl of gallery.placements) {
+      if (pl.roomId !== entryRoom.id) continue;
+      const arr = artworkOffsets.get(pl.wall) ?? [];
+      arr.push(pl.offsetFromCenter);
+      artworkOffsets.set(pl.wall, arr);
+    }
+    const entranceSide = pickEntranceWall(entryRoom, doorwayWalls, artworkOffsets);
+    if (entranceSide) {
+      buildFakeEntrance(
+        scene,
+        resolveStyleFamily(entryRoom.surfaces.wall),
+        entryRoom,
+        entryOrigin.x,
+        entryOrigin.z,
+        entranceSide
+      );
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -537,13 +569,17 @@ function buildArtworkPlane(
   if (artwork.imagePath && !artwork.imagePath.startsWith('placeholder:')) {
     const texture = new THREE.TextureLoader().load(artwork.imagePath);
     texture.colorSpace = THREE.SRGBColorSpace;
-    canvasMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.5 });
+    // High roughness + faint env reflection: the work stays readable while
+    // walking; inspect mode kills the reflection entirely (interactions.ts).
+    canvasMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.85 });
+    canvasMat.envMapIntensity = 0.25;
   } else {
     // Placeholder solid color — only for explicit placeholder: paths or empty imagePath
     canvasMat = new THREE.MeshStandardMaterial({
       color: getPlaceholderColor(artwork.imagePath),
-      roughness: 0.5,
+      roughness: 0.85,
     });
+    canvasMat.envMapIntensity = 0.25;
   }
 
   const canvasMesh = new THREE.Mesh(canvasGeo, canvasMat);
