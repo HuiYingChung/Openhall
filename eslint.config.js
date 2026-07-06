@@ -24,6 +24,7 @@ const browserGlobals = {
   HTMLElement: 'readonly',
   HTMLButtonElement: 'readonly',
   HTMLCanvasElement: 'readonly',
+  CanvasRenderingContext2D: 'readonly',
   HTMLInputElement: 'readonly',
   HTMLSelectElement: 'readonly',
   HTMLTextAreaElement: 'readonly',

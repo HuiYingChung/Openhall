@@ -2,7 +2,8 @@
  * decor.ts — Per-style procedural decoration builders.
  *
  * Each of the four style presets gets its own design language for frames,
- * light fixtures, baseboards, and benches. The style family is derived from
+ * light fixtures, ceiling wiring (tracks / exposed conduit), baseboards,
+ * and benches. The style family is derived from
  * the room's wall material (resolveStyleFamily), so NO gallery.json schema
  * change is needed — old exports and the demo gallery pick this up as-is.
  *
@@ -71,6 +72,19 @@ export interface DecorParams {
     headRadius: number;
     headLength: number;
   };
+  /**
+   * Ceiling wiring for the spot fixtures — per-style design language.
+   * 'track': slim mounting rail the spots hang from (white-cube: flush,
+   *          ceiling-toned; dark-dramatic: thin matte-black theatre rail).
+   * 'pipe':  exposed metal conduit run with junction boxes + a wall feed
+   *          (the industrial signature look).
+   * 'none':  no ceiling run (warm-wood picture lights are wall-mounted and
+   *          wired in-wall, as in real classic galleries).
+   */
+  conduit:
+    | { kind: 'none' }
+    | { kind: 'track'; width: number; height: number; color: number; roughness: number; metalness: number }
+    | { kind: 'pipe'; radius: number; color: number; roughness: number; metalness: number };
   /** Ceiling color (per style — industrial charcoal, dramatic near-black, …) */
   ceilingColor: number;
   /**
@@ -100,6 +114,7 @@ export const DECOR_PARAMS: Record<StyleFamily, DecorParams> = {
     frame: { thickness: 0.035, depth: 0.05, color: 0x111111, roughness: 0.6, metalness: 0.2 },
     baseboard: { height: 0.05, depth: 0.012, color: 0x151515, roughness: 0.9, metalness: 0 },
     fixture: { kind: 'spot', color: 0xf2f2f2, roughness: 0.5, metalness: 0.3, headRadius: 0.04, headLength: 0.14 },
+    conduit: { kind: 'track', width: 0.06, height: 0.028, color: 0xe8e3dd, roughness: 0.6, metalness: 0.2 },
     ceilingColor: 0xf5f0eb,
     light: { pointIntensity: 22, spotIntensity: 26 },
     bench: { kind: 'slab', topColor: 0xf2f0ec, topRoughness: 0.65, topMetalness: 0, legColor: 0xf2f0ec, legRoughness: 0.65, legMetalness: 0 },
@@ -108,6 +123,7 @@ export const DECOR_PARAMS: Record<StyleFamily, DecorParams> = {
     frame: { thickness: 0.08, depth: 0.045, color: 0x3c3c3c, roughness: 0.45, metalness: 0.75 },
     baseboard: { height: 0.14, depth: 0.02, color: 0x2b2b2b, roughness: 0.5, metalness: 0.6 },
     fixture: { kind: 'spot', color: 0x1f1f1f, roughness: 0.4, metalness: 0.7, headRadius: 0.06, headLength: 0.18 },
+    conduit: { kind: 'pipe', radius: 0.021, color: 0x232323, roughness: 0.35, metalness: 0.8 },
     ceilingColor: 0x2b2d30,
     light: { pointIntensity: 16, spotIntensity: 30 },
     bench: { kind: 'steel-wood', topColor: 0x8a6a45, topRoughness: 0.6, topMetalness: 0, legColor: 0x2a2a2a, legRoughness: 0.45, legMetalness: 0.7 },
@@ -116,6 +132,7 @@ export const DECOR_PARAMS: Record<StyleFamily, DecorParams> = {
     frame: { thickness: 0.06, depth: 0.07, color: 0x8a5a2b, roughness: 0.55, metalness: 0 },
     baseboard: { height: 0.11, depth: 0.018, color: 0x5a3c22, roughness: 0.6, metalness: 0 },
     fixture: { kind: 'picture-light', color: 0xb08d57, roughness: 0.35, metalness: 0.8, headRadius: 0.025, headLength: 0.5 },
+    conduit: { kind: 'none' },
     ceilingColor: 0x2e2117,
     light: { pointIntensity: 20, spotIntensity: 24 },
     bench: { kind: 'wood', topColor: 0x9c6b3f, topRoughness: 0.5, topMetalness: 0, legColor: 0x7a5330, legRoughness: 0.55, legMetalness: 0 },
@@ -130,6 +147,7 @@ export const DECOR_PARAMS: Record<StyleFamily, DecorParams> = {
       goldTrim: { color: 0xc9a227, roughness: 0.3, metalness: 0.85 },
     },
     fixture: { kind: 'spot', color: 0x0c0c0c, roughness: 0.5, metalness: 0.5, headRadius: 0.035, headLength: 0.22 },
+    conduit: { kind: 'track', width: 0.045, height: 0.024, color: 0x0e0e0e, roughness: 0.5, metalness: 0.4 },
     ceilingColor: 0x0a0a0a,
     light: { pointIntensity: 7, spotIntensity: 38 },
     bench: { kind: 'upholstered', topColor: 0x3a2430, topRoughness: 0.95, topMetalness: 0, legColor: 0x0c0c0c, legRoughness: 0.5, legMetalness: 0.4 },
@@ -295,6 +313,90 @@ export function buildSpotFixture(
   head.position.set(fixtureX, ceilingY - 0.02 - armLen - p.headRadius * 0.4, fixtureZ);
   head.lookAt(aimAt);
   scene.add(head);
+}
+
+export interface ConduitRunSpec {
+  /** Run extent along the wall axis (world coords on that axis) */
+  start: number;
+  end: number;
+}
+
+/**
+ * Extent of the ceiling wiring run serving a set of fixtures at `positions`
+ * (world coords along the wall axis). The run overshoots the outermost
+ * fixtures by `margin` so no head sits at the very end of the rail.
+ * Pure — unit-testable.
+ */
+export function conduitRunSpec(positions: number[], margin = 0.35): ConduitRunSpec | null {
+  if (positions.length === 0) return null;
+  return { start: Math.min(...positions) - margin, end: Math.max(...positions) + margin };
+}
+
+/**
+ * Ceiling wiring run for one wall's spot fixtures, per style family.
+ * `positions` = fixture coords along the run axis (the fixture line sits
+ * ~1 m out from the wall); `fixed` = constant coord on the other horizontal
+ * axis; `wallCoord` = the wall's own `fixed`-axis coordinate (used for the
+ * industrial feed pipe back to the wall).
+ */
+export function buildConduitRun(
+  scene: THREE.Scene,
+  family: StyleFamily,
+  positions: number[],
+  fixed: number,
+  alongX: boolean,
+  ceilingY: number,
+  wallCoord: number
+): void {
+  const p = DECOR_PARAMS[family].conduit;
+  if (p.kind === 'none') return;
+  const spec = conduitRunSpec(positions);
+  if (!spec) return;
+  const len = spec.end - spec.start;
+  const mid = (spec.start + spec.end) / 2;
+  const mat = stdMat(p.color, p.roughness, p.metalness);
+
+  if (p.kind === 'track') {
+    // Slim rail flush with the ceiling — spots read as track-mounted
+    const geo = alongX
+      ? new THREE.BoxGeometry(len, p.height, p.width)
+      : new THREE.BoxGeometry(p.width, p.height, len);
+    const rail = new THREE.Mesh(geo, mat);
+    rail.position.set(alongX ? mid : fixed, ceilingY - p.height / 2, alongX ? fixed : mid);
+    scene.add(rail);
+    return;
+  }
+
+  // 'pipe' — exposed conduit: run + junction box per fixture + wall feed
+  const y = ceilingY - p.radius - 0.004;
+  const run = new THREE.Mesh(new THREE.CylinderGeometry(p.radius, p.radius, len, 10), mat);
+  if (alongX) run.rotation.z = Math.PI / 2;
+  else run.rotation.x = Math.PI / 2;
+  run.position.set(alongX ? mid : fixed, y, alongX ? fixed : mid);
+  scene.add(run);
+
+  // Junction box under the ceiling at each fixture position
+  const boxGeo = new THREE.BoxGeometry(0.1, 0.055, 0.1);
+  for (const pos of positions) {
+    const box = new THREE.Mesh(boxGeo, mat);
+    box.position.set(alongX ? pos : fixed, ceilingY - 0.0275, alongX ? fixed : pos);
+    scene.add(box);
+  }
+
+  // Feed pipe from the wall to the start of the run (perpendicular)
+  const feedLen = Math.abs(fixed - wallCoord);
+  if (feedLen > 0.05) {
+    const feed = new THREE.Mesh(new THREE.CylinderGeometry(p.radius, p.radius, feedLen, 10), mat);
+    const feedMid = (fixed + wallCoord) / 2;
+    if (alongX) {
+      feed.rotation.x = Math.PI / 2; // feed runs along Z
+      feed.position.set(spec.start + 0.1, y, feedMid);
+    } else {
+      feed.rotation.z = Math.PI / 2; // feed runs along X
+      feed.position.set(feedMid, y, spec.start + 0.1);
+    }
+    scene.add(feed);
+  }
 }
 
 /**

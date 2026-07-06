@@ -7,6 +7,7 @@ import {
   resolveStyleFamily,
   DECOR_PARAMS,
   frameBarSpecs,
+  conduitRunSpec,
   benchSpec,
   FLOOR_FINISH,
   buildFloorMaterial,
@@ -87,6 +88,36 @@ describe('DECOR_PARAMS', () => {
     expect(DECOR_PARAMS['white-cube'].fixture.kind).toBe('spot');
     expect(DECOR_PARAMS['industrial'].fixture.kind).toBe('spot');
     expect(DECOR_PARAMS['dark-dramatic'].fixture.kind).toBe('spot');
+  });
+});
+
+describe('conduit (ceiling wiring per style)', () => {
+  it('every family declares a conduit design matching its language', () => {
+    expect(DECOR_PARAMS['white-cube'].conduit.kind).toBe('track');
+    expect(DECOR_PARAMS['industrial'].conduit.kind).toBe('pipe');
+    // Picture lights are wall-mounted and wired in-wall — no ceiling run
+    expect(DECOR_PARAMS['warm-wood'].conduit.kind).toBe('none');
+    expect(DECOR_PARAMS['dark-dramatic'].conduit.kind).toBe('track');
+  });
+
+  it('dark-dramatic track is slimmer and darker than white-cube', () => {
+    const wc = DECOR_PARAMS['white-cube'].conduit;
+    const dd = DECOR_PARAMS['dark-dramatic'].conduit;
+    if (wc.kind !== 'track' || dd.kind !== 'track') throw new Error('expected tracks');
+    expect(dd.width).toBeLessThan(wc.width);
+    expect(dd.color).toBeLessThan(wc.color);
+  });
+
+  it('conduitRunSpec spans the fixtures with margin overshoot', () => {
+    const spec = conduitRunSpec([2, 5, 3.5], 0.35)!;
+    expect(spec.start).toBeCloseTo(1.65);
+    expect(spec.end).toBeCloseTo(5.35);
+  });
+
+  it('single fixture still gets a short run; no fixtures, no run', () => {
+    const spec = conduitRunSpec([4], 0.35)!;
+    expect(spec.end - spec.start).toBeCloseTo(0.7);
+    expect(conduitRunSpec([])).toBeNull();
   });
 });
 

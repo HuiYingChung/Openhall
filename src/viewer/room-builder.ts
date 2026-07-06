@@ -14,6 +14,7 @@ import {
   buildFrame,
   buildPictureLight,
   buildSpotFixture,
+  buildConduitRun,
   buildBaseboardSegment,
   buildBench,
   buildFloorMaterial,
@@ -281,6 +282,18 @@ export function buildScene(
   // -------------------------------------------------------------------------
   // Place artwork meshes
   // -------------------------------------------------------------------------
+  // Spot fixtures on the same wall share one ceiling wiring run (track or
+  // exposed conduit, per style family) — collected here, built after the loop.
+  interface FixtureRun {
+    family: StyleFamily;
+    positions: number[];
+    fixed: number;
+    alongX: boolean;
+    ceilingY: number;
+    wallCoord: number;
+  }
+  const fixtureRuns = new Map<string, FixtureRun>();
+
   for (const placement of gallery.placements) {
     const artwork = artworkMap.get(placement.artworkId);
     if (!artwork) continue;
@@ -320,7 +333,33 @@ export function buildScene(
       scene.add(spot.target);
       // Physical fixture mesh for the spotlight (cosmetic, per style family)
       buildSpotFixture(scene, fam, fx, fz, room.height, aim);
+
+      // Register the fixture on its wall's shared ceiling wiring run
+      const alongX = placement.wall === 'n' || placement.wall === 's';
+      const wallCoord =
+        placement.wall === 'n' ? origin.z
+        : placement.wall === 's' ? origin.z + room.depth
+        : placement.wall === 'w' ? origin.x
+        : origin.x + room.width;
+      const runKey = `${placement.roomId}:${placement.wall}`;
+      const run = fixtureRuns.get(runKey) ?? {
+        family: fam,
+        positions: [],
+        fixed: alongX ? fz : fx,
+        alongX,
+        ceilingY: room.height,
+        wallCoord,
+      };
+      run.positions.push(alongX ? fx : fz);
+      fixtureRuns.set(runKey, run);
     }
+  }
+
+  // Ceiling wiring — one run per wall that has spot fixtures
+  for (const run of fixtureRuns.values()) {
+    buildConduitRun(
+      scene, run.family, run.positions, run.fixed, run.alongX, run.ceilingY, run.wallCoord
+    );
   }
 
   return { scene, roomLayouts, artworkPositions, artworkMeshes };
