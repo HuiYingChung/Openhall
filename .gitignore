@@ -13,7 +13,7 @@ wrangler.toml.local
 node_modules/
 dist/
 dist-viewer/
-public/assets/viewer.js
+public/assets/
 build/
 .vite/
 *.tsbuildinfo

@@ -9,6 +9,7 @@ const browserGlobals = {
   document: 'readonly',
   console: 'readonly',
   alert: 'readonly',
+  confirm: 'readonly',
   fetch: 'readonly',
   localStorage: 'readonly',
   URL: 'readonly',
