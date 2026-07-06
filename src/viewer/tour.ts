@@ -257,6 +257,26 @@ export class GalleryTour {
     this.hud.appendChild(btns);
 
     if (this.isTouch) {
+      // Touch layout: controls dock as a full-width bar at the very bottom
+      // of the screen and the label sheet sits directly above it — nothing
+      // ever floats over the artwork.
+      this.hud.style.left = '0';
+      this.hud.style.right = '0';
+      this.hud.style.bottom = '0';
+      this.hud.style.transform = 'none';
+      this.hud.style.padding = '0.4rem 0.5rem calc(0.4rem + env(safe-area-inset-bottom, 0px))';
+      this.hud.style.background = 'rgba(0,0,0,0.92)';
+      this.hud.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+      btns.style.width = '100%';
+      btns.querySelectorAll('button').forEach((b) => {
+        (b as HTMLButtonElement).style.flex = '1';
+        (b as HTMLButtonElement).style.padding = '0.55rem 0';
+        (b as HTMLButtonElement).style.whiteSpace = 'nowrap';
+      });
+      this.labelBox.style.bottom = `${this.hud.offsetHeight}px`;
+    }
+
+    if (this.isTouch) {
       this.touchLook = new TouchLook(this.camera);
     }
 
@@ -335,13 +355,17 @@ export class GalleryTour {
       const chev = this.sheetCollapsed
         ? '<path d="M3 10l5-5 5 5"/>'
         : '<path d="M3 6l5 5 5-5"/>';
+      // Collapsed: shrink to a slim strip (tight padding, smaller title)
+      this.labelBox.style.padding = this.sheetCollapsed
+        ? '0.25rem 1.25rem'
+        : '0.9rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px))';
       this.labelBox.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;">
-          <p style="font-size:1rem;font-weight:700;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(title || 'Untitled')}</p>
+          <p style="font-size:${this.sheetCollapsed ? '0.82rem' : '1rem'};font-weight:700;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(title || 'Untitled')}</p>
           <button id="oh-tour-collapse" aria-label="${this.sheetCollapsed ? 'Expand label' : 'Collapse label'}" style="
             flex-shrink:0;background:none;border:none;color:#aaa;cursor:pointer;
-            padding:0.45rem;line-height:0;">
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${chev}</svg>
+            padding:${this.sheetCollapsed ? '0.2rem' : '0.45rem'};line-height:0;">
+            <svg width="${this.sheetCollapsed ? 15 : 18}" height="${this.sheetCollapsed ? 15 : 18}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${chev}</svg>
           </button>
         </div>
         <div style="display:${this.sheetCollapsed ? 'none' : 'block'};">${bodyHtml}</div>
@@ -351,8 +375,6 @@ export class GalleryTour {
         this.showLabel(); // re-render in the new state
       });
       this.labelBox.style.display = 'block';
-      // Lift the buttons above the sheet (offsetHeight forces a sync layout)
-      this.hud.style.bottom = `${this.labelBox.offsetHeight + 14}px`;
       return;
     }
 
@@ -365,7 +387,6 @@ export class GalleryTour {
 
   private hideLabel(): void {
     this.labelBox.style.display = 'none';
-    if (this.isTouch) this.hud.style.bottom = '2rem';
   }
 
   next(): void {
