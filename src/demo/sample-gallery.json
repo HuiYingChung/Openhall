@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "title": "Sample Exhibition",
+  "title": "Impressionist Highlights — Demo",
   "rooms": [
     {
       "id": "room-a",
@@ -14,7 +14,7 @@
       },
       "lighting": {
         "ambientIntensity": 0.4,
-        "temperature": "neutral",
+        "temperature": "warm",
         "artworkSpotlights": true
       },
       "doorways": [
@@ -33,13 +33,13 @@
       "depth": 14,
       "height": 3.5,
       "surfaces": {
-        "wall": "concrete",
-        "floor": "polished-concrete",
-        "accentColor": "#607080"
+        "wall": "white-plaster",
+        "floor": "light-wood",
+        "accentColor": "#8a9070"
       },
       "lighting": {
-        "ambientIntensity": 0.3,
-        "temperature": "cold",
+        "ambientIntensity": 0.4,
+        "temperature": "neutral",
         "artworkSpotlights": true
       },
       "doorways": []
@@ -48,58 +48,75 @@
   "artworks": [
     {
       "id": "aw-01",
-      "imagePath": "placeholder:red",
-      "title": "Crimson Study I",
+      "imagePath": "demo/vangogh-wheatfield.jpg",
+      "title": "Wheat Field with Cypresses",
       "medium": "Oil on canvas",
-      "year": 2024,
-      "label": "A bold exploration of warm hues and geometric tension, this work invites the viewer to consider the relationship between colour and form.",
-      "artistStatement": "I paint in order to see.",
-      "aspectRatio": 1.33
+      "year": 1889,
+      "label": "Vincent van Gogh painted this exuberant landscape in June 1889 while a voluntary patient at the Saint-Paul-de-Mausole asylum near Saint-Rémy-de-Provence. The wheat field surges with movement beneath a sky of turbulent clouds, with the dark vertical accent of a cypress punctuating the composition. The Metropolitan Museum of Art acquired this canvas in 1993.",
+      "aspectRatio": 1.256
     },
     {
       "id": "aw-02",
-      "imagePath": "placeholder:blue",
-      "title": "Cerulean Drift",
-      "medium": "Acrylic on board",
-      "year": 2024,
-      "label": "Cool blues dissolve at the edges, suggesting an atmosphere of quiet contemplation.",
-      "aspectRatio": 1.5
+      "imagePath": "demo/seurat-circus.jpg",
+      "title": "Circus Sideshow (Parade de cirque)",
+      "medium": "Oil on canvas",
+      "year": 1887,
+      "label": "Georges Seurat's nocturnal scene depicts the outdoor barker's performance staged outside the Cirque Corvi to entice a paying audience inside. Painted entirely in his pointillist technique of carefully placed dots of pure colour, the work is unusual for Seurat in its deliberately flattened figures and artificial gaslight atmosphere. It entered the Metropolitan Museum of Art's collection in 1929.",
+      "aspectRatio": 1.496
     },
     {
       "id": "aw-03",
-      "imagePath": "placeholder:green",
-      "title": "Verdant Threshold",
-      "medium": "Mixed media",
-      "year": 2023,
-      "label": "Layered greens evoke the threshold between the natural world and cultivated space.",
-      "aspectRatio": 0.75
+      "imagePath": "demo/pissarro-peasants.jpg",
+      "title": "Two Young Peasant Women",
+      "medium": "Oil on canvas",
+      "year": 1891,
+      "label": "Camille Pissarro painted this intimate double portrait of two young women at rest in a field near his home in Éragny-sur-Epte during 1891–92. The dappled light and loose, mosaic-like brushwork reflect his brief but influential adoption of the Divisionist technique he learned from Seurat. The work is part of the Metropolitan Museum of Art's permanent collection.",
+      "aspectRatio": 1.294
     },
     {
       "id": "aw-04",
-      "imagePath": "placeholder:yellow",
-      "title": "Aureate Plain",
-      "medium": "Watercolour",
-      "year": 2023,
-      "label": "Delicate washes of gold describe an open, luminous landscape.",
-      "aspectRatio": 1.77
+      "imagePath": "demo/manet-boating.jpg",
+      "title": "Boating",
+      "medium": "Oil on canvas",
+      "year": 1874,
+      "label": "Édouard Manet painted this boldly cropped scene on the Seine at Argenteuil in the summer of 1874, the same season he worked alongside Monet and Renoir. The flat, high horizon line and the compressed pictorial space—tilted toward the viewer—owe a debt to Japanese woodblock prints. It was purchased by the Metropolitan Museum of Art in 1929.",
+      "aspectRatio": 1.311
     },
     {
       "id": "aw-05",
-      "imagePath": "placeholder:purple",
-      "title": "Violet Passage",
-      "medium": "Digital print",
-      "year": 2024,
-      "label": "A digital meditation on transition — the violet hour between day and night.",
-      "aspectRatio": 1.0
+      "imagePath": "demo/degas-dance-class.jpg",
+      "title": "The Dance Class",
+      "medium": "Oil on canvas",
+      "year": 1874,
+      "label": "Edgar Degas completed this meticulous record of a ballet rehearsal at the Paris Opéra in 1874, supervised by the maître de ballet Jules Perrot, who stands at centre with his staff. The diagonal recession of the studio floor and the unconventional arrangement of figures—some waiting, some adjusting ribbons—give the scene an air of unstudied candour. The Metropolitan Museum of Art acquired it in 1987.",
+      "aspectRatio": 0.928
     },
     {
       "id": "aw-06",
-      "imagePath": "placeholder:orange",
-      "title": "Ember Field",
+      "imagePath": "demo/cezanne-apples.jpg",
+      "title": "Still Life with Apples and a Pot of Primroses",
       "medium": "Oil on canvas",
-      "year": 2022,
-      "label": "Rich oranges and ember tones burn across the surface, alluding to cycles of growth and decay.",
-      "aspectRatio": 1.2
+      "year": 1890,
+      "label": "Paul Cézanne arranged this domestic still life around 1890, balancing the familiar apples with the unexpected presence of a flowering primrose plant. Each object is treated with equal deliberateness, the paint built up in faceted strokes that anticipate his late analytical method. The Metropolitan Museum of Art received it as a bequest in 1952.",
+      "aspectRatio": 1.261
+    },
+    {
+      "id": "aw-07",
+      "imagePath": "demo/renoir-peaches.jpg",
+      "title": "Still Life with Peaches",
+      "medium": "Oil on canvas",
+      "year": 1881,
+      "label": "Auguste Renoir painted this luminous still life in 1881, capturing the bloom and weight of summer peaches with the warm, freely applied brushwork characteristic of his Impressionist period. The arrangement is simple and intimate, foregrounding his pleasure in colour and surface. The work is held in the Metropolitan Museum of Art's collection.",
+      "aspectRatio": 1.205
+    },
+    {
+      "id": "aw-08",
+      "imagePath": "demo/vangogh-cypresses.jpg",
+      "title": "Cypresses",
+      "medium": "Oil on canvas",
+      "year": 1889,
+      "label": "Van Gogh described cypresses as 'always occupying my thoughts' in a letter to his brother Theo written while at Saint-Rémy in 1889. This large canvas, in which a single tree fills nearly the entire height of the picture, is painted with dense, flame-like strokes that animate both the tree and the swirling sky behind it. It entered the Metropolitan Museum of Art's collection in 1949.",
+      "aspectRatio": 0.793
     }
   ],
   "placements": [
@@ -122,21 +139,29 @@
     {
       "artworkId": "aw-03",
       "roomId": "room-a",
-      "wall": "w",
+      "wall": "s",
       "offsetFromCenter": 0,
       "hangingHeight": 1.5,
-      "displayWidth": 1.2
+      "displayWidth": 1.4
     },
     {
       "artworkId": "aw-04",
-      "roomId": "room-b",
-      "wall": "n",
-      "offsetFromCenter": -2,
+      "roomId": "room-a",
+      "wall": "w",
+      "offsetFromCenter": 0,
       "hangingHeight": 1.5,
       "displayWidth": 1.3
     },
     {
       "artworkId": "aw-05",
+      "roomId": "room-b",
+      "wall": "n",
+      "offsetFromCenter": -2,
+      "hangingHeight": 1.5,
+      "displayWidth": 1.2
+    },
+    {
+      "artworkId": "aw-06",
       "roomId": "room-b",
       "wall": "n",
       "offsetFromCenter": 2,
@@ -144,50 +169,70 @@
       "displayWidth": 1.3
     },
     {
-      "artworkId": "aw-06",
+      "artworkId": "aw-07",
       "roomId": "room-b",
       "wall": "s",
       "offsetFromCenter": 0,
       "hangingHeight": 1.5,
-      "displayWidth": 1.5
+      "displayWidth": 1.2
+    },
+    {
+      "artworkId": "aw-08",
+      "roomId": "room-b",
+      "wall": "e",
+      "offsetFromCenter": 0,
+      "hangingHeight": 1.5,
+      "displayWidth": 1.0
     }
   ],
   "tour": [
     {
       "artworkId": "aw-01",
-      "position": { "x": -3, "y": 1.6, "z": -3 },
-      "lookAt": { "x": -3, "y": 1.5, "z": -5 },
-      "label": "Crimson Study I"
+      "position": { "x": 3, "y": 1.6, "z": 2 },
+      "lookAt": { "x": 3, "y": 1.5, "z": 0 },
+      "label": "Wheat Field with Cypresses"
     },
     {
       "artworkId": "aw-02",
-      "position": { "x": 3, "y": 1.6, "z": -3 },
-      "lookAt": { "x": 3, "y": 1.5, "z": -5 },
-      "label": "Cerulean Drift"
-    },
-    {
-      "artworkId": "aw-03",
-      "position": { "x": 4, "y": 1.6, "z": 0 },
-      "lookAt": { "x": 6, "y": 1.5, "z": 0 },
-      "label": "Verdant Threshold"
+      "position": { "x": 9, "y": 1.6, "z": 2 },
+      "lookAt": { "x": 9, "y": 1.5, "z": 0 },
+      "label": "Circus Sideshow"
     },
     {
       "artworkId": "aw-04",
-      "position": { "x": 14, "y": 1.6, "z": -4 },
-      "lookAt": { "x": 14, "y": 1.5, "z": -7 },
-      "label": "Aureate Plain"
+      "position": { "x": 2, "y": 1.6, "z": 5 },
+      "lookAt": { "x": 0, "y": 1.5, "z": 5 },
+      "label": "Boating"
+    },
+    {
+      "artworkId": "aw-03",
+      "position": { "x": 6, "y": 1.6, "z": 8 },
+      "lookAt": { "x": 6, "y": 1.5, "z": 10 },
+      "label": "Two Young Peasant Women"
     },
     {
       "artworkId": "aw-05",
-      "position": { "x": 18, "y": 1.6, "z": -4 },
-      "lookAt": { "x": 18, "y": 1.5, "z": -7 },
-      "label": "Violet Passage"
+      "position": { "x": 15, "y": 1.6, "z": 2 },
+      "lookAt": { "x": 15, "y": 1.5, "z": 0 },
+      "label": "The Dance Class"
     },
     {
       "artworkId": "aw-06",
-      "position": { "x": 16, "y": 1.6, "z": 4 },
-      "lookAt": { "x": 16, "y": 1.5, "z": 7 },
-      "label": "Ember Field"
+      "position": { "x": 19, "y": 1.6, "z": 2 },
+      "lookAt": { "x": 19, "y": 1.5, "z": 0 },
+      "label": "Still Life with Apples and a Pot of Primroses"
+    },
+    {
+      "artworkId": "aw-08",
+      "position": { "x": 20, "y": 1.6, "z": 7 },
+      "lookAt": { "x": 22, "y": 1.5, "z": 7 },
+      "label": "Cypresses"
+    },
+    {
+      "artworkId": "aw-07",
+      "position": { "x": 17, "y": 1.6, "z": 12 },
+      "lookAt": { "x": 17, "y": 1.5, "z": 14 },
+      "label": "Still Life with Peaches"
     }
   ]
 }

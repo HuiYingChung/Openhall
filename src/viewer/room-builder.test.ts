@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * room-builder.test.ts — Integration tests for buildScene.
  * Tests doorway passability: both the AABB collision and the visual wall panels
