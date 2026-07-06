@@ -4,7 +4,7 @@
   "description": "AI-generated 3D galleries that artists actually own.",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "npm run build:viewer && vite",
     "worker:dev": "wrangler dev worker/token-exchange.ts --port 8787",
     "build:viewer": "tsc && vite build --config vite.viewer.config.ts && node scripts/copy-viewer.mjs",
     "build": "npm run build:viewer && tsc && vite build",
