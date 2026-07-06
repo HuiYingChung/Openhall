@@ -90,15 +90,14 @@ function createLabelBox(isTouch: boolean): HTMLElement {
   } else {
     box.style.cssText = `
       position:fixed;
-      bottom:7.5rem;left:50%;
-      transform:translateX(-50%);
+      bottom:2rem;left:2rem;
       background:rgba(0,0,0,0.8);
       border:1px solid rgba(255,255,255,0.12);
       border-radius:10px;
       padding:0.9rem 1.25rem;
       color:#f0ece6;
       font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
-      max-width:min(440px,80vw);
+      max-width:min(360px,30vw);
       max-height:45vh;
       overflow-y:auto;
       text-align:left;
@@ -226,14 +225,28 @@ export class GalleryTour {
   private toQuat = new THREE.Quaternion();
 
   private hud: HTMLElement;
-  private labelBox: HTMLElement;
+  private labelBox!: HTMLElement;
+  private btns: HTMLElement;
   private isTouch = false;
   private touchLook: TouchLook | null = null;
+  private boundResize: () => void;
+  private resizeTimer: ReturnType<typeof setTimeout> | null = null;
   private onExitCb: (position: THREE.Vector3) => void;
 
   private static isTouchDevice(): boolean {
     return typeof window !== 'undefined' &&
       ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }
+
+  /**
+   * Layout is purely width-based: narrow viewports (<768px) get the bottom
+   * sheet + docked bar (works fine with mouse too); wide viewports get the
+   * draggable floating card (drag works by touch too). Pointer type only
+   * decides drag-to-look capability, never layout.
+   */
+  private static prefersTouchLayout(): boolean {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 768;
   }
 
   constructor(opts: TourOptions) {
@@ -242,24 +255,51 @@ export class GalleryTour {
     this.waypoints = opts.gallery.tour;
     this.onExitCb = opts.onExit;
 
-    this.isTouch = GalleryTour.isTouchDevice();
     this.hud = createTourHud();
-    // The label lives outside the HUD: desktop = draggable floating card,
-    // touch = bottom sheet. The HUD keeps only the buttons.
-    this.labelBox = createLabelBox(this.isTouch);
-    document.body.appendChild(this.labelBox);
-
     const btns = createButtons(
       () => this.prev(),
       () => this.next(),
       () => this.exit()
     );
     this.hud.appendChild(btns);
+    this.btns = btns;
+
+    // Layout (floating card vs bottom sheet) responds to live resizes and
+    // device rotation — re-applied whenever the 768 px threshold is crossed.
+    this.applyLayout();
+    this.boundResize = () => {
+      if (this.resizeTimer !== null) clearTimeout(this.resizeTimer);
+      this.resizeTimer = setTimeout(() => {
+        this.resizeTimer = null;
+        if (GalleryTour.prefersTouchLayout() !== this.isTouch) this.applyLayout();
+      }, 150);
+    };
+    window.addEventListener('resize', this.boundResize);
+
+    // Drag-to-look is a capability, not a layout: enabled on any
+    // touch-capable device (including touchscreen laptops).
+    if (GalleryTour.isTouchDevice()) {
+      this.touchLook = new TouchLook(this.camera);
+    }
+
+    this.startWaypoint(0);
+  }
+
+  /**
+   * (Re)build the label box and HUD styles for the current viewport width.
+   * Called at construction and whenever a resize crosses the 768 px threshold.
+   */
+  private applyLayout(): void {
+    this.isTouch = GalleryTour.prefersTouchLayout();
+
+    const wasVisible = this.labelBox ? this.labelBox.style.display === 'block' : false;
+    if (this.labelBox) this.labelBox.remove();
+    this.labelBox = createLabelBox(this.isTouch);
+    document.body.appendChild(this.labelBox);
 
     if (this.isTouch) {
-      // Touch layout: controls dock as a full-width bar at the very bottom
-      // of the screen and the label sheet sits directly above it — nothing
-      // ever floats over the artwork.
+      // Controls dock as a full-width bar at the very bottom; the label
+      // sheet sits directly above it — nothing floats over the artwork.
       this.hud.style.left = '0';
       this.hud.style.right = '0';
       this.hud.style.bottom = '0';
@@ -267,20 +307,31 @@ export class GalleryTour {
       this.hud.style.padding = '0.4rem 0.5rem calc(0.4rem + env(safe-area-inset-bottom, 0px))';
       this.hud.style.background = 'rgba(0,0,0,0.92)';
       this.hud.style.borderTop = '1px solid rgba(255,255,255,0.1)';
-      btns.style.width = '100%';
-      btns.querySelectorAll('button').forEach((b) => {
+      this.btns.style.width = '100%';
+      this.btns.querySelectorAll('button').forEach((b) => {
         (b as HTMLButtonElement).style.flex = '1';
         (b as HTMLButtonElement).style.padding = '0.55rem 0';
         (b as HTMLButtonElement).style.whiteSpace = 'nowrap';
       });
       this.labelBox.style.bottom = `${this.hud.offsetHeight}px`;
+    } else {
+      // Desktop: centred floating button row, label card bottom-left.
+      this.hud.style.left = '50%';
+      this.hud.style.right = 'auto';
+      this.hud.style.bottom = '2rem';
+      this.hud.style.transform = 'translateX(-50%)';
+      this.hud.style.padding = '0';
+      this.hud.style.background = 'none';
+      this.hud.style.borderTop = 'none';
+      this.btns.style.width = '';
+      this.btns.querySelectorAll('button').forEach((b) => {
+        (b as HTMLButtonElement).style.flex = '';
+        (b as HTMLButtonElement).style.padding = '0.55rem 1.1rem';
+        (b as HTMLButtonElement).style.whiteSpace = '';
+      });
     }
 
-    if (this.isTouch) {
-      this.touchLook = new TouchLook(this.camera);
-    }
-
-    this.startWaypoint(0);
+    if (wasVisible && this.phase === 'viewing') this.showLabel();
   }
 
   /** Update: call once per frame with delta seconds. */
@@ -379,8 +430,10 @@ export class GalleryTour {
     }
 
     this.labelBox.innerHTML = `
+      <div aria-hidden="true" style="width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,0.28);margin:0 auto 0.65rem;"></div>
       ${title ? `<p style="font-size:1rem;font-weight:700;margin:0 0 0.1rem;">${escapeHtml(title)}</p>` : ''}
       ${bodyHtml}
+      <p style="font-size:0.7rem;color:#555;margin:0.45rem 0 0;">Drag this card to move it</p>
     `;
     this.labelBox.style.display = 'block';
   }
@@ -403,8 +456,10 @@ export class GalleryTour {
     this.onExitCb(pos);
   }
 
-  /** Clean up HUD, label box, touch listeners. */
+  /** Clean up HUD, label box, resize + touch listeners. */
   dispose(): void {
+    window.removeEventListener('resize', this.boundResize);
+    if (this.resizeTimer !== null) { clearTimeout(this.resizeTimer); this.resizeTimer = null; }
     if (this.hud.parentNode) this.hud.parentNode.removeChild(this.hud);
     if (this.labelBox.parentNode) this.labelBox.parentNode.removeChild(this.labelBox);
     this.touchLook?.dispose();

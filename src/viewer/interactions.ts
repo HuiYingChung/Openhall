@@ -340,6 +340,7 @@ export class ArtworkInteractions {
       : '';
 
     this.infoPanel.innerHTML = `
+      <div aria-hidden="true" style="width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,0.28);margin:0 auto 0.65rem;"></div>
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;">
         <div style="flex:1;min-width:0;">
           <p style="font-size:1.05rem;font-weight:700;margin:0;">${escapeHtml(aw.title || 'Untitled')}</p>
