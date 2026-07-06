@@ -8,6 +8,17 @@
 import * as THREE from 'three';
 import type { Gallery, Room, Placement, Artwork, Doorway } from '../schema/gallery.schema';
 import { buildWallAABBs, type AABB, type DoorwayCut } from './collision';
+import {
+  resolveStyleFamily,
+  DECOR_PARAMS,
+  buildFrame,
+  buildPictureLight,
+  buildSpotFixture,
+  buildBaseboardSegment,
+  buildBench,
+  buildFloorMaterial,
+  type StyleFamily,
+} from './decor';
 
 /** Opposite wall mapping — used to mirror a doorway into the target room. */
 const OPPOSITE_WALL: Record<string, 'n' | 's' | 'e' | 'w'> = {
@@ -214,14 +225,15 @@ export function buildScene(
       allDoorwayCuts
     );
 
+    const benchAABB = buildRoom(scene, room, origin.x, origin.z, inboundDoorways.get(room.id) ?? []);
+    if (benchAABB) wallAABBs.push(benchAABB);
+
     roomLayouts.push({
       originX: origin.x,
       originZ: origin.z,
       roomId: room.id,
       wallAABBs,
     });
-
-    buildRoom(scene, room, origin.x, origin.z, inboundDoorways.get(room.id) ?? []);
   }
 
   // -------------------------------------------------------------------------
@@ -244,15 +256,24 @@ export function buildScene(
     artworkPositions.set(artwork.id, worldPos);
     artworkMeshes.set(artwork.id, canvasMesh);
 
-    // Per-artwork spotlight (if enabled for the room)
+    // Per-artwork spotlight (if enabled for the room), mounted ~1 m out from
+    // the wall and angled at the piece like a real gallery fixture.
     if (room.lighting.artworkSpotlights) {
+      const SPOT_OUT = 1.0;
+      const nx = placement.wall === 'w' ? 1 : placement.wall === 'e' ? -1 : 0;
+      const nz = placement.wall === 'n' ? 1 : placement.wall === 's' ? -1 : 0;
+      const fx = worldPos.x + nx * SPOT_OUT;
+      const fz = worldPos.z + nz * SPOT_OUT;
+      const aim = worldPos.clone(); // worldPos.y is already the hanging height
+
       const spotColor = temperatureColor(room.lighting.temperature);
       const spot = new THREE.SpotLight(spotColor, 1.2, 6, Math.PI / 7, 0.3);
-      spot.position.set(worldPos.x, room.height - 0.2, worldPos.z);
-      spot.target.position.copy(worldPos);
-      spot.target.position.y = placement.hangingHeight;
+      spot.position.set(fx, room.height - 0.2, fz);
+      spot.target.position.copy(aim);
       scene.add(spot);
       scene.add(spot.target);
+      // Physical fixture mesh for the spotlight (cosmetic, per style family)
+      buildSpotFixture(scene, resolveStyleFamily(room.surfaces.wall), fx, fz, room.height, aim);
     }
   }
 
@@ -270,15 +291,17 @@ function buildRoom(
   originZ: number,
   /** Doorways declared by other rooms that open into this one (already wall-flipped). */
   inboundDoorways: Doorway[]
-): void {
+): AABB | null {
   const { width, depth, height, surfaces, lighting } = room;
+  const family = resolveStyleFamily(surfaces.wall);
   const wallColor = WALL_COLORS[surfaces.wall] ?? 0xf5f0eb;
   const floorColor = FLOOR_COLORS[surfaces.floor] ?? 0xc8a96e;
   const tempColor = temperatureColor(lighting.temperature);
 
   const wallMat = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.9 });
   const ceilMat = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.9 });
-  const floorMat = new THREE.MeshStandardMaterial({ color: floorColor, roughness: 0.8 });
+  // Per-material procedural texture + finish (polished concrete is glossy, etc.)
+  const floorMat = buildFloorMaterial(surfaces.floor, floorColor, width, depth);
 
   const cx = originX + width / 2;
   const cz = originZ + depth / 2;
@@ -299,12 +322,15 @@ function buildRoom(
   scene.add(ceil);
 
   // --- Walls: own doorways + mirrored inbound doorways both carved out ---
-  buildWallPanels(scene, room, originX, originZ, wallMat, inboundDoorways);
+  buildWallPanels(scene, room, originX, originZ, wallMat, inboundDoorways, family);
 
   // --- Per-room point light (fills the space; global ambient handles base level) ---
   const pointLight = new THREE.PointLight(tempColor, 0.8, room.width * 2);
   pointLight.position.set(cx, height - 0.3, cz);
   scene.add(pointLight);
+
+  // --- Bench (per style family; returns collision AABB or null) ---
+  return buildBench(scene, family, room, originX, originZ);
 }
 
 // ---------------------------------------------------------------------------
@@ -319,7 +345,8 @@ function buildWallPanels(
   originZ: number,
   mat: THREE.Material,
   /** Inbound doorways already mirrored to this room's wall sides. */
-  inboundDoorways: Doorway[] = []
+  inboundDoorways: Doorway[] = [],
+  family: StyleFamily = 'white-cube'
 ): void {
   const { width, depth, height, doorways } = room;
   const cx = originX + width / 2;
@@ -446,6 +473,11 @@ function buildWallPanels(
     if (p.rotY !== undefined) mesh.rotation.y = p.rotY;
     mesh.receiveShadow = true;
     scene.add(mesh);
+    // Baseboard along floor-touching panels only (transoms above doorways
+    // have y > h/2, so they're skipped and doorway gaps stay open).
+    if (Math.abs(p.y - p.h / 2) < 1e-6) {
+      buildBaseboardSegment(scene, family, p.w, p.x, p.z, p.rotY);
+    }
   }
 }
 
@@ -464,7 +496,6 @@ function buildArtworkPlane(
   const { displayWidth, hangingHeight, wall, offsetFromCenter } = placement;
   const ratio = aspectRatio ?? 0.75;
   const displayHeight = displayWidth / ratio;
-  const frameThickness = 0.04;
 
   const group = new THREE.Group();
 
@@ -490,15 +521,12 @@ function buildArtworkPlane(
   canvasMesh.position.z = 0.006;
   group.add(canvasMesh);
 
-  // Frame
-  const frameGeo = new THREE.PlaneGeometry(
-    displayWidth + frameThickness * 2,
-    displayHeight + frameThickness * 2
-  );
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1208, roughness: 0.7 });
-  const frame = new THREE.Mesh(frameGeo, frameMat);
-  frame.position.z = 0; // behind canvas
-  group.add(frame);
+  // 3D frame + (warm-wood) picture light, per style family
+  const family = resolveStyleFamily(room.surfaces.wall);
+  buildFrame(group, family, displayWidth, displayHeight);
+  if (DECOR_PARAMS[family].fixture.kind === 'picture-light') {
+    buildPictureLight(group, family, displayWidth, displayHeight);
+  }
 
   // World position and orientation
   const cx = origin.x + room.width / 2;
