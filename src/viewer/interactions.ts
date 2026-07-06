@@ -294,8 +294,19 @@ export class ArtworkInteractions {
     this.infoPanel.style.display = 'none';
     this.infoPanel.innerHTML = '';
     this.inspecting = false;
+    this.dollyActive = false;
     this.currentArtworkId = null;
     this.opts.onInspectClose();
+  }
+
+  /**
+   * Programmatically close the inspect panel and cancel any in-progress dolly.
+   * Safe to call even when nothing is open.
+   */
+  close(): void {
+    if (this.inspecting || this.dollyActive) {
+      this.closePanel();
+    }
   }
 
   /** True while the inspect panel is open or dolly is active (movement should be suppressed). */
