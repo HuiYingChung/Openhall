@@ -577,7 +577,13 @@ function renderSettings(
 ): void {
   const wx = loadWatsonxSettings();
   const oai = loadOpenAISettings();
-  const providerDefault = wx?.apiKey ? 'watsonx' : 'openai';
+  const storedProvider = localStorage.getItem('openhall_provider');
+  const providerDefault =
+    storedProvider === 'watsonx' || storedProvider === 'openai'
+      ? storedProvider
+      : wx?.apiKey
+        ? 'watsonx'
+        : 'openai';
 
   container.innerHTML = `
     <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
@@ -657,8 +663,13 @@ function renderSettings(
       const url = (container.querySelector('#oh-oai-url') as HTMLInputElement).value.trim();
       const model = (container.querySelector('#oh-oai-model') as HTMLInputElement).value.trim();
       if (!key) { alert('API key is required.'); return; }
-      saveOpenAISettings({ apiKey: key, baseUrl: url || 'https://api.openai.com/v1', model: model || 'gpt-4o' });
+      saveOpenAISettings({
+        apiKey: key,
+        baseUrl: (url || 'https://api.openai.com/v1').replace(/\/+$/, ''),
+        model: model || 'gpt-4o',
+      });
     }
+    localStorage.setItem('openhall_provider', providerSel.value);
     onDone();
   });
 
@@ -870,11 +881,17 @@ function renderGenerating(
     bar.style.width = `${pct}%`;
   }
 
-  // Build provider
+  // Build provider — honour the explicitly chosen provider first, then fall
+  // back to whichever key exists (legacy behaviour for pre-existing settings).
   let provider: AIProvider;
   const wxSettings = loadWatsonxSettings();
   const oaiSettings = loadOpenAISettings();
-  if (wxSettings?.apiKey) {
+  const chosenProvider = localStorage.getItem('openhall_provider');
+  if (chosenProvider === 'openai' && oaiSettings?.apiKey) {
+    provider = new OpenAICompatProvider(oaiSettings);
+  } else if (chosenProvider === 'watsonx' && wxSettings?.apiKey) {
+    provider = new WatsonxProvider(wxSettings);
+  } else if (wxSettings?.apiKey) {
     provider = new WatsonxProvider(wxSettings);
   } else if (oaiSettings?.apiKey) {
     provider = new OpenAICompatProvider(oaiSettings);
