@@ -8,9 +8,11 @@
 
 import * as THREE from 'three';
 import { GallerySchema } from '../schema/gallery.schema';
-import { buildScene } from '../viewer/room-builder';
+import { buildScene, disposeScene } from '../viewer/room-builder';
 import { FirstPersonControls } from '../viewer/controls';
-import { mountHintOverlay } from './overlay';
+import { ArtworkInteractions } from '../viewer/interactions';
+import { GalleryTour } from '../viewer/tour';
+import { mountHintOverlay, mountRelockOverlay } from './overlay';
 import { sanitizePlacements } from './placement-sanity';
 import { resizeToDataUrl, createDisplayObjectUrl } from './image-utils';
 import {
@@ -18,7 +20,6 @@ import {
   loadWatsonxSettings,
   saveWatsonxSettings,
 } from '../ai/watsonx';
-import { mountRelockOverlay } from './overlay';
 import {
   OpenAICompatProvider,
   loadOpenAISettings,
@@ -92,13 +93,22 @@ export function bootApp(): void {
   // Render loop
   const clock = new THREE.Clock();
   let controls: FirstPersonControls | null = null;
+  let interactions: ArtworkInteractions | null = null;
+  let tour: GalleryTour | null = null;
   let currentScene: THREE.Scene = new THREE.Scene();
   currentScene.background = new THREE.Color(0x111111);
 
   function animate() {
     requestAnimationFrame(animate);
     const delta = Math.min(clock.getDelta(), 0.05);
-    controls?.update(delta);
+    if (tour) {
+      tour.update(delta);
+    } else {
+      if (!interactions?.isInspecting) {
+        controls?.update(delta);
+      }
+      interactions?.update(delta);
+    }
     renderer.render(currentScene, camera);
   }
   animate();
@@ -117,16 +127,159 @@ export function bootApp(): void {
   ui.id = 'oh-ui';
   document.body.appendChild(ui);
 
+  // Tour HUD button and Export button (shown when in viewer state)
+  let tourBtn: HTMLElement | null = null;
+
+  function showViewerButtons(gallery: Gallery): void {
+    // Export button — always shown
+    if (!document.getElementById('oh-export-btn')) {
+      const expBtn = document.createElement('button');
+      expBtn.id = 'oh-export-btn';
+      expBtn.textContent = '⬇ Export';
+      expBtn.style.cssText = `
+        position:fixed;top:1rem;left:1rem;z-index:200;
+        background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.25);
+        color:#f0ece6;padding:0.45rem 0.9rem;border-radius:8px;
+        font-size:0.88rem;cursor:pointer;
+        font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+      `;
+      expBtn.addEventListener('click', async () => {
+        if (!data.gallery) return;
+        expBtn.disabled = true;
+        expBtn.textContent = 'Building…';
+        try {
+          const { buildExportBundle, downloadZip } = await import('../export/bundler');
+          const artworkUrls = new Map(data.artworks.map((a) => [a.id, a.displayObjectUrl]));
+          // viewer script URL: served by Vite as /src/viewer/viewer-entry.ts in dev,
+          // or as /dist-viewer/viewer.es.js in a full production build.
+          const viewerScriptUrl = import.meta.env.DEV
+            ? '/src/viewer/viewer-entry.ts'
+            : './assets/viewer.js';
+          const { blob } = await buildExportBundle({
+            gallery: data.gallery,
+            artworkUrls,
+            viewerScriptUrl,
+            onProgress: (msg, pct) => { expBtn.textContent = `${msg} ${pct}%`; },
+          });
+          downloadZip(blob);
+        } catch (e) {
+          alert(`Export failed: ${String(e)}`);
+        } finally {
+          expBtn.disabled = false;
+          expBtn.textContent = '⬇ Export';
+        }
+      });
+      document.body.appendChild(expBtn);
+    }
+
+    // Tour button — only if tour waypoints exist
+    if (!gallery.tour.length) return;
+    if (tourBtn) return;
+    const btn = document.createElement('button');
+    btn.id = 'oh-tour-btn';
+    btn.textContent = '🎯 Tour';
+    btn.style.cssText = `
+      position:fixed;top:1rem;right:1rem;z-index:200;
+      background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.25);
+      color:#f0ece6;padding:0.45rem 0.9rem;border-radius:8px;
+      font-size:0.88rem;cursor:pointer;
+      font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+    `;
+    btn.addEventListener('click', () => {
+      if (!data.gallery) return;
+      // Unlock pointer first (tour doesn't need it)
+      controls?.pointerLock.unlock();
+      tour = new GalleryTour({
+        camera,
+        gallery: data.gallery,
+        onExit: (pos) => {
+          tour = null;
+          camera.position.copy(pos);
+          camera.position.y = 1.6;
+          // Re-lock pointer for free walk
+          if (controls) controls.lock();
+        },
+      });
+      if (tourBtn) { tourBtn.remove(); tourBtn = null; }
+    });
+    document.body.appendChild(btn);
+    tourBtn = btn;
+  }
+
   function setState(state: AppState) {
     ui.innerHTML = '';
     switch (state) {
-      case 'settings': renderSettings(ui, data, () => setState('upload')); break;
+      case 'settings':
+        renderSettings(ui, data, () => setState('upload'), () => {
+          // Demo mode: load gallery + build scene + enter viewer directly (no key needed)
+          loadDemoGallery(data).then((gallery) => {
+            const { scene, roomLayouts, artworkMeshes } = buildScene(gallery);
+            const allAABBs = roomLayouts.flatMap((r) => r.wallAABBs);
+            controls?.dispose();
+            const demoControls = new FirstPersonControls(camera, document.body);
+            demoControls.setWalls(allAABBs);
+            const firstLayout = roomLayouts[0];
+            demoControls.teleport(firstLayout.originX + 3, firstLayout.originZ + 3);
+            currentScene = scene;
+            controls = demoControls;
+
+            interactions?.dispose();
+            interactions = new ArtworkInteractions({
+              camera,
+              scene,
+              artworkMeshes,
+              gallery,
+              onInspectOpen: () => {},
+              onInspectClose: () => { controls?.lock(); },
+              getIsLocked: () => controls?.isLocked ?? false,
+            });
+
+            function wireRelockDemo() {
+              const onUnlock = () => {
+                controls!.pointerLock.removeEventListener('unlock', onUnlock);
+                const { dismiss } = mountRelockOverlay(() => controls!.lock());
+                const onRelock = () => {
+                  controls!.pointerLock.removeEventListener('lock', onRelock);
+                  dismiss();
+                  wireRelockDemo();
+                };
+                controls!.pointerLock.addEventListener('lock', onRelock);
+              };
+              controls!.pointerLock.addEventListener('unlock', onUnlock);
+            }
+            wireRelockDemo();
+
+            // Show hint overlay then enter viewer
+            const { dismiss } = mountHintOverlay(() => controls!.lock());
+            const onLock = () => {
+              controls!.pointerLock.removeEventListener('lock', onLock);
+              dismiss();
+              setState('viewer');
+            };
+            controls!.pointerLock.addEventListener('lock', onLock);
+          }).catch((e) => alert(`Demo mode failed: ${String(e)}`));
+        });
+        break;
       case 'upload': renderUpload(ui, data, () => setState('generating'), () => setState('settings')); break;
       case 'generating': renderGenerating(ui, data, camera,
-        (s, newControls) => {
+        (s, newControls, gallery, artworkMeshes) => {
           // Bug A fix: store the built scene so the render loop uses it.
+          // Dispose old scene first to prevent geometry/texture leaks on regeneration.
+          disposeScene(currentScene);
           currentScene = s;
           controls = newControls;
+
+          // Set up / replace artwork interactions
+          interactions?.dispose();
+          interactions = new ArtworkInteractions({
+            camera,
+            scene: s,
+            artworkMeshes,
+            gallery,
+            onInspectOpen: () => { /* controls update is gated by interactions.inspecting */ },
+            onInspectClose: () => { controls?.lock(); },
+            getIsLocked: () => controls?.isLocked ?? false,
+          });
 
           // Bug C fix: wire Esc → relock. Re-registers after each cycle so
           // repeated Esc → click → Esc sequences all work.
@@ -150,8 +303,9 @@ export function bootApp(): void {
         },
         (err) => { alert(`Generation failed:\n${err}`); setState('upload'); }); break;
       case 'viewer': {
-        // Just remove UI and let the viewer run
+        // Remove UI overlay and show viewer HUD buttons
         ui.innerHTML = '';
+        if (data.gallery) showViewerButtons(data.gallery);
         break;
       }
       case 'labels': renderLabels(ui, data, () => setState('viewer'), () => controls); break;
@@ -170,8 +324,9 @@ export function bootApp(): void {
 
 function renderSettings(
   container: HTMLElement,
-  data: AppData,
-  onDone: () => void
+  _data: AppData,
+  onDone: () => void,
+  onDemo: () => void
 ): void {
   const wx = loadWatsonxSettings();
   const oai = loadOpenAISettings();
@@ -192,13 +347,13 @@ function renderSettings(
 
         <div id="oh-watsonx-fields" style="display:${providerDefault === 'watsonx' ? 'block' : 'none'}">
           <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">IBM Cloud API Key</label>
-          <input id="oh-wx-key" type="password" placeholder="ApiKey-..." value="${wx?.apiKey ?? ''}"
+          <input id="oh-wx-key" type="password" placeholder="ApiKey-..."
             style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
           <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">watsonx Project ID (UUID)</label>
-          <input id="oh-wx-project" type="text" placeholder="xxxxxxxx-xxxx-4xxx-xxxx-xxxxxxxxxxxx" value="${wx?.projectId ?? ''}"
+          <input id="oh-wx-project" type="text" placeholder="xxxxxxxx-xxxx-4xxx-xxxx-xxxxxxxxxxxx"
             style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
           <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">Token Worker URL <span style="color:#888;">(leave blank if deploying locally)</span></label>
-          <input id="oh-wx-worker" type="text" placeholder="https://your-worker.workers.dev" value="${wx?.tokenWorkerUrl ?? ''}"
+          <input id="oh-wx-worker" type="text" placeholder="https://your-worker.workers.dev"
             style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
           <p style="font-size:0.75rem;color:#666;margin:0 0 1rem;">
             The token worker proxies IBM IAM authentication (required for browser use).<br>
@@ -208,13 +363,13 @@ function renderSettings(
 
         <div id="oh-openai-fields" style="display:${providerDefault === 'openai' ? 'block' : 'none'}">
           <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">API Key</label>
-          <input id="oh-oai-key" type="password" placeholder="sk-..." value="${oai?.apiKey ?? ''}"
+          <input id="oh-oai-key" type="password" placeholder="sk-..."
             style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
           <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">Base URL</label>
-          <input id="oh-oai-url" type="text" placeholder="https://api.openai.com/v1" value="${oai?.baseUrl ?? 'https://api.openai.com/v1'}"
+          <input id="oh-oai-url" type="text" placeholder="https://api.openai.com/v1"
             style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
           <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">Model</label>
-          <input id="oh-oai-model" type="text" placeholder="gpt-4o" value="${oai?.model ?? 'gpt-4o'}"
+          <input id="oh-oai-model" type="text" placeholder="gpt-4o"
             style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:1rem;box-sizing:border-box;" />
         </div>
 
@@ -228,6 +383,15 @@ function renderSettings(
   const providerSel = container.querySelector('#oh-provider') as HTMLSelectElement;
   const wxFields = container.querySelector('#oh-watsonx-fields') as HTMLElement;
   const oaiFields = container.querySelector('#oh-openai-fields') as HTMLElement;
+
+  // Set field values via .value assignment (safe with special characters in keys)
+  (container.querySelector('#oh-wx-key') as HTMLInputElement).value = wx?.apiKey ?? '';
+  (container.querySelector('#oh-wx-project') as HTMLInputElement).value = wx?.projectId ?? '';
+  (container.querySelector('#oh-wx-worker') as HTMLInputElement).value = wx?.tokenWorkerUrl ?? '';
+  (container.querySelector('#oh-oai-key') as HTMLInputElement).value = oai?.apiKey ?? '';
+  (container.querySelector('#oh-oai-url') as HTMLInputElement).value = oai?.baseUrl ?? 'https://api.openai.com/v1';
+  (container.querySelector('#oh-oai-model') as HTMLInputElement).value = oai?.model ?? 'gpt-4o';
+
   providerSel.addEventListener('change', () => {
     wxFields.style.display = providerSel.value === 'watsonx' ? 'block' : 'none';
     oaiFields.style.display = providerSel.value === 'openai' ? 'block' : 'none';
@@ -251,22 +415,18 @@ function renderSettings(
   });
 
   container.querySelector('#oh-demo-btn')!.addEventListener('click', () => {
-    loadDemoMode(container, data, onDone);
+    onDemo();
   });
 }
 
-async function loadDemoMode(_container: HTMLElement, data: AppData, onDone: () => void): Promise<void> {
+async function loadDemoGallery(data: AppData): Promise<Gallery> {
   // DEMO FALLBACK: load pre-generated sample gallery
-  try {
-    const { default: sampleGallery } = await import('../demo/sample-gallery.json');
-    const result = GallerySchema.safeParse(sampleGallery);
-    if (!result.success) throw new Error('Demo gallery schema invalid');
-    data.gallery = result.data;
-    data.artworks = [];
-    onDone();
-  } catch (e) {
-    alert(`Demo mode failed: ${String(e)}`);
-  }
+  const { default: sampleGallery } = await import('../demo/sample-gallery.json');
+  const result = GallerySchema.safeParse(sampleGallery);
+  if (!result.success) throw new Error('Demo gallery schema invalid');
+  data.gallery = result.data;
+  data.artworks = [];
+  return result.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +591,12 @@ function renderGenerating(
   container: HTMLElement,
   data: AppData,
   camera: THREE.PerspectiveCamera,
-  onDone: (scene: THREE.Scene, controls: FirstPersonControls) => void,
+  onDone: (
+    scene: THREE.Scene,
+    controls: FirstPersonControls,
+    gallery: Gallery,
+    artworkMeshes: Map<string, THREE.Mesh>
+  ) => void,
   onError: (msg: string) => void
 ): void {
   container.innerHTML = `
@@ -498,7 +663,7 @@ function renderGenerating(
       // Build scene with real textures
       setProgress('Building scene…', 92);
       const aspectMap = new Map(data.artworks.map((a) => [a.id, a.aspectRatio]));
-      const { scene, roomLayouts } = buildScene(gallery, aspectMap);
+      const { scene, roomLayouts, artworkMeshes } = buildScene(gallery, aspectMap);
       const allAABBs = roomLayouts.flatMap((r) => r.wallAABBs);
 
       const newControls = new FirstPersonControls(camera, document.body);
@@ -509,7 +674,7 @@ function renderGenerating(
       setProgress('Ready!', 100);
       await new Promise((r) => setTimeout(r, 400));
 
-      onDone(scene, newControls);
+      onDone(scene, newControls, gallery, artworkMeshes);
     } catch (e) {
       onError(String(e));
     }
