@@ -74,6 +74,31 @@ export interface BuildResult {
   artworkMeshes: Map<string, THREE.Mesh>;
 }
 
+/**
+ * Dispose all geometries, materials, and textures in a scene to prevent
+ * memory leaks when rebuilding (e.g. on gallery regeneration).
+ */
+export function disposeScene(scene: THREE.Scene): void {
+  scene.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    obj.geometry?.dispose();
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const mat of mats) {
+      if (!mat) continue;
+      // Dispose all map textures defined on the material
+      const stdMat = mat as THREE.MeshStandardMaterial;
+      stdMat.map?.dispose();
+      stdMat.emissiveMap?.dispose();
+      stdMat.normalMap?.dispose();
+      stdMat.roughnessMap?.dispose();
+      stdMat.metalnessMap?.dispose();
+      mat.dispose();
+    }
+  });
+  // Remove all children so the scene is empty
+  while (scene.children.length > 0) scene.remove(scene.children[0]);
+}
+
 // ---------------------------------------------------------------------------
 // Main builder
 // ---------------------------------------------------------------------------
@@ -218,6 +243,17 @@ export function buildScene(
     scene.add(group);
     artworkPositions.set(artwork.id, worldPos);
     artworkMeshes.set(artwork.id, canvasMesh);
+
+    // Per-artwork spotlight (if enabled for the room)
+    if (room.lighting.artworkSpotlights) {
+      const spotColor = temperatureColor(room.lighting.temperature);
+      const spot = new THREE.SpotLight(spotColor, 1.2, 6, Math.PI / 7, 0.3);
+      spot.position.set(worldPos.x, room.height - 0.2, worldPos.z);
+      spot.target.position.copy(worldPos);
+      spot.target.position.y = placement.hangingHeight;
+      scene.add(spot);
+      scene.add(spot.target);
+    }
   }
 
   return { scene, roomLayouts, artworkPositions, artworkMeshes };
@@ -269,8 +305,6 @@ function buildRoom(
   const pointLight = new THREE.PointLight(tempColor, 0.8, room.width * 2);
   pointLight.position.set(cx, height - 0.3, cz);
   scene.add(pointLight);
-
-  // TODO(week3): per-artwork spotlights (schema field `artworkSpotlights` respected here)
 }
 
 // ---------------------------------------------------------------------------
