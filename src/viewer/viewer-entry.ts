@@ -17,7 +17,7 @@ import { buildScene } from './room-builder';
 import { FirstPersonControls } from './controls';
 import { ArtworkInteractions } from './interactions';
 import { GalleryTour } from './tour';
-import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay } from '../ui/overlay';
+import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay } from '../ui/overlay';
 
 /** True when pointer lock is available (false on iOS Safari). */
 function supportsPointerLock(): boolean {
@@ -162,13 +162,15 @@ async function bootViewer() {
   // Wire Esc → relock (only on pointer-lock devices)
   function wireRelock() {
     const onUnlock = () => {
+      const decision = shouldShowRelockOverlay({
+        tourActive: !!tour,
+        suppress: suppressNextRelock,
+        inspecting: interactions.isInspecting,
+      });
+      if (decision === 'clear-suppress') { suppressNextRelock = false; return; }
+      if (decision === 'stay-armed') return;
+      // decision === 'show-overlay'
       controls.pointerLock.removeEventListener('unlock', onUnlock);
-      if (tour) return; // tour handles its own Esc
-      if (suppressNextRelock) {
-        suppressNextRelock = false;
-        return; // deliberate unlock for inspect panel — don't show relock overlay
-      }
-      if (interactions.isInspecting) return; // panel is open, not an Esc unlock
       const { dismiss } = mountRelockOverlay(() => controls.lock());
       const onRelock = () => {
         controls.pointerLock.removeEventListener('lock', onRelock);

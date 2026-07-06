@@ -12,7 +12,7 @@ import { buildScene, disposeScene } from '../viewer/room-builder';
 import { FirstPersonControls } from '../viewer/controls';
 import { ArtworkInteractions } from '../viewer/interactions';
 import { GalleryTour } from '../viewer/tour';
-import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay } from './overlay';
+import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay } from './overlay';
 import { escapeHtml } from './escape-html';
 import { sanitizePlacements } from './placement-sanity';
 import { resizeToDataUrl, createDisplayObjectUrl } from './image-utils';
@@ -216,7 +216,8 @@ export function bootApp(): void {
     `;
     btn.addEventListener('click', () => {
       if (!data.gallery) return;
-      // Unlock pointer first (tour doesn't need it)
+      // Suppress relock overlay — this unlock is intentional (tour is starting)
+      if (controls?.isLocked) suppressNextRelock = true;
       controls?.pointerLock.unlock();
       tour = new GalleryTour({
         camera,
@@ -304,12 +305,15 @@ export function bootApp(): void {
 
             function wireRelockDemo() {
               const onUnlock = () => {
+                const decision = shouldShowRelockOverlay({
+                  tourActive: !!tour,
+                  suppress: suppressNextRelock,
+                  inspecting: !!interactions?.isInspecting,
+                });
+                if (decision === 'clear-suppress') { suppressNextRelock = false; return; }
+                if (decision === 'stay-armed') return;
+                // decision === 'show-overlay'
                 controls!.pointerLock.removeEventListener('unlock', onUnlock);
-                if (suppressNextRelock) {
-                  suppressNextRelock = false;
-                  return; // deliberate unlock for inspect panel
-                }
-                if (interactions?.isInspecting) return;
                 const { dismiss } = mountRelockOverlay(() => controls!.lock());
                 const onRelock = () => {
                   controls!.pointerLock.removeEventListener('lock', onRelock);
@@ -387,12 +391,15 @@ export function bootApp(): void {
           // Three.js EventDispatcher has no { once } option — we remove manually.
           function wireRelock() {
             const onUnlock = () => {
+              const decision = shouldShowRelockOverlay({
+                tourActive: !!tour,
+                suppress: suppressNextRelock,
+                inspecting: !!interactions?.isInspecting,
+              });
+              if (decision === 'clear-suppress') { suppressNextRelock = false; return; }
+              if (decision === 'stay-armed') return;
+              // decision === 'show-overlay'
               controls!.pointerLock.removeEventListener('unlock', onUnlock);
-              if (suppressNextRelock) {
-                suppressNextRelock = false;
-                return; // deliberate unlock for inspect panel
-              }
-              if (interactions?.isInspecting) return;
               const { dismiss } = mountRelockOverlay(() => controls!.lock());
               const onRelock = () => {
                 controls!.pointerLock.removeEventListener('lock', onRelock);
