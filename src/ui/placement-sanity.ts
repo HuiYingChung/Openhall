@@ -17,16 +17,64 @@ const DOORWAY_MARGIN = 0.3; // metres clearance from doorway edge
  */
 export function sanitizePlacements(gallery: Gallery): Gallery {
   const roomMap = new Map<string, Room>(gallery.rooms.map((r) => [r.id, r]));
+  // Build room origins the same way room-builder does: linear layout along +X
+  const roomOrigins = buildRoomOrigins(gallery);
 
-  const sanitized = gallery.placements.map((p) => sanitizePlacement(p, roomMap, gallery));
+  const sanitized = gallery.placements.map((p) =>
+    sanitizePlacement(p, roomMap, gallery, roomOrigins)
+  );
 
   return { ...gallery, placements: sanitized };
+}
+
+/**
+ * Compute room origins (min-X, min-Z corner) for each room in the same linear
+ * layout that room-builder uses. Exported for unit tests.
+ */
+export function buildRoomOrigins(gallery: Gallery): Map<string, { x: number; z: number }> {
+  const origins = new Map<string, { x: number; z: number }>();
+  let cursorX = 0;
+  for (const room of gallery.rooms) {
+    origins.set(room.id, { x: cursorX, z: 0 });
+    cursorX += room.width;
+  }
+  return origins;
+}
+
+/**
+ * Convert an inbound doorway's offsetFromCenter from being relative to the
+ * *source* room's wall center to being relative to the *target* room's wall
+ * center. Mirrors the logic in room-builder.ts buildScene().
+ *
+ * For E/W doorways the offset is along Z; for N/S it's along X.
+ */
+export function convertInboundOffset(
+  doorway: Doorway,
+  srcRoom: Room,
+  srcOrigin: { x: number; z: number },
+  tgtRoom: Room,
+  tgtOrigin: { x: number; z: number }
+): number {
+  if (doorway.wall === 'e' || doorway.wall === 'w') {
+    // offset is along Z
+    const srcCZ = srcOrigin.z + srcRoom.depth / 2;
+    const worldZ = srcCZ + doorway.offsetFromCenter;
+    const tgtCZ = tgtOrigin.z + tgtRoom.depth / 2;
+    return worldZ - tgtCZ;
+  } else {
+    // N/S: offset is along X
+    const srcCX = srcOrigin.x + srcRoom.width / 2;
+    const worldX = srcCX + doorway.offsetFromCenter;
+    const tgtCX = tgtOrigin.x + tgtRoom.width / 2;
+    return worldX - tgtCX;
+  }
 }
 
 function sanitizePlacement(
   placement: Placement,
   roomMap: Map<string, Room>,
-  gallery: Gallery
+  gallery: Gallery,
+  roomOrigins: Map<string, { x: number; z: number }>
 ): Placement {
   const room = roomMap.get(placement.roomId);
   if (!room) return placement;
@@ -39,8 +87,8 @@ function sanitizePlacement(
   // Maximum offset so the artwork (+ frame margin) stays on the wall
   const maxOffset = wallLength / 2 - halfWork - FRAME_MARGIN;
 
-  // Collect doorways on the same wall (own + inbound)
-  const allDoorways = getAllDoorwaysOnWall(room, placement.wall, gallery);
+  // Collect doorways on the same wall (own + inbound with corrected offset)
+  const allDoorways = getAllDoorwaysOnWall(room, placement.wall, gallery, roomOrigins);
 
   let lo = -maxOffset;
   let hi = maxOffset;
@@ -63,16 +111,24 @@ function sanitizePlacement(
   return { ...placement, offsetFromCenter: clamped };
 }
 
-function getAllDoorwaysOnWall(room: Room, wall: string, gallery: Gallery): Doorway[] {
+function getAllDoorwaysOnWall(
+  room: Room,
+  wall: string,
+  gallery: Gallery,
+  roomOrigins: Map<string, { x: number; z: number }>
+): Doorway[] {
   const own = room.doorways.filter((d) => d.wall === wall);
-  // Inbound doorways (from other rooms targeting this room, translated to opposite wall)
+  // Inbound doorways — re-convert offset to target room's wall center coordinate
   const opposite: Record<string, string> = { n: 's', s: 'n', e: 'w', w: 'e' };
   const inbound: Doorway[] = [];
+  const tgtOrigin = roomOrigins.get(room.id)!;
   for (const otherRoom of gallery.rooms) {
     if (otherRoom.id === room.id) continue;
+    const srcOrigin = roomOrigins.get(otherRoom.id)!;
     for (const d of otherRoom.doorways) {
       if (d.targetRoomId === room.id && opposite[d.wall] === wall) {
-        inbound.push({ ...d, wall: wall as Doorway['wall'] });
+        const convertedOffset = convertInboundOffset(d, otherRoom, srcOrigin, room, tgtOrigin);
+        inbound.push({ ...d, wall: wall as Doorway['wall'], offsetFromCenter: convertedOffset });
       }
     }
   }
