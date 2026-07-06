@@ -194,7 +194,7 @@ describe('buildExportBundle', () => {
     const gallery = makeGallery();
     vi.stubGlobal('fetch', makeFetch());
 
-    // aw-01 in sample-gallery.json has aspectRatio: 1.33
+    // aw-01 in sample-gallery.json (Van Gogh Wheat Field) has aspectRatio: 1.256
     const { blob } = await buildExportBundle({
       gallery,
       artworkUrls: makeArtworkUrls(gallery),
@@ -206,7 +206,7 @@ describe('buildExportBundle', () => {
       artworks: Array<{ id: string; aspectRatio?: number }>;
     };
     const aw01 = galleryJson.artworks.find((a) => a.id === 'aw-01');
-    expect(aw01?.aspectRatio).toBe(1.33);
+    expect(aw01?.aspectRatio).toBe(1.256);
   });
 
   // -------------------------------------------------------------------------
@@ -280,6 +280,48 @@ describe('buildExportBundle', () => {
         viewerScriptUrl: 'https://example.com/assets/viewer.js',
       })
     ).rejects.toThrow(/Failed to fetch image for artwork/);
+  });
+
+  // -------------------------------------------------------------------------
+  // Demo-mode export: artwork URL sourced from imagePath fetch
+  // -------------------------------------------------------------------------
+
+  it('packages an artwork whose URL was fetched from imagePath (demo-mode flow)', async () => {
+    // Simulate what the app.ts export handler does for demo mode:
+    // artworkUrls is pre-filled by fetching each artwork's imagePath,
+    // then passed to buildExportBundle as a normal blob: URL entry.
+    const gallery = makeGallery();
+    // Override aw-01 to use a demo imagePath (no uploaded blob URL exists)
+    const demoGallery = {
+      ...gallery,
+      artworks: gallery.artworks.map((aw, i) =>
+        i === 0 ? { ...aw, imagePath: 'demo/vangogh-wheatfield.jpg', aspectRatio: 1.256 } : aw
+      ),
+    };
+    // Simulate the app prefetching imagePath → blob: URL
+    const artworkUrls = new Map(demoGallery.artworks.map((aw) => [
+      aw.id,
+      `blob:${aw.id}`, // stub blob: URL (fetch mock returns fake image bytes for any URL)
+    ]));
+    vi.stubGlobal('fetch', makeFetch());
+
+    const { blob } = await buildExportBundle({
+      gallery: demoGallery,
+      artworkUrls,
+      viewerScriptUrl: 'https://example.com/assets/viewer.js',
+    });
+
+    const zip = await JSZip.loadAsync(blob);
+    const galleryJson = JSON.parse(await zip.file('gallery.json')!.async('string')) as {
+      artworks: Array<{ id: string; imagePath: string; aspectRatio?: number }>;
+    };
+    const aw01 = galleryJson.artworks.find((a) => a.id === 'aw-01');
+    // imagePath must be remapped to images/ (not the original demo/ path)
+    expect(aw01?.imagePath).toMatch(/^images\//);
+    // The image file must actually exist in the zip
+    expect(zip.file(aw01!.imagePath)).not.toBeNull();
+    // aspectRatio must be preserved
+    expect(aw01?.aspectRatio).toBe(1.256);
   });
 
   // -------------------------------------------------------------------------

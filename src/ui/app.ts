@@ -158,6 +158,28 @@ export function bootApp(): void {
           const { buildExportBundle, downloadZip } = await import('../export/bundler');
           const artworkUrls = new Map(data.artworks.map((a) => [a.id, a.displayObjectUrl]));
           const aspectRatios = new Map(data.artworks.map((a) => [a.id, a.aspectRatio]));
+
+          // Demo mode: data.artworks is empty, so artworkUrls has no entries.
+          // For any artwork without an entry, fetch its imagePath (same-origin) and
+          // create a blob: URL so the bundler can package it.
+          const demoFetches: Promise<void>[] = [];
+          for (const aw of data.gallery.artworks) {
+            if (!artworkUrls.has(aw.id) && aw.imagePath && !aw.imagePath.startsWith('placeholder:')) {
+              demoFetches.push(
+                fetch(aw.imagePath).then(async (res) => {
+                  if (!res.ok) throw new Error(`Failed to fetch demo image '${aw.imagePath}': HTTP ${res.status}`);
+                  const blob = await res.blob();
+                  artworkUrls.set(aw.id, URL.createObjectURL(blob));
+                  if (aw.aspectRatio) aspectRatios.set(aw.id, aw.aspectRatio);
+                })
+              );
+            }
+          }
+          if (demoFetches.length > 0) {
+            expBtn.textContent = 'Fetching demo images…';
+            await Promise.all(demoFetches);
+          }
+
           // Both dev and prod fetch from /assets/viewer.js (pre-built from public/).
           // Run 'npm run build:viewer' once before testing export locally.
           const viewerScriptUrl = '/assets/viewer.js';
