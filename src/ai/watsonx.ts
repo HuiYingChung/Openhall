@@ -13,10 +13,11 @@
 
 import { WorkAnalysisSchema, CurationPlanSchema } from '../schema/analysis.schema';
 import { GallerySchema } from '../schema/gallery.schema';
-import { generateValidated, extractJSON } from './provider';
+import { generateValidated } from './provider';
 import { buildAnalyzePrompt } from './prompts/analyze.prompt';
 import { buildCuratePrompt } from './prompts/curate.prompt';
-import { buildGalleryPrompt } from './prompts/gallery.prompt';
+import { buildLabelsPrompt } from './prompts/labels.prompt';
+import { assembleGallery, LabelsResponseSchema } from './gallery-assembler';
 import type { AIProvider, UploadedArtwork, StylePreset } from './provider';
 import type { WorkAnalysis, CurationPlan } from '../schema/analysis.schema';
 import type { Gallery } from '../schema/gallery.schema';
@@ -75,8 +76,8 @@ async function getToken(settings: WatsonxSettings): Promise<string> {
   }
 
   if (settings.tokenWorkerUrl) {
-    // Use the token-exchange worker (browser path)
-    const res = await fetch(settings.tokenWorkerUrl, {
+    // Use the token-exchange worker (browser path): POST /token
+    const res = await fetch(`${settings.tokenWorkerUrl}/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ apiKey: settings.apiKey }),
@@ -135,7 +136,13 @@ async function chat(
   maxNewTokens = 1024
 ): Promise<string> {
   const token = await getToken(settings);
-  const url = `${settings.wxUrl}/ml/v1/text/chat?version=${WX_VERSION}`;
+
+  // When a token worker is configured (browser path), proxy ML calls through it
+  // to work around the missing CORS headers on us-south.ml.cloud.ibm.com.
+  // Node scripts (no tokenWorkerUrl) call the ML API directly.
+  const url = settings.tokenWorkerUrl
+    ? `${settings.tokenWorkerUrl}/proxy/ml/v1/text/chat?version=${WX_VERSION}`
+    : `${settings.wxUrl}/ml/v1/text/chat?version=${WX_VERSION}`;
 
   const res = await fetch(url, {
     method: 'POST',
@@ -159,7 +166,24 @@ async function chat(
     throw new Error(`watsonx HTTP ${res.status}: ${await res.text()}`);
   }
 
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const json = (await res.json()) as {
+    choices?: Array<{
+      message?: { content?: string };
+      finish_reason?: string;
+    }>;
+  };
+
+  // Truncation detection: if the model stopped because it hit the token limit,
+  // fail fast with a clear error. Retrying with the same prompt won't fix it —
+  // the caller needs to reduce output size instead.
+  const finishReason = json?.choices?.[0]?.finish_reason;
+  if (finishReason === 'length' || finishReason === 'max_tokens') {
+    throw new Error(
+      `watsonx output truncated (finish_reason: "${finishReason}"). ` +
+        `Increase max_new_tokens or reduce the requested output size.`
+    );
+  }
+
   return json?.choices?.[0]?.message?.content ?? '';
 }
 
@@ -209,20 +233,48 @@ export class WatsonxProvider implements AIProvider {
     plan: CurationPlan,
     preset: StylePreset
   ): Promise<Gallery> {
-    // Derive an exhibition title from the curator note
-    const titlePrompt = `In 4 words or fewer, suggest an exhibition title based on this curator note: "${plan.curatorNote}". Reply with ONLY the title.`;
+    // Step 1: derive an exhibition title (tiny output — 32 tokens)
+    const titlePrompt = `In 4 words or fewer, suggest an exhibition title based on this curator note: "${plan.curatorNote}". Reply with ONLY the title, no quotes.`;
     const rawTitle = await chat(this.settings, WATSONX_TEXT_MODEL, [
       { role: 'user', content: titlePrompt },
     ], 32);
-    const exhibitionTitle = extractJSON(rawTitle).replace(/^["']|["']$/g, '').trim() || 'New Exhibition';
+    const exhibitionTitle = rawTitle.replace(/^["']|["']$/g, '').trim() || 'New Exhibition';
 
-    const prompt = buildGalleryPrompt(artworks, analyses, plan, preset, exhibitionTitle);
-    return generateValidated(
-      async (extraContext) =>
-        chat(this.settings, WATSONX_TEXT_MODEL, [
-          { role: 'user', content: prompt + extraContext },
-        ], 3000),
-      GallerySchema
-    ) as Promise<Gallery>;
+    // Step 2: build all geometry deterministically (rooms, placements, doorways, tour)
+    const shell = assembleGallery(plan, preset, artworks, exhibitionTitle);
+
+    // Step 3: ask LLM for labels only, in batches of ≤4 works (~400 tokens each)
+    const BATCH_SIZE = 4;
+    const labelMap: Record<string, { label: string; artistStatement?: string }> = {};
+
+    for (let i = 0; i < artworks.length; i += BATCH_SIZE) {
+      const batch = artworks.slice(i, i + BATCH_SIZE);
+      const prompt = buildLabelsPrompt(batch, analyses, plan.curatorNote);
+      const entries = await generateValidated(
+        async (extraContext) =>
+          chat(this.settings, WATSONX_TEXT_MODEL, [
+            { role: 'user', content: prompt + extraContext },
+          ], 600),
+        LabelsResponseSchema
+      );
+      for (const entry of entries) {
+        labelMap[entry.artworkId] = {
+          label: entry.label,
+          artistStatement: entry.artistStatement,
+        };
+      }
+    }
+
+    // Step 4: merge labels into artwork records
+    const artworksWithLabels = shell.artworks.map((aw) => ({
+      ...aw,
+      label: labelMap[aw.id]?.label ?? 'No label available.',
+      ...(labelMap[aw.id]?.artistStatement
+        ? { artistStatement: labelMap[aw.id].artistStatement }
+        : {}),
+    }));
+
+    // Step 5: validate the assembled gallery
+    return GallerySchema.parse({ ...shell, artworks: artworksWithLabels });
   }
 }

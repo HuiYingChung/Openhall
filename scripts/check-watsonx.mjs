@@ -106,9 +106,9 @@ try {
   });
 
   // ---------------------------------------------------------------------------
-  // Step 2 — CORS probe (check response headers from the token exchange)
+  // Step 2 — CORS probe on IAM endpoint
   // ---------------------------------------------------------------------------
-  section('Step 2: CORS headers (browser-direct feasibility)');
+  section('Step 2: CORS headers on IAM endpoint (browser-direct feasibility)');
   const acao = res.headers.get('access-control-allow-origin');
   const acam = res.headers.get('access-control-allow-methods');
   if (acao) {
@@ -134,6 +134,34 @@ try {
 } catch (err) {
   fail(`IAM exchange failed: ${err.message}`);
   process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// Step 2b — CORS probe on watsonx ML API endpoint
+// ---------------------------------------------------------------------------
+section('Step 2b: CORS headers on watsonx ML API (browser-direct feasibility)');
+
+try {
+  // OPTIONS preflight to the ML endpoint — no token needed, just checking headers
+  const mlCorsRes = await fetch(`${WX_BASE}/ml/v1/text/chat?version=${WX_VERSION}`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: 'http://localhost:5173',
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'Content-Type, Authorization',
+    },
+  });
+  const mlAcao = mlCorsRes.headers.get('access-control-allow-origin');
+  if (mlAcao) {
+    pass(`Access-Control-Allow-Origin: ${mlAcao}`);
+    pass('Browser-direct ML API calls: FEASIBLE');
+  } else {
+    fail('No Access-Control-Allow-Origin header on ML API OPTIONS response');
+    fail('Browser-direct ML calls: NOT FEASIBLE — worker /proxy/* route required');
+    info('(This is expected. The worker/token-exchange.ts /proxy/* route handles this.)');
+  }
+} catch (err) {
+  fail(`ML CORS probe failed: ${err.message}`);
 }
 
 // ---------------------------------------------------------------------------
