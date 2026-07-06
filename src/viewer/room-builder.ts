@@ -17,6 +17,7 @@ import {
   buildBaseboardSegment,
   buildBench,
   buildFloorMaterial,
+  makeStudioEnvTexture,
   type StyleFamily,
 } from './decor';
 
@@ -197,8 +198,17 @@ export function buildScene(
   // Use the first room's temperature for the global lights; individual rooms
   // tune appearance via their own point lights.
   const globalTempColor = temperatureColor(gallery.rooms[0].lighting.temperature);
-  scene.add(new THREE.AmbientLight(globalTempColor, avgAmbient));
-  scene.add(new THREE.HemisphereLight(globalTempColor, new THREE.Color(0x222222), 0.3));
+  scene.add(new THREE.AmbientLight(globalTempColor, avgAmbient * 1.2));
+  scene.add(new THREE.HemisphereLight(globalTempColor, new THREE.Color(0x222222), 0.45));
+
+  // Image-based lighting: procedural studio env map so glossy floors, metal
+  // frames and fixtures reflect something physically plausible (with ACES
+  // tone mapping set on the renderer).
+  const envTex = makeStudioEnvTexture();
+  if (envTex) {
+    scene.environment = envTex;
+    scene.environmentIntensity = 0.5;
+  }
 
   for (const room of gallery.rooms) {
     const origin = roomOrigins.get(room.id)!;
@@ -266,14 +276,18 @@ export function buildScene(
       const fz = worldPos.z + nz * SPOT_OUT;
       const aim = worldPos.clone(); // worldPos.y is already the hanging height
 
+      const fam = resolveStyleFamily(room.surfaces.wall);
       const spotColor = temperatureColor(room.lighting.temperature);
-      const spot = new THREE.SpotLight(spotColor, 1.2, 6, Math.PI / 7, 0.3);
+      // Physical light units (decay 2) — intensity per style family
+      const spot = new THREE.SpotLight(
+        spotColor, DECOR_PARAMS[fam].light.spotIntensity, 7, Math.PI / 6.5, 0.45, 2
+      );
       spot.position.set(fx, room.height - 0.2, fz);
       spot.target.position.copy(aim);
       scene.add(spot);
       scene.add(spot.target);
       // Physical fixture mesh for the spotlight (cosmetic, per style family)
-      buildSpotFixture(scene, resolveStyleFamily(room.surfaces.wall), fx, fz, room.height, aim);
+      buildSpotFixture(scene, fam, fx, fz, room.height, aim);
     }
   }
 
@@ -299,7 +313,11 @@ function buildRoom(
   const tempColor = temperatureColor(lighting.temperature);
 
   const wallMat = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.9 });
-  const ceilMat = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.9 });
+  // Ceiling color is a style-family decision (industrial charcoal, dramatic near-black)
+  const ceilMat = new THREE.MeshStandardMaterial({
+    color: DECOR_PARAMS[family].ceilingColor,
+    roughness: 0.92,
+  });
   // Per-material procedural texture + finish (polished concrete is glossy, etc.)
   const floorMat = buildFloorMaterial(surfaces.floor, floorColor, width, depth);
 
@@ -324,10 +342,22 @@ function buildRoom(
   // --- Walls: own doorways + mirrored inbound doorways both carved out ---
   buildWallPanels(scene, room, originX, originZ, wallMat, inboundDoorways, family);
 
-  // --- Per-room point light (fills the space; global ambient handles base level) ---
-  const pointLight = new THREE.PointLight(tempColor, 0.8, room.width * 2);
-  pointLight.position.set(cx, height - 0.3, cz);
-  scene.add(pointLight);
+  // --- Ceiling point lights: grid so large rooms have no dark corners.
+  // Physical units (decay 2); intensity scales with the style's light budget
+  // and the room's authored ambientIntensity so each style keeps its mood. ---
+  const budget = DECOR_PARAMS[family].light;
+  const nxL = Math.max(1, Math.round(width / 6));
+  const nzL = Math.max(1, Math.round(depth / 6));
+  const pointIntensity = budget.pointIntensity * lighting.ambientIntensity * 2;
+  for (let ix = 0; ix < nxL; ix++) {
+    for (let iz = 0; iz < nzL; iz++) {
+      const lx = originX + ((ix + 0.5) * width) / nxL;
+      const lz = originZ + ((iz + 0.5) * depth) / nzL;
+      const pl = new THREE.PointLight(tempColor, pointIntensity, width * 1.5, 2);
+      pl.position.set(lx, height - 0.3, lz);
+      scene.add(pl);
+    }
+  }
 
   // --- Bench (per style family; returns collision AABB or null) ---
   return buildBench(scene, family, room, originX, originZ);

@@ -51,6 +51,17 @@ describe('DECOR_PARAMS', () => {
       expect(p.baseboard.height).toBeGreaterThan(0);
       expect(p.fixture.headRadius).toBeGreaterThan(0);
       expect(p.bench.kind).toBeTruthy();
+      expect(p.ceilingColor).toBeGreaterThanOrEqual(0);
+      expect(p.light.pointIntensity).toBeGreaterThan(0);
+      expect(p.light.spotIntensity).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps each style\'s mood in the light budget: dramatic darkest room, strongest spots', () => {
+    const dd = DECOR_PARAMS['dark-dramatic'].light;
+    for (const f of families.filter((x) => x !== 'dark-dramatic')) {
+      expect(dd.pointIntensity).toBeLessThan(DECOR_PARAMS[f].light.pointIntensity);
+      expect(dd.spotIntensity).toBeGreaterThan(DECOR_PARAMS[f].light.spotIntensity);
     }
   });
 

@@ -71,6 +71,19 @@ export interface DecorParams {
     headRadius: number;
     headLength: number;
   };
+  /** Ceiling color (per style — industrial charcoal, dramatic near-black, …) */
+  ceilingColor: number;
+  /**
+   * Physical light budget for the style: multipliers applied on top of the
+   * room's authored ambientIntensity so every style is readable while keeping
+   * its mood (dark-dramatic stays darkest but never illegible).
+   */
+  light: {
+    /** Per-room ceiling point light intensity (physical units, decay 2) */
+    pointIntensity: number;
+    /** Artwork spotlight intensity (physical units, decay 2) */
+    spotIntensity: number;
+  };
   bench: {
     kind: 'slab' | 'steel-wood' | 'wood' | 'upholstered';
     topColor: number;
@@ -87,18 +100,24 @@ export const DECOR_PARAMS: Record<StyleFamily, DecorParams> = {
     frame: { thickness: 0.035, depth: 0.05, color: 0x111111, roughness: 0.6, metalness: 0.2 },
     baseboard: { height: 0.05, depth: 0.012, color: 0x151515, roughness: 0.9, metalness: 0 },
     fixture: { kind: 'spot', color: 0xf2f2f2, roughness: 0.5, metalness: 0.3, headRadius: 0.04, headLength: 0.14 },
+    ceilingColor: 0xf5f0eb,
+    light: { pointIntensity: 22, spotIntensity: 26 },
     bench: { kind: 'slab', topColor: 0xf2f0ec, topRoughness: 0.65, topMetalness: 0, legColor: 0xf2f0ec, legRoughness: 0.65, legMetalness: 0 },
   },
   industrial: {
     frame: { thickness: 0.08, depth: 0.045, color: 0x3c3c3c, roughness: 0.45, metalness: 0.75 },
     baseboard: { height: 0.14, depth: 0.02, color: 0x2b2b2b, roughness: 0.5, metalness: 0.6 },
     fixture: { kind: 'spot', color: 0x1f1f1f, roughness: 0.4, metalness: 0.7, headRadius: 0.06, headLength: 0.18 },
+    ceilingColor: 0x2b2d30,
+    light: { pointIntensity: 16, spotIntensity: 30 },
     bench: { kind: 'steel-wood', topColor: 0x8a6a45, topRoughness: 0.6, topMetalness: 0, legColor: 0x2a2a2a, legRoughness: 0.45, legMetalness: 0.7 },
   },
   'warm-wood': {
     frame: { thickness: 0.06, depth: 0.07, color: 0x8a5a2b, roughness: 0.55, metalness: 0 },
     baseboard: { height: 0.11, depth: 0.018, color: 0x5a3c22, roughness: 0.6, metalness: 0 },
     fixture: { kind: 'picture-light', color: 0xb08d57, roughness: 0.35, metalness: 0.8, headRadius: 0.025, headLength: 0.5 },
+    ceilingColor: 0x2e2117,
+    light: { pointIntensity: 20, spotIntensity: 24 },
     bench: { kind: 'wood', topColor: 0x9c6b3f, topRoughness: 0.5, topMetalness: 0, legColor: 0x7a5330, legRoughness: 0.55, legMetalness: 0 },
   },
   'dark-dramatic': {
@@ -111,6 +130,8 @@ export const DECOR_PARAMS: Record<StyleFamily, DecorParams> = {
       goldTrim: { color: 0xc9a227, roughness: 0.3, metalness: 0.85 },
     },
     fixture: { kind: 'spot', color: 0x0c0c0c, roughness: 0.5, metalness: 0.5, headRadius: 0.035, headLength: 0.22 },
+    ceilingColor: 0x0a0a0a,
+    light: { pointIntensity: 7, spotIntensity: 38 },
     bench: { kind: 'upholstered', topColor: 0x3a2430, topRoughness: 0.95, topMetalness: 0, legColor: 0x0c0c0c, legRoughness: 0.5, legMetalness: 0.4 },
   },
 };
@@ -350,16 +371,16 @@ function shade(base: THREE.Color, lightness: number): string {
 }
 
 function paintWood(ctx: CanvasRenderingContext2D, size: number, base: THREE.Color, rand: () => number): void {
-  const plankCount = 8;
+  const plankCount = 14;
   const plankW = size / plankCount;
   for (let i = 0; i < plankCount; i++) {
-    ctx.fillStyle = shade(base, 0.92 + rand() * 0.16);
+    ctx.fillStyle = shade(base, 0.94 + rand() * 0.12);
     ctx.fillRect(i * plankW, 0, plankW, size);
     // Grain streaks
-    ctx.strokeStyle = shade(base, 0.75);
+    ctx.strokeStyle = shade(base, 0.78);
     ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.12;
-    for (let g = 0; g < 5; g++) {
+    ctx.globalAlpha = 0.09;
+    for (let g = 0; g < 4; g++) {
       const x = i * plankW + rand() * plankW;
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -367,9 +388,17 @@ function paintWood(ctx: CanvasRenderingContext2D, size: number, base: THREE.Colo
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    // Plank seam
-    ctx.fillStyle = shade(base, 0.55);
-    ctx.fillRect(i * plankW, 0, 1.5, size);
+    // Butt joints — short cross seams at random heights per plank
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = shade(base, 0.72);
+    const joints = 1 + Math.floor(rand() * 2);
+    for (let j = 0; j < joints; j++) {
+      ctx.fillRect(i * plankW, rand() * size, plankW, 1);
+    }
+    ctx.globalAlpha = 1;
+    // Plank seam — thin and subtle
+    ctx.fillStyle = shade(base, 0.72);
+    ctx.fillRect(i * plankW, 0, 1, size);
   }
 }
 
@@ -455,6 +484,33 @@ export function makeFloorCanvas(floorMaterial: string, baseColorHex: number, siz
       ctx.fillRect(0, 0, size, size);
   }
   return canvas;
+}
+
+/**
+ * Procedural studio environment map (equirect) — gives metals, glossy floors
+ * and frames something real to reflect. Bright ceiling band with light-panel
+ * hotspots, mid-grey walls, dark floor. Null when no canvas (headless tests).
+ */
+export function makeStudioEnvTexture(): THREE.Texture | null {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const g = ctx.createLinearGradient(0, 0, 0, 128);
+  g.addColorStop(0, '#e9e7e3');
+  g.addColorStop(0.45, '#8b8b89');
+  g.addColorStop(0.55, '#6b6b69');
+  g.addColorStop(1, '#232323');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 128);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  for (const x of [30, 108, 188]) ctx.fillRect(x, 8, 30, 10);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 /**
