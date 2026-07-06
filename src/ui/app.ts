@@ -237,30 +237,33 @@ export function bootApp(): void {
         expBtn.disabled = true;
         expBtn.innerHTML = 'Building…';
         try {
-          // Dev-only staleness guard: warn if viewer.js is > 24 h old.
+          // Dev-only staleness guard: warn if viewer.js is > 24 h old, or if
+          // viewer.meta.json is missing entirely (viewer never rebuilt since the
+          // meta mechanism landed — the guard can't vouch for freshness).
           if (import.meta.env.DEV) {
+            let warning: string | null = null;
             try {
               const metaRes = await fetch('/assets/viewer.meta.json');
-              if (metaRes.ok) {
-                const meta = await metaRes.json() as { builtAt?: string };
-                if (meta.builtAt) {
-                  const ageMs = Date.now() - new Date(meta.builtAt).getTime();
-                  const ageH = Math.round(ageMs / 36e5);
-                  if (ageMs > 24 * 60 * 60 * 1000) {
-                    const proceed = confirm(
-                      `viewer.js was built ${ageH}h ago — source may have changed.\n` +
-                      `Export anyway? (run npm run build:viewer to refresh)`
-                    );
-                    if (!proceed) {
-                      expBtn.disabled = false;
-                      expBtn.innerHTML = `${svgDownload()}Export`;
-                      return;
-                    }
-                  }
-                }
+              if (!metaRes.ok) throw new Error(`HTTP ${metaRes.status}`);
+              const meta = await metaRes.json() as { builtAt?: string };
+              if (!meta.builtAt) throw new Error('no builtAt');
+              const ageMs = Date.now() - new Date(meta.builtAt).getTime();
+              const ageH = Math.round(ageMs / 36e5);
+              if (ageMs > 24 * 60 * 60 * 1000) {
+                warning = `viewer.js was built ${ageH}h ago — source may have changed.`;
               }
             } catch {
-              // meta fetch failed — not a blocking error, proceed silently
+              warning = 'viewer.meta.json is missing — viewer.js may be stale.';
+            }
+            if (warning) {
+              const proceed = confirm(
+                `${warning}\nExport anyway? (run npm run build:viewer to refresh)`
+              );
+              if (!proceed) {
+                expBtn.disabled = false;
+                expBtn.innerHTML = `${svgDownload()}Export`;
+                return;
+              }
             }
           }
 
@@ -445,9 +448,16 @@ export function bootApp(): void {
 
             if (supportsPointerLock()) {
               wireRelockDemo();
-              // Show hint overlay then enter viewer
-              const { dismiss } = mountHintOverlay(() => controls!.lock());
-              const onLock = () => {
+              // Show hint overlay then enter viewer.
+              // onLock declared before mountHintOverlay so the onClose closure can reference it.
+              let onLock: () => void;
+              const { dismiss } = mountHintOverlay(() => controls!.lock(), () => {
+                // × button: abort demo entry — tear down the built demo scene and
+                // return to the menu (overlay already dismissed by mountHintOverlay).
+                controls!.pointerLock.removeEventListener('lock', onLock);
+                exitToMenu();
+              });
+              onLock = () => {
                 controls!.pointerLock.removeEventListener('lock', onLock);
                 dismiss();
                 setState('viewer');
