@@ -102,6 +102,9 @@ export function bootApp(): void {
   let interactions: ArtworkInteractions | null = null;
   let tour: GalleryTour | null = null;
   let suppressNextRelock = false; // set true when we deliberately unlock for inspect panel
+  // Bug 2: track the currently-mounted relock overlay's dismiss so the tour-start
+  // handler can clear the Paused filter before the tour begins.
+  let activeRelockDismiss: (() => void) | null = null;
   let currentScene: THREE.Scene = new THREE.Scene();
   currentScene.background = new THREE.Color(0x111111);
 
@@ -136,6 +139,13 @@ export function bootApp(): void {
 
   // Tour HUD button and Export button (shown when in viewer state)
   let tourBtn: HTMLElement | null = null;
+
+  /** Re-mount the tour button (no-op if it already exists or no waypoints). */
+  function remountTourBtn(gallery: Gallery): void {
+    if (!gallery.tour.length) return;
+    if (tourBtn) return;
+    showViewerButtons(gallery);
+  }
 
   function showViewerButtons(gallery: Gallery): void {
     // Export button — always shown
@@ -216,6 +226,10 @@ export function bootApp(): void {
     `;
     btn.addEventListener('click', () => {
       if (!data.gallery) return;
+      // Bug 2: dismiss any lingering Paused overlay before the tour begins
+      if (activeRelockDismiss) { activeRelockDismiss(); activeRelockDismiss = null; }
+      // Bug 3: close any open inspect panel / in-progress dolly
+      interactions?.close();
       // Suppress relock overlay — this unlock is intentional (tour is starting)
       if (controls?.isLocked) suppressNextRelock = true;
       controls?.pointerLock.unlock();
@@ -228,6 +242,8 @@ export function bootApp(): void {
           camera.position.y = 1.6;
           // Re-lock pointer for free walk
           if (controls) controls.lock();
+          // Bug 1: re-mount the Tour button (desktop path)
+          remountTourBtn(data.gallery!);
         },
       });
       if (tourBtn) { tourBtn.remove(); tourBtn = null; }
@@ -253,6 +269,10 @@ export function bootApp(): void {
     btn.addEventListener('click', () => {
       btn.remove();
       if (!data.gallery) return;
+      // Bug 2: dismiss any lingering Paused overlay
+      if (activeRelockDismiss) { activeRelockDismiss(); activeRelockDismiss = null; }
+      // Bug 3: close any open inspect panel / in-progress dolly
+      interactions?.close();
       tour = new GalleryTour({
         camera,
         gallery,
@@ -315,8 +335,11 @@ export function bootApp(): void {
                 // decision === 'show-overlay'
                 controls!.pointerLock.removeEventListener('unlock', onUnlock);
                 const { dismiss } = mountRelockOverlay(() => controls!.lock());
+                // Bug 2: track so the tour-start handler can dismiss it
+                activeRelockDismiss = dismiss;
                 const onRelock = () => {
                   controls!.pointerLock.removeEventListener('lock', onRelock);
+                  activeRelockDismiss = null;
                   dismiss();
                   wireRelockDemo();
                 };
@@ -401,8 +424,11 @@ export function bootApp(): void {
               // decision === 'show-overlay'
               controls!.pointerLock.removeEventListener('unlock', onUnlock);
               const { dismiss } = mountRelockOverlay(() => controls!.lock());
+              // Bug 2: track so the tour-start handler can dismiss it
+              activeRelockDismiss = dismiss;
               const onRelock = () => {
                 controls!.pointerLock.removeEventListener('lock', onRelock);
+                activeRelockDismiss = null;
                 dismiss();
                 wireRelock(); // re-arm for next Esc
               };

@@ -99,9 +99,15 @@ async function bootViewer() {
 
   // Tour
   let tour: GalleryTour | null = null;
+  // Bug 2: track the currently-mounted relock overlay dismiss so startTour can clear it
+  let activeRelockDismiss: (() => void) | null = null;
 
   function startTour() {
     if (!gallery.tour.length) return;
+    // Bug 2: dismiss any lingering Paused overlay before the tour begins
+    if (activeRelockDismiss) { activeRelockDismiss(); activeRelockDismiss = null; }
+    // Bug 3: close any open inspect panel / in-progress dolly
+    interactions.close();
     if (controls.isLocked) controls.pointerLock.unlock();
     tour = new GalleryTour({
       camera,
@@ -112,6 +118,8 @@ async function bootViewer() {
         camera.position.y = 1.6;
         if (supportsPointerLock()) {
           controls.lock();
+          // Bug 1: re-mount tour button on desktop (lock event will not remount it)
+          mountTourButton();
         } else {
           // On touch devices, re-show Start Tour button instead of trying to lock
           mountTourButton();
@@ -172,8 +180,11 @@ async function bootViewer() {
       // decision === 'show-overlay'
       controls.pointerLock.removeEventListener('unlock', onUnlock);
       const { dismiss } = mountRelockOverlay(() => controls.lock());
+      // Bug 2: track so startTour can dismiss it
+      activeRelockDismiss = dismiss;
       const onRelock = () => {
         controls.pointerLock.removeEventListener('lock', onRelock);
+        activeRelockDismiss = null;
         dismiss();
         wireRelock();
       };
