@@ -69,7 +69,7 @@ docs/            bob-sessions/  ← commit BobShell logs here
 Follow .gitignore strictly. Rules of thumb:
 
 - **Never commit:** API keys or anything key-like (.env, tokens, IAM credentials), node_modules, build output (dist/), user-uploaded images, exported gallery zips, OS/editor noise.
-- **Always commit:** source, `src/demo/` sample assets, prompt templates, planning docs (PRODUCT_PLAN.md, ROADMAP.md, AGENTS.md, BOB_PROMPT_*.md), BobShell session logs in `docs/bob-sessions/` (submission evidence), `.env.example` with placeholder values only.
+- **Always commit:** source, `src/demo/` sample assets, prompt templates, planning docs (PRODUCT_PLAN.md, ROADMAP.md, AGENTS.md), Bob prompts in `docs/bob-prompts/`, BobShell session logs in `docs/bob-sessions/` and Claude session logs in `docs/claude-sessions/` (submission evidence), `.env.example` with placeholder values only.
 - If a file might contain a real credential, stop and ask before committing.
 
 ## MVP scope guard
