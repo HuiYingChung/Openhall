@@ -255,8 +255,14 @@ export class ArtworkInteractions {
       if (hit) {
         this.hoveredMesh = hit;
         const mat = hit.material as THREE.MeshStandardMaterial;
-        mat.emissive = HIGHLIGHT_EMISSIVE;
-        mat.emissiveIntensity = 0.18;
+        // Only standard materials support emissive. Never touch the unlit
+        // swap material — assigning an emissive property to a basic material
+        // makes the renderer look up a uniform that doesn't exist and crashes
+        // the render loop on every frame.
+        if (mat.isMeshStandardMaterial) {
+          mat.emissive = HIGHLIGHT_EMISSIVE;
+          mat.emissiveIntensity = 0.18;
+        }
       }
     }
   }
@@ -264,8 +270,10 @@ export class ArtworkInteractions {
   private clearHighlight(): void {
     if (this.hoveredMesh) {
       const mat = this.hoveredMesh.material as THREE.MeshStandardMaterial;
-      mat.emissive = HIGHLIGHT_EMISSIVE_OFF;
-      mat.emissiveIntensity = 0;
+      if (mat.isMeshStandardMaterial) {
+        mat.emissive = HIGHLIGHT_EMISSIVE_OFF;
+        mat.emissiveIntensity = 0;
+      }
       this.hoveredMesh = null;
     }
   }
@@ -335,7 +343,9 @@ export class ArtworkInteractions {
     // Store which artwork we're inspecting
     this.currentArtworkId = artworkId;
 
-    // Render the canvas unlit while inspecting — see swapToUnlitMaterial.
+    // Clear the hover highlight while the canvas still has its standard
+    // material, then render it unlit — see swapToUnlitMaterial.
+    this.clearHighlight();
     this.restoreArtworkMat = swapToUnlitMaterial(mesh);
   }
 

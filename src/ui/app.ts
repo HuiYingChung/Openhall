@@ -252,23 +252,36 @@ export function bootApp(): void {
         expBtn.disabled = true;
         expBtn.innerHTML = 'Building…';
         try {
-          // Dev-only staleness guard: warn if viewer.js is > 24 h old, or if
-          // viewer.meta.json is missing entirely (viewer never rebuilt since the
-          // meta mechanism landed — the guard can't vouch for freshness).
+          // Dev-only staleness guard. Preferred: the /__viewer-freshness dev
+          // endpoint compares src mtimes against viewer.meta.json's builtAt —
+          // catches "source edited after the build" precisely (the age check
+          // below missed exactly that case). Fallback: age heuristic.
           if (import.meta.env.DEV) {
             let warning: string | null = null;
             try {
-              const metaRes = await fetch('/assets/viewer.meta.json');
-              if (!metaRes.ok) throw new Error(`HTTP ${metaRes.status}`);
-              const meta = await metaRes.json() as { builtAt?: string };
-              if (!meta.builtAt) throw new Error('no builtAt');
-              const ageMs = Date.now() - new Date(meta.builtAt).getTime();
-              const ageH = Math.round(ageMs / 36e5);
-              if (ageMs > 24 * 60 * 60 * 1000) {
-                warning = `viewer.js was built ${ageH}h ago — source may have changed.`;
+              const fres = await fetch('/__viewer-freshness');
+              if (!fres.ok) throw new Error(`HTTP ${fres.status}`);
+              const fresh = await fres.json() as { stale?: boolean; builtAt?: number };
+              if (!fresh.builtAt) {
+                warning = 'viewer.js has never been built — restart npm run dev.';
+              } else if (fresh.stale) {
+                warning = 'Source files changed AFTER viewer.js was built — the export would ship a stale engine. Restart npm run dev to rebuild.';
               }
             } catch {
-              warning = 'viewer.meta.json is missing — viewer.js may be stale.';
+              // Endpoint unavailable — fall back to the age heuristic
+              try {
+                const metaRes = await fetch('/assets/viewer.meta.json');
+                if (!metaRes.ok) throw new Error(`HTTP ${metaRes.status}`);
+                const meta = await metaRes.json() as { builtAt?: string };
+                if (!meta.builtAt) throw new Error('no builtAt');
+                const ageMs = Date.now() - new Date(meta.builtAt).getTime();
+                const ageH = Math.round(ageMs / 36e5);
+                if (ageMs > 24 * 60 * 60 * 1000) {
+                  warning = `viewer.js was built ${ageH}h ago — source may have changed.`;
+                }
+              } catch {
+                warning = 'viewer.meta.json is missing — viewer.js may be stale.';
+              }
             }
             if (warning) {
               const proceed = confirm(
