@@ -1003,7 +1003,7 @@ function renderLabels(
       background:#0d0d0d;z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;overflow-y:auto;">
       <div style="max-width:640px;margin:0 auto;padding:2rem;width:100%;box-sizing:border-box;">
         <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Review Wall Labels</h2>
-        <p style="color:#888;font-size:0.85rem;margin:0 0 1.5rem;">Edit any label before entering the gallery. Changes are saved automatically.</p>
+        <p style="color:#888;font-size:0.85rem;margin:0 0 1.5rem;">Edit any title, medium, or label text before entering the gallery. Changes are saved automatically.</p>
         <div id="oh-labels-list"></div>
         <div style="display:flex;gap:0.75rem;margin-top:1rem;">
           <button id="oh-back-labels" style="flex:0 0 auto;padding:0.85rem 1.2rem;background:none;border:1px solid #444;color:#aaa;border-radius:8px;font-size:1rem;cursor:pointer;">&larr; Back to edit</button>
@@ -1020,9 +1020,27 @@ function renderLabels(
     const block = document.createElement('div');
     block.style.cssText = 'margin-bottom:1.25rem;';
     block.innerHTML = `
-      <p style="font-size:0.85rem;font-weight:600;margin:0 0 0.25rem;">${escapeHtml(aw.title || 'Untitled')} <span style="color:#666;font-weight:400;">${aw.medium ? `· ${escapeHtml(aw.medium)}` : ''}</span></p>
-      <textarea data-id="${escapeHtml(aw.id)}" rows="3"
+      <div style="display:flex;gap:0.5rem;margin:0 0 0.35rem;">
+        <input data-id="${escapeHtml(aw.id)}" data-field="title" type="text"
+          value="${escapeHtml(aw.title ?? '')}" placeholder="Untitled" aria-label="Artwork title"
+          style="flex:1.4;min-width:0;padding:0.4rem 0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.9rem;font-weight:600;box-sizing:border-box;">
+        <input data-id="${escapeHtml(aw.id)}" data-field="medium" type="text"
+          value="${escapeHtml(aw.medium ?? '')}" placeholder="Medium (e.g. Oil on canvas)" aria-label="Artwork medium"
+          style="flex:1;min-width:0;padding:0.4rem 0.5rem;background:#111;color:#999;border:1px solid #2a2a2a;border-radius:6px;font-size:0.85rem;box-sizing:border-box;">
+      </div>
+      <textarea data-id="${escapeHtml(aw.id)}" rows="3" aria-label="Wall label text"
         style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.85rem;resize:vertical;box-sizing:border-box;">${escapeHtml(aw.label)}</textarea>`;
+    // Title + medium inputs write straight back to the gallery object —
+    // inspect panel / tour read these live, so edits show up in the viewer.
+    for (const input of Array.from(block.querySelectorAll('input'))) {
+      input.addEventListener('input', (e) => {
+        const el = e.target as HTMLInputElement;
+        const galleryAw = data.gallery!.artworks.find((a) => a.id === el.dataset['id']);
+        if (!galleryAw) return;
+        if (el.dataset['field'] === 'title') galleryAw.title = el.value;
+        else galleryAw.medium = el.value;
+      });
+    }
     block.querySelector('textarea')!.addEventListener('input', (e) => {
       const id = (e.target as HTMLTextAreaElement).dataset['id'];
       const galleryAw = data.gallery!.artworks.find((a) => a.id === id);
