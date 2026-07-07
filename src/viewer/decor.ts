@@ -71,6 +71,15 @@ export interface DecorParams {
     metalness: number;
     headRadius: number;
     headLength: number;
+    /** Optional metallic accent ring (e.g. brass on dark-dramatic) — makes the
+     *  fixture read against a dark ceiling and reads as a refined detail. */
+    accent?: { color: number; roughness: number; metalness: number };
+    /** Optional theatre-style barn-door flaps around the lens. */
+    barnDoors?: boolean;
+    /** Lens glow overrides (defaults to a warm gallery halogen). */
+    lensColor?: number;
+    lensEmissive?: number;
+    lensIntensity?: number;
   };
   /**
    * Ceiling wiring for the spot fixtures — per-style design language.
@@ -146,8 +155,13 @@ export const DECOR_PARAMS: Record<StyleFamily, DecorParams> = {
       height: 0.13, depth: 0.02, color: 0x0f0f0f, roughness: 0.7, metalness: 0.2,
       goldTrim: { color: 0xc9a227, roughness: 0.3, metalness: 0.85 },
     },
-    fixture: { kind: 'spot', color: 0x0c0c0c, roughness: 0.5, metalness: 0.5, headRadius: 0.035, headLength: 0.22 },
-    conduit: { kind: 'track', width: 0.045, height: 0.024, color: 0x0e0e0e, roughness: 0.5, metalness: 0.4 },
+    fixture: {
+      kind: 'spot', color: 0x161616, roughness: 0.35, metalness: 0.85, headRadius: 0.05, headLength: 0.26,
+      accent: { color: 0xc9a227, roughness: 0.3, metalness: 0.9 },
+      barnDoors: true,
+      lensColor: 0xfff0d0, lensEmissive: 0xffdf9c, lensIntensity: 3.2,
+    },
+    conduit: { kind: 'track', width: 0.05, height: 0.026, color: 0x171717, roughness: 0.4, metalness: 0.6 },
     ceilingColor: 0x0a0a0a,
     light: { pointIntensity: 7, spotIntensity: 38 },
     bench: { kind: 'upholstered', topColor: 0x3a2430, topRoughness: 0.95, topMetalness: 0, legColor: 0x0c0c0c, legRoughness: 0.5, legMetalness: 0.4 },
@@ -297,17 +311,49 @@ export function buildSpotFixture(
   rim.position.z = p.headLength / 2 - 0.005;
   head.add(rim);
 
+  // Optional brass accent ring — makes the head read against a dark ceiling.
+  if (p.accent) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(p.headRadius * 1.06, 0.009, 10, 28),
+      stdMat(p.accent.color, p.accent.roughness, p.accent.metalness)
+    );
+    ring.position.z = p.headLength / 2 + 0.003;
+    head.add(ring);
+  }
+
+  // Optional theatre barn-door flaps flaring out around the lens.
+  if (p.barnDoors) {
+    const doorMat = stdMat(p.color, 0.3, 0.9);
+    const size = p.headRadius * 1.55;
+    const off = p.headRadius * 0.98;
+    const frontZ = p.headLength / 2 + 0.02;
+    const flare = Math.PI / 5;
+    const doors: Array<{ pos: [number, number, number]; rot: [number, number, number] }> = [
+      { pos: [0, off, frontZ], rot: [-flare, 0, 0] },
+      { pos: [0, -off, frontZ], rot: [flare, 0, 0] },
+      { pos: [off, 0, frontZ], rot: [0, flare, 0] },
+      { pos: [-off, 0, frontZ], rot: [0, -flare, 0] },
+    ];
+    for (const d of doors) {
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(size, size, 0.005), doorMat);
+      flap.position.set(...d.pos);
+      flap.rotation.set(...d.rot);
+      head.add(flap);
+    }
+  }
+
   // Emissive lens — makes the fixture read as a light source
   const lens = new THREE.Mesh(
-    new THREE.CircleGeometry(p.headRadius * 0.7, 14),
+    new THREE.CircleGeometry(p.headRadius * 0.72, 16),
     new THREE.MeshStandardMaterial({
-      color: 0xfff4e0,
-      emissive: 0xffe8c4,
-      emissiveIntensity: 1.8,
+      color: p.lensColor ?? 0xfff4e0,
+      emissive: p.lensEmissive ?? 0xffe8c4,
+      emissiveIntensity: p.lensIntensity ?? 1.8,
       roughness: 1,
+      toneMapped: false,
     })
   );
-  lens.position.z = p.headLength / 2 + 0.006;
+  lens.position.z = p.headLength / 2 + 0.007;
   head.add(lens);
 
   head.position.set(fixtureX, ceilingY - 0.02 - armLen - p.headRadius * 0.4, fixtureZ);

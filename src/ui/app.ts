@@ -976,6 +976,7 @@ function renderUpload(
         <button id="oh-generate-btn" style="width:100%;padding:0.85rem;background:#fff;color:#111;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;opacity:0.4;" disabled>
           Generate Gallery →
         </button>
+        <p id="oh-gen-hint" style="font-size:0.78rem;margin:0.5rem 0 0;text-align:center;"></p>
       </div>
     </div>`;
 
@@ -1003,22 +1004,37 @@ function renderUpload(
         b.style.background = isSelected ? '#fff' : '#1a1a1a';
         b.style.color = isSelected ? '#111' : '#f0ece6';
       });
+      updateGenerateBtn(); // style is part of the AI key → refresh the cost hint
     });
     presetsEl.appendChild(btn);
   }
 
   // Brief
-  briefInput.addEventListener('input', () => { data.userBrief = briefInput.value; });
+  briefInput.addEventListener('input', () => { data.userBrief = briefInput.value; updateGenerateBtn(); });
 
   // File handling
+  const genHint = container.querySelector('#oh-gen-hint') as HTMLElement;
   function updateGenerateBtn() {
     const ready = data.artworks.length > 0 && data.artworks.length <= 10;
     generateBtn.disabled = !ready;
     generateBtn.style.opacity = ready ? '1' : '0.4';
-    // If a gallery already exists and the AI inputs are unchanged, re-entering
-    // costs nothing — surface that so the user knows they won't be re-billed.
+    // Cache state drives both the button label and the cost hint below it.
     const cached = !!data.gallery && data.lastGenKey === aiInputKey(data);
+    const hadGallery = !!data.gallery;
     generateBtn.textContent = cached ? 'Continue → (no AI, no cost)' : 'Generate Gallery →';
+    if (cached) {
+      genHint.textContent = '✓ Same artworks, description & style — continues with no new AI call.';
+      genHint.style.color = '#6a9a6a';
+    } else if (hadGallery) {
+      // They already had a gallery and changed the artworks/description/style.
+      genHint.textContent = '⚠️ You changed the artworks, description, or style — this re-runs the AI and may use API credits.';
+      genHint.style.color = '#d9a441';
+    } else if (ready) {
+      genHint.textContent = 'Generating calls your AI provider and may use API credits.';
+      genHint.style.color = '#777';
+    } else {
+      genHint.textContent = '';
+    }
   }
 
   // --- Identity / branding wiring ---
