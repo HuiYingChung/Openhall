@@ -77,6 +77,35 @@ function aiInputKey(data: AppData): string {
 }
 
 /**
+ * Normalise a user-entered link. Accepts full URLs and bare domains — prepends
+ * https:// when the scheme is missing (so "instagram.com/jane" still works).
+ * Returns '' when the text isn't a usable web address.
+ */
+export function normalizeUrl(raw: string): string {
+  const s = raw.trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  // Bare domain-like text (has a dot, no spaces) → assume https.
+  if (/^[^\s./]+\.[^\s]+$/.test(s)) return `https://${s}`;
+  return '';
+}
+
+/** Human-readable label derived from a URL host (drops the leading www.). */
+function urlHost(u: string): string {
+  try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; }
+}
+
+/** Normalise + de-junk the artist link rows into valid {label,url} entries. */
+export function cleanArtistLinks(
+  rows: { label: string; url: string }[]
+): { label: string; url: string }[] {
+  return rows
+    .map((l) => ({ label: l.label.trim(), url: normalizeUrl(l.url) }))
+    .filter((l) => l.url)
+    .map((l) => ({ label: l.label || urlHost(l.url), url: l.url }));
+}
+
+/**
  * Fold the artist's identity/branding drafts into the gallery object. Pure data
  * work — no AI. The artist name/links also seed the export branding (author),
  * and set up the in-world artist plaque. Called before every scene build so
@@ -88,11 +117,11 @@ function applyIdentity(gallery: Gallery, data: AppData): void {
 
   if (idv.title) gallery.title = idv.title;
 
-  const authorUrl = idv.links.find((l) => /^https?:\/\//i.test(l.url))?.url;
+  const links = cleanArtistLinks(idv.links);
   const branding = { ...(gallery.branding ?? {}) };
   if (idv.description) branding.description = idv.description;
   if (idv.artistName) branding.authorName = idv.artistName;
-  if (authorUrl) branding.authorUrl = authorUrl;
+  if (links[0]) branding.authorUrl = links[0].url;
   if (Object.keys(branding).length) gallery.branding = branding;
 
   if (idv.artistName) {
@@ -100,7 +129,7 @@ function applyIdentity(gallery: Gallery, data: AppData): void {
       name: idv.artistName,
       statement: idv.artistStatement,
       portraitPath: idv.portraitObjectUrl ?? undefined,
-      links: idv.links.filter((l) => l.label.trim() && /^https?:\/\//i.test(l.url)),
+      links,
     };
   } else {
     gallery.artist = undefined;
