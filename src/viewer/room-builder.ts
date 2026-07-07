@@ -40,7 +40,9 @@ const OPPOSITE_WALL: Record<string, 'n' | 's' | 'e' | 'w'> = {
 // ---------------------------------------------------------------------------
 
 const WALL_COLORS: Record<string, number> = {
-  'white-plaster': 0xf5f0eb,
+  // Soft gallery white (not paper-white) so the walls don't clip to a blown-out
+  // glare under the ambient + point-grid lighting.
+  'white-plaster': 0xe4ded5,
   concrete: 0x9a9a9a,
   'dark-wood': 0x3d2b1f,
   brick: 0x8b4c39,
@@ -646,10 +648,17 @@ function buildArtworkPlane(
   if (artwork.imagePath && !artwork.imagePath.startsWith('placeholder:')) {
     const texture = new THREE.TextureLoader().load(artwork.imagePath);
     texture.colorSpace = THREE.SRGBColorSpace;
-    // High roughness + faint env reflection: the work stays readable while
-    // walking; inspect mode kills the reflection entirely (interactions.ts).
-    canvasMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.85 });
-    canvasMat.envMapIntensity = 0.25;
+    // Anisotropic filtering keeps fine detail (e.g. thin black lines on white
+    // works) from averaging to a white blur at a distance / grazing angle.
+    texture.anisotropy = 8;
+    // Matte response + almost no env reflection so bright/high-key works don't
+    // blow out to a white glare while walking. A slight albedo ceiling (0.84)
+    // keeps whites just under the tone-map clip so line art stays legible.
+    // Inspect mode swaps to the unlit original pixels, so close-up fidelity is
+    // untouched (interactions.ts swapToUnlitMaterial).
+    canvasMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.92 });
+    canvasMat.color.setRGB(0.84, 0.84, 0.84);
+    canvasMat.envMapIntensity = 0.08;
   } else {
     // Placeholder solid color — only for explicit placeholder: paths or empty imagePath
     canvasMat = new THREE.MeshStandardMaterial({
@@ -717,9 +726,9 @@ function buildArtworkPlane(
 export const ARTIST_MESH_ID = '__artist__';
 
 /** Dark wall families want light ink; light walls want dark ink. */
-function wallInkColors(wall: string): { text: string } {
+function wallInkColors(wall: string): { text: string; dark: boolean } {
   const dark = wall === 'black-plaster' || wall === 'dark-wood' || wall === 'concrete';
-  return { text: dark ? '#f2efe9' : '#1b1b1b' };
+  return { text: dark ? '#f2efe9' : '#1b1b1b', dark };
 }
 
 function buildArtistPlaque(
@@ -739,10 +748,17 @@ function buildArtistPlaque(
   const accentHex = parseInt(room.surfaces.accentColor.replace('#', ''), 16) || 0xc0a070;
   const ink = wallInkColors(room.surfaces.wall);
 
+  // Contrast-safe accent: the bright room accent pops on a dark wall, but on a
+  // light wall it washes out — darken it there so the eyebrow, rule, and links
+  // stay legible.
+  const accentColor = new THREE.Color(accentHex);
+  if (!ink.dark) accentColor.multiplyScalar(0.42);
+  const accentStr = `#${accentColor.getHexString()}`;
+
   // Wall text (transparent — only the ink shows over the wall surface).
   const textTex = makeArtistWallTexture(artist, {
     textColor: ink.text,
-    accent: `#${new THREE.Color(accentHex).getHexString()}`,
+    accent: accentStr,
     textLeftPx,
   });
   // Lit by a dedicated wall wash (added in buildScene); no emissive so the

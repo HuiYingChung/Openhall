@@ -989,11 +989,11 @@ function renderUpload(
           <div style="height:1px;background:#2a2a2a;margin:0.5rem 0 0.9rem;"></div>
 
           <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.25rem;">Your name / studio</label>
-          <input id="oh-id-name" type="text" value="${escapeHtml(idv.artistName ?? '')}" placeholder="Shown on a clickable artist wall in the gallery" aria-label="Artist name"
+          <input id="oh-id-name" type="text" maxlength="80" value="${escapeHtml(idv.artistName ?? '')}" placeholder="Shown on a clickable artist wall in the gallery" aria-label="Artist name"
             style="${idInput}margin-bottom:0.75rem;">
 
           <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.25rem;">Short statement / bio</label>
-          <textarea id="oh-id-statement" rows="3" placeholder="A few sentences about you or this body of work" aria-label="Artist statement"
+          <textarea id="oh-id-statement" rows="3" maxlength="400" placeholder="A few sentences about you or this body of work (the wall shows a preview; the full text appears when visitors click it)" aria-label="Artist statement"
             style="${idInput}resize:vertical;margin-bottom:0.75rem;">${escapeHtml(idv.artistStatement ?? '')}</textarea>
 
           <div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;margin-bottom:0.9rem;">
@@ -1430,7 +1430,7 @@ function renderLabels(
   // Editable artist statement — only when an artist wall exists. Reads live in
   // the click panel + tour, so edits here take effect without regenerating.
   const artistReviewBlock = artistObj
-    ? `<textarea id="oh-brand-statement" rows="3" placeholder="Artist statement (shown on your artist wall)" aria-label="Artist statement"
+    ? `<textarea id="oh-brand-statement" rows="3" maxlength="400" placeholder="Artist statement (shown on your artist wall)" aria-label="Artist statement"
         style="${inputStyle}resize:vertical;">${escapeHtml(aStatement)}</textarea>`
     : '';
 

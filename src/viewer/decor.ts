@@ -124,9 +124,9 @@ export const DECOR_PARAMS: Record<StyleFamily, DecorParams> = {
     baseboard: { height: 0.05, depth: 0.012, color: 0x151515, roughness: 0.9, metalness: 0 },
     fixture: { kind: 'spot', color: 0xf2f2f2, roughness: 0.5, metalness: 0.3, headRadius: 0.04, headLength: 0.14 },
     conduit: { kind: 'track', width: 0.06, height: 0.028, color: 0xe8e3dd, roughness: 0.6, metalness: 0.2 },
-    ceilingColor: 0xf5f0eb,
-    light: { pointIntensity: 22, spotIntensity: 26 },
-    bench: { kind: 'slab', topColor: 0xf2f0ec, topRoughness: 0.65, topMetalness: 0, legColor: 0xf2f0ec, legRoughness: 0.65, legMetalness: 0 },
+    ceilingColor: 0xece7e0,
+    light: { pointIntensity: 14, spotIntensity: 21 },
+    bench: { kind: 'slab', topColor: 0xeae7e2, topRoughness: 0.65, topMetalness: 0, legColor: 0xeae7e2, legRoughness: 0.65, legMetalness: 0 },
   },
   industrial: {
     frame: { thickness: 0.08, depth: 0.045, color: 0x3c3c3c, roughness: 0.45, metalness: 0.75 },
@@ -651,24 +651,47 @@ export function makeMonogramTexture(name: string, accentHex: number): THREE.Text
   return tex;
 }
 
-/** Word-wrap `text` into `ctx` at (x,y); returns the y after the last line. */
+/**
+ * Word-wrap `text` into `ctx` at (x,y); returns the y after the last line.
+ * Handles both spaced scripts (breaks between words) and CJK (breaks between
+ * characters, since there are no spaces). When `maxLines` is exceeded the final
+ * visible line is truncated with an ellipsis so the canvas never overflows.
+ */
 function wrapCanvasText(
   ctx: CanvasRenderingContext2D,
   text: string,
   x: number,
   y: number,
   maxWidth: number,
-  lineHeight: number
+  lineHeight: number,
+  maxLines = Infinity
 ): number {
-  const words = text.split(/\s+/);
+  // Tokens: each CJK char on its own, runs of other non-space text as words,
+  // and whitespace as separators.
+  const cjk = '\\u3000-\\u9fff\\uff00-\\uffef';
+  const tokens = text.match(new RegExp(`[${cjk}]|\\s+|[^\\s${cjk}]+`, 'g')) ?? [];
   let line = '';
   let cursorY = y;
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > maxWidth && line) {
+  let lineCount = 0;
+
+  const truncateToFit = (s: string) => {
+    let t = s;
+    while (t && ctx.measureText(`${t}…`).width > maxWidth) t = t.slice(0, -1);
+    return `${t}…`;
+  };
+
+  for (const token of tokens) {
+    if (/^\s+$/.test(token)) { if (line) line += ' '; continue; }
+    const test = line + token;
+    if (line && ctx.measureText(test).width > maxWidth) {
+      if (lineCount + 1 >= maxLines) {
+        ctx.fillText(truncateToFit(line), x, cursorY);
+        return cursorY + lineHeight;
+      }
       ctx.fillText(line, x, cursorY);
-      line = word;
       cursorY += lineHeight;
+      lineCount++;
+      line = token;
     } else {
       line = test;
     }
@@ -714,10 +737,10 @@ export function makeArtistWallTexture(
   try { ctx.letterSpacing = '0px'; } catch { /* noop */ }
   y += 62;
 
-  // Name
+  // Name (max 2 lines so a very long name can't push the layout off-canvas)
   ctx.fillStyle = opts.textColor;
   ctx.font = font('700 84px');
-  y = wrapCanvasText(ctx, artist.name || 'Artist', x, y, maxW, 92);
+  y = wrapCanvasText(ctx, artist.name || 'Artist', x, y, maxW, 92, 2);
   y += 18;
 
   // Accent rule
@@ -729,12 +752,15 @@ export function makeArtistWallTexture(
   ctx.stroke();
   y += 42;
 
-  // Statement (wrapped within the text column)
+  // Statement — capped to however many lines fit above the links/bottom, with
+  // an ellipsis when longer (the full text is always shown in the click panel).
   if (artist.statement) {
+    const lh = 54;
+    const statementMaxLines = Math.max(1, Math.floor((H - y - 80) / lh));
     ctx.fillStyle = opts.textColor;
-    ctx.globalAlpha = 0.86;
+    ctx.globalAlpha = 0.9;
     ctx.font = font('400 38px');
-    y = wrapCanvasText(ctx, artist.statement, x, y, maxW, 54);
+    y = wrapCanvasText(ctx, artist.statement, x, y, maxW, lh, statementMaxLines);
     ctx.globalAlpha = 1;
     y += 24;
   }
