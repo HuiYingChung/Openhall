@@ -439,29 +439,66 @@ export function buildBaseboardSegment(
 
 export type WallSide = 'n' | 's' | 'e' | 'w';
 
+export interface EntrancePick {
+  side: WallSide;
+  /** Along-wall offset of the portal centre from the wall centre */
+  offset: number;
+}
+
 /**
- * Pick a wall of the room for the fake entrance (centred, ~1.9 m wide).
- * A wall qualifies when it has no doorway, is ≥ 4 m long, and every artwork
- * on it sits at least CLEARANCE from the wall centre (art and portal can
- * share a long wall). Preference order keeps the portal on the "outside"
- * end of the linear room chain. Pure — unit-testable.
+ * Pick a wall + along-wall offset for the fake entrance (~1.9 m wide portal).
+ * A spot qualifies when the wall has no doorway, is ≥ 4 m long, and a free
+ * gap ≥ PORTAL_NEED exists between artworks (each blocks offset ± ART_BLOCK).
+ * Pass 1 prefers a wall where the portal can sit centred (classic look, in
+ * an order that keeps it on the "outside" of the room chain); pass 2 falls
+ * back to the first wall with any qualifying gap — so a busy room still gets
+ * its entrance, just off-centre. Pure — unit-testable.
  */
 export function pickEntranceWall(
   room: Room,
   doorwayWalls: Set<string>,
   artworkOffsets: Map<string, number[]>
-): WallSide | null {
+): EntrancePick | null {
   const order: WallSide[] = ['w', 's', 'n', 'e'];
-  const CLEARANCE = 2.2;
+  const PORTAL_NEED = 2.4; // portal incl. jambs + breathing room
+  const ART_BLOCK = 1.1; // half-interval an artwork blocks (0.6 art + margin)
+  const EDGE = 0.3; // keep the portal off the wall corners
+  let fallback: EntrancePick | null = null;
+
   for (const side of order) {
     if (doorwayWalls.has(side)) continue;
     const len = side === 'n' || side === 's' ? room.width : room.depth;
     if (len < 4) continue;
-    const offs = artworkOffsets.get(side) ?? [];
-    if (offs.some((o) => Math.abs(o) < CLEARANCE)) continue;
-    return side;
+
+    // Free gaps = wall span minus artwork-blocked intervals
+    let gaps: Array<[number, number]> = [[-len / 2 + EDGE, len / 2 - EDGE]];
+    for (const o of artworkOffsets.get(side) ?? []) {
+      const blo = o - ART_BLOCK;
+      const bhi = o + ART_BLOCK;
+      gaps = gaps.flatMap(([a, b]) => {
+        const clo = Math.max(a, blo);
+        const chi = Math.min(b, bhi);
+        if (clo >= chi) return [[a, b]] as Array<[number, number]>;
+        const out: Array<[number, number]> = [];
+        if (a < clo) out.push([a, clo]);
+        if (chi < b) out.push([chi, b]);
+        return out;
+      });
+    }
+
+    // Best spot on this wall: portal centre as close to the wall centre as
+    // any qualifying gap allows
+    let best: number | null = null;
+    for (const [a, b] of gaps) {
+      if (b - a < PORTAL_NEED) continue;
+      const c = Math.max(a + PORTAL_NEED / 2, Math.min(b - PORTAL_NEED / 2, 0));
+      if (best === null || Math.abs(c) < Math.abs(best)) best = c;
+    }
+    if (best === null) continue;
+    if (Math.abs(best) < 1e-9) return { side, offset: 0 }; // centred — done
+    if (!fallback) fallback = { side, offset: best };
   }
-  return null;
+  return fallback;
 }
 
 const ENTRANCE_DOOR_COLORS: Record<StyleFamily, { leaf: number; handle: number }> = {
@@ -482,7 +519,9 @@ export function buildFakeEntrance(
   room: Room,
   originX: number,
   originZ: number,
-  side: WallSide
+  side: WallSide,
+  /** Along-wall offset from the wall centre (from pickEntranceWall) */
+  offset = 0
 ): void {
   const p = DECOR_PARAMS[family];
   const colors = ENTRANCE_DOOR_COLORS[family];
@@ -536,25 +575,25 @@ export function buildFakeEntrance(
   glow.position.set(0, 2.63, 0.05);
   g.add(glow);
 
-  // Place on the chosen wall, centred, facing into the room
+  // Place on the chosen wall at the picked along-wall offset, facing in
   const cx = originX + room.width / 2;
   const cz = originZ + room.depth / 2;
   const inset = 0.03;
   switch (side) {
     case 'n':
-      g.position.set(cx, 0, originZ + inset);
+      g.position.set(cx + offset, 0, originZ + inset);
       g.rotation.y = 0;
       break;
     case 's':
-      g.position.set(cx, 0, originZ + room.depth - inset);
+      g.position.set(cx + offset, 0, originZ + room.depth - inset);
       g.rotation.y = Math.PI;
       break;
     case 'w':
-      g.position.set(originX + inset, 0, cz);
+      g.position.set(originX + inset, 0, cz + offset);
       g.rotation.y = Math.PI / 2;
       break;
     case 'e':
-      g.position.set(originX + room.width - inset, 0, cz);
+      g.position.set(originX + room.width - inset, 0, cz + offset);
       g.rotation.y = -Math.PI / 2;
       break;
   }

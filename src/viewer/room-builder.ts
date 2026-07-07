@@ -266,15 +266,16 @@ export function buildScene(
       arr.push(pl.offsetFromCenter);
       artworkOffsets.set(pl.wall, arr);
     }
-    const entranceSide = pickEntranceWall(entryRoom, doorwayWalls, artworkOffsets);
-    if (entranceSide) {
+    const entrancePick = pickEntranceWall(entryRoom, doorwayWalls, artworkOffsets);
+    if (entrancePick) {
       buildFakeEntrance(
         scene,
         resolveStyleFamily(entryRoom.surfaces.wall),
         entryRoom,
         entryOrigin.x,
         entryOrigin.z,
-        entranceSide
+        entrancePick.side,
+        entrancePick.offset
       );
     }
   }

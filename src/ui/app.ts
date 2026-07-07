@@ -347,6 +347,7 @@ export function bootApp(): void {
       tour = new GalleryTour({
         camera,
         gallery: data.gallery,
+        getArtworkMesh: (id) => interactions?.getMesh(id),
         onExit: (pos) => {
           tour = null;
           camera.position.copy(pos);
@@ -388,6 +389,7 @@ export function bootApp(): void {
       tour = new GalleryTour({
         camera,
         gallery,
+        getArtworkMesh: (id) => interactions?.getMesh(id),
         onExit: (pos) => {
           tour = null;
           camera.position.copy(pos);
@@ -483,6 +485,7 @@ export function bootApp(): void {
                   tour = new GalleryTour({
                     camera,
                     gallery,
+                    getArtworkMesh: (id) => interactions?.getMesh(id),
                     onExit: (pos) => {
                       tour = null;
                       camera.position.copy(pos);

@@ -114,6 +114,7 @@ async function bootViewer() {
     tour = new GalleryTour({
       camera,
       gallery,
+      getArtworkMesh: (id) => interactions.getMesh(id),
       onExit: (pos) => {
         tour = null;
         camera.position.copy(pos);

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { sanitizePlacements, convertInboundOffset, buildRoomOrigins } from '../ui/placement-sanity';
+import { sanitizePlacements, convertInboundOffset, buildRoomOrigins, deoverlapWallItems } from '../ui/placement-sanity';
 import { GallerySchema } from '../schema/gallery.schema';
 import sampleGallery from '../demo/sample-gallery.json';
 import type { Gallery } from '../schema/gallery.schema';
@@ -214,5 +214,100 @@ describe('convertInboundOffset', () => {
     // Should be pushed below -4.9 (to the far side) or clamped within the wall
     const doorwayClearance = -3 - 1.0 - 0.6 - 0.3; // = -4.9
     expect(newOffset).toBeLessThanOrEqual(doorwayClearance + 0.01);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deoverlapWallItems — same-wall artwork overlap resolution
+// (regression: generated galleries showed stacked/overlapping artworks)
+// ---------------------------------------------------------------------------
+
+function expectNoOverlap(offsets: number[], halves: number[], gap = 0.3): void {
+  const spans = offsets
+    .map((o, i) => [o - halves[i], o + halves[i]])
+    .sort((a, b) => a[0] - b[0]);
+  for (let i = 1; i < spans.length; i++) {
+    expect(spans[i][0]).toBeGreaterThanOrEqual(spans[i - 1][1] + gap - 1e-9);
+  }
+}
+
+describe('deoverlapWallItems', () => {
+  it('leaves already-valid layouts untouched', () => {
+    const items = [
+      { offset: -3, half: 0.6 },
+      { offset: 0, half: 0.6 },
+      { offset: 3, half: 0.6 },
+    ];
+    expect(deoverlapWallItems(items, 12)).toEqual([-3, 0, 3]);
+  });
+
+  it('separates two artworks at the same offset', () => {
+    const items = [
+      { offset: 1, half: 0.6 },
+      { offset: 1, half: 0.6 },
+    ];
+    const out = deoverlapWallItems(items, 12);
+    expectNoOverlap(out, [0.6, 0.6]);
+    out.forEach((o) => {
+      expect(o - 0.6).toBeGreaterThanOrEqual(-5.8 - 1e-9);
+      expect(o + 0.6).toBeLessThanOrEqual(5.8 + 1e-9);
+    });
+  });
+
+  it('resolves a pile-up clamped into the same corner', () => {
+    // Three works all clamped to the right edge by the per-placement pass
+    const items = [
+      { offset: 5.2, half: 0.6 },
+      { offset: 5.2, half: 0.6 },
+      { offset: 5.2, half: 0.6 },
+    ];
+    const out = deoverlapWallItems(items, 12);
+    expectNoOverlap(out, [0.6, 0.6, 0.6]);
+    out.forEach((o) => expect(o + 0.6).toBeLessThanOrEqual(5.8 + 1e-9));
+  });
+
+  it('routes artworks around a doorway zone', () => {
+    // Doorway blocks [-1.3, 1.3]; two works want the centre
+    const items = [
+      { offset: -0.5, half: 0.6 },
+      { offset: 0.5, half: 0.6 },
+    ];
+    const out = deoverlapWallItems(items, 12, [[-1.3, 1.3]]);
+    expectNoOverlap(out, [0.6, 0.6]);
+    // Neither artwork may intrude into the doorway zone
+    for (const o of out) {
+      expect(o + 0.6 <= -1.3 + 1e-9 || o - 0.6 >= 1.3 - 1e-9).toBe(true);
+    }
+  });
+
+  it('spreads evenly rather than exploding when a wall is over-crowded', () => {
+    const items = Array.from({ length: 4 }, () => ({ offset: 0, half: 0.6 }));
+    const out = deoverlapWallItems(items, 4); // 3.6 m usable, 4×1.2 m art
+    // Best-effort: all on the wall, monotone spread
+    out.forEach((o) => {
+      expect(o).toBeGreaterThanOrEqual(-1.8 - 1e-9);
+      expect(o).toBeLessThanOrEqual(1.8 + 1e-9);
+    });
+    const sorted = [...out].sort((a, b) => a - b);
+    for (let i = 1; i < sorted.length; i++) expect(sorted[i]).toBeGreaterThan(sorted[i - 1]);
+  });
+});
+
+describe('sanitizePlacements same-wall overlap integration', () => {
+  it('separates two LLM placements that overlap on one wall', () => {
+    const gallery = baseGallery();
+    gallery.placements[0] = {
+      ...gallery.placements[0], roomId: 'room-a', wall: 'n',
+      offsetFromCenter: 1.0, displayWidth: 1.2,
+    };
+    gallery.placements[1] = {
+      ...gallery.placements[1], roomId: 'room-a', wall: 'n',
+      offsetFromCenter: 1.4, displayWidth: 1.2,
+    };
+    const result = sanitizePlacements(gallery);
+    const a = result.placements[0];
+    const b = result.placements[1];
+    const gapBetween = Math.abs(a.offsetFromCenter - b.offsetFromCenter);
+    expect(gapBetween).toBeGreaterThanOrEqual(1.2 + 0.3 - 1e-9);
   });
 });

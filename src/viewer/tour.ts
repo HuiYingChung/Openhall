@@ -18,7 +18,7 @@ import { escapeHtml } from '../ui/escape-html';
 
 import * as THREE from 'three';
 import type { TourWaypoint, Gallery } from '../schema/gallery.schema';
-import { wirePanelDrag } from './interactions';
+import { wirePanelDrag, swapToUnlitMaterial } from './interactions';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,6 +29,11 @@ export interface TourOptions {
   gallery: Gallery;
   /** Called when tour exits to return control to free walk. */
   onExit: (position: THREE.Vector3) => void;
+  /**
+   * Optional canvas-mesh lookup. When provided, the focused artwork is
+   * rendered unlit while viewed so spotlights can't wash out the image.
+   */
+  getArtworkMesh?: (id: string) => THREE.Mesh | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +237,8 @@ export class GalleryTour {
   private boundResize: () => void;
   private resizeTimer: ReturnType<typeof setTimeout> | null = null;
   private onExitCb: (position: THREE.Vector3) => void;
+  private getArtworkMesh?: (id: string) => THREE.Mesh | undefined;
+  private restoreMat: (() => void) | null = null;
 
   private static isTouchDevice(): boolean {
     return typeof window !== 'undefined' &&
@@ -254,6 +261,7 @@ export class GalleryTour {
     this.gallery = opts.gallery;
     this.waypoints = opts.gallery.tour;
     this.onExitCb = opts.onExit;
+    this.getArtworkMesh = opts.getArtworkMesh;
 
     this.hud = createTourHud();
     const btns = createButtons(
@@ -354,6 +362,12 @@ export class GalleryTour {
       if (this.elapsed >= PAUSE_DURATION) {
         this.phase = 'viewing';
         this.elapsed = 0;
+        // Unlit swap while viewing — original colors, no spotlight washout
+        const wp = this.waypoints[this.index];
+        if (wp.artworkId && this.getArtworkMesh) {
+          const mesh = this.getArtworkMesh(wp.artworkId);
+          if (mesh) this.restoreMat = swapToUnlitMaterial(mesh);
+        }
         this.showLabel();
       }
     }
@@ -362,6 +376,9 @@ export class GalleryTour {
 
   private startWaypoint(index: number): void {
     if (!this.waypoints.length) return;
+    // Leaving the previous waypoint — restore its artwork material
+    this.restoreMat?.();
+    this.restoreMat = null;
     this.index = ((index % this.waypoints.length) + this.waypoints.length) % this.waypoints.length;
     const wp = this.waypoints[this.index];
 
@@ -458,6 +475,8 @@ export class GalleryTour {
 
   /** Clean up HUD, label box, resize + touch listeners. */
   dispose(): void {
+    this.restoreMat?.();
+    this.restoreMat = null;
     window.removeEventListener('resize', this.boundResize);
     if (this.resizeTimer !== null) { clearTimeout(this.resizeTimer); this.resizeTimer = null; }
     if (this.hud.parentNode) this.hud.parentNode.removeChild(this.hud);

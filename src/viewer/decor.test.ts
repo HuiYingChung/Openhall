@@ -162,32 +162,48 @@ describe('frameBarSpecs', () => {
 describe('pickEntranceWall', () => {
   const noArt = new Map<string, number[]>();
 
-  it('prefers the west wall when free', () => {
-    expect(pickEntranceWall(makeRoom(12, 10), new Set(), noArt)).toBe('w');
+  it('prefers the west wall, centred, when free', () => {
+    expect(pickEntranceWall(makeRoom(12, 10), new Set(), noArt)).toEqual({ side: 'w', offset: 0 });
   });
 
   it('skips walls with doorways', () => {
-    expect(pickEntranceWall(makeRoom(12, 10), new Set(['w']), noArt)).toBe('s');
-    expect(pickEntranceWall(makeRoom(12, 10), new Set(['w', 's', 'n']), noArt)).toBe('e');
+    expect(pickEntranceWall(makeRoom(12, 10), new Set(['w']), noArt)?.side).toBe('s');
+    expect(pickEntranceWall(makeRoom(12, 10), new Set(['w', 's', 'n']), noArt)?.side).toBe('e');
   });
 
   it('coexists with artworks far from the wall centre (demo room-a case)', () => {
-    // n wall art at ±3 m — centre is free, portal fits
+    // n wall art at ±3 m — centre is free, portal fits centred there
     const offsets = new Map<string, number[]>([
       ['w', [0]],
       ['s', [0]],
       ['n', [-3, 3]],
     ]);
-    expect(pickEntranceWall(makeRoom(12, 10), new Set(['e']), offsets)).toBe('n');
+    expect(pickEntranceWall(makeRoom(12, 10), new Set(['e']), offsets)).toEqual({ side: 'n', offset: 0 });
   });
 
-  it('rejects walls with artwork near the centre', () => {
+  it('falls back to an off-centre gap when art blocks every wall centre', () => {
+    // Regression: dark-dramatic generate run had art near all wall centres —
+    // the portal must still appear, shifted into a free stretch of wall.
     const offsets = new Map<string, number[]>([['w', [1.5]], ['s', [0]], ['n', [-2.0]]]);
-    expect(pickEntranceWall(makeRoom(12, 10), new Set(['e']), offsets)).toBeNull();
+    const pick = pickEntranceWall(makeRoom(12, 10), new Set(['e']), offsets);
+    expect(pick).not.toBeNull();
+    expect(pick!.side).toBe('w'); // first wall in preference order with a gap
+    // Portal (±1.2 m around the offset) must clear the artwork block at 1.5±1.1
+    expect(pick!.offset + 1.2).toBeLessThanOrEqual(1.5 - 1.1 + 1e-9);
+    // …and stay on the wall (w wall spans depth 10 → ±5 minus edge margin)
+    expect(pick!.offset - 1.2).toBeGreaterThanOrEqual(-5 + 0.3 - 1e-9);
+  });
+
+  it('returns null only when no wall can host any gap', () => {
+    // 5×5 room, art dead-centre on every wall: every gap < 2.4 m
+    const offsets = new Map<string, number[]>([
+      ['n', [-1.2, 1.2]], ['s', [-1.2, 1.2]], ['w', [-1.2, 1.2]], ['e', [-1.2, 1.2]],
+    ]);
+    expect(pickEntranceWall(makeRoom(5, 5), new Set(), offsets)).toBeNull();
   });
 
   it('skips walls shorter than 4 m', () => {
-    expect(pickEntranceWall(makeRoom(12, 3), new Set(), noArt)).toBe('s');
+    expect(pickEntranceWall(makeRoom(12, 3), new Set(), noArt)?.side).toBe('s');
   });
 });
 

@@ -147,6 +147,29 @@ export function wirePanelDrag(panel: HTMLElement): void {
   panel.addEventListener('pointercancel', endDrag);
 }
 
+/**
+ * Swap an artwork canvas to an unlit material while it is being inspected or
+ * toured. Physical spotlights + ACES tone mapping otherwise wash out the
+ * image at close range; unlit + toneMapped:false shows the original pixels.
+ * Returns a restore function (idempotent).
+ */
+export function swapToUnlitMaterial(mesh: THREE.Mesh): () => void {
+  const original = mesh.material as THREE.MeshStandardMaterial;
+  const unlit = new THREE.MeshBasicMaterial({
+    map: original.map ?? null,
+    color: original.map ? 0xffffff : original.color.clone(),
+    toneMapped: false,
+  });
+  mesh.material = unlit;
+  let restored = false;
+  return () => {
+    if (restored) return;
+    restored = true;
+    mesh.material = original;
+    unlit.dispose();
+  };
+}
+
 // ---------------------------------------------------------------------------
 // ArtworkInteractions class
 // ---------------------------------------------------------------------------
@@ -312,18 +335,12 @@ export class ArtworkInteractions {
     // Store which artwork we're inspecting
     this.currentArtworkId = artworkId;
 
-    // Kill specular glare on the canvas while inspecting — the viewer should
-    // see the flat artwork, not a varnished surface catching the lights.
-    const mat = mesh.material as THREE.MeshStandardMaterial;
-    this.glareMesh = mesh;
-    this.glarePrev = { envMapIntensity: mat.envMapIntensity, roughness: mat.roughness };
-    mat.envMapIntensity = 0;
-    mat.roughness = 1;
+    // Render the canvas unlit while inspecting — see swapToUnlitMaterial.
+    this.restoreArtworkMat = swapToUnlitMaterial(mesh);
   }
 
   private currentArtworkId: string | null = null;
-  private glareMesh: THREE.Mesh | null = null;
-  private glarePrev: { envMapIntensity: number; roughness: number } | null = null;
+  private restoreArtworkMat: (() => void) | null = null;
 
   private showInfoPanel(): void {
     if (!this.currentArtworkId) return;
@@ -368,14 +385,9 @@ export class ArtworkInteractions {
     this.inspecting = false;
     this.dollyActive = false;
     this.currentArtworkId = null;
-    // Restore the canvas material's normal (subtle) reflectivity
-    if (this.glareMesh && this.glarePrev) {
-      const mat = this.glareMesh.material as THREE.MeshStandardMaterial;
-      mat.envMapIntensity = this.glarePrev.envMapIntensity;
-      mat.roughness = this.glarePrev.roughness;
-    }
-    this.glareMesh = null;
-    this.glarePrev = null;
+    // Restore the canvas material's lit appearance
+    this.restoreArtworkMat?.();
+    this.restoreArtworkMat = null;
     this.opts.onInspectClose();
   }
 
@@ -387,6 +399,11 @@ export class ArtworkInteractions {
     if (this.inspecting || this.dollyActive) {
       this.closePanel();
     }
+  }
+
+  /** Look up the canvas mesh for an artwork id (used by the tour's unlit swap). */
+  getMesh(id: string): THREE.Mesh | undefined {
+    return this.opts.artworkMeshes.get(id);
   }
 
   /** True while the inspect panel is open or dolly is active (movement should be suppressed). */
