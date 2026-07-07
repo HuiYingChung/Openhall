@@ -259,6 +259,8 @@ export function bootApp(): void {
    * button inside the Paused overlay. No-op if no viewer session is running.
    */
   function exitToMenu(): void {
+    // Restore the default browser-tab title on leaving the gallery.
+    document.title = 'Openhall — AI 3D Gallery';
     // Dismiss any lingering Paused overlay
     if (activeRelockDismiss) { activeRelockDismiss(); activeRelockDismiss = null; }
     // Dispose the tour (removes HUD)
@@ -322,6 +324,10 @@ export function bootApp(): void {
   }
 
   function showViewerButtons(gallery: Gallery): void {
+    // Reflect the gallery title in the browser tab live (matches the exported
+    // site's <title>), so it's visible without exporting.
+    document.title = gallery.title?.trim() ? gallery.title : 'Openhall — AI 3D Gallery';
+
     // ← Menu button — always shown
     if (!document.getElementById('oh-menu-btn')) {
       const menuBtn = document.createElement('button');
