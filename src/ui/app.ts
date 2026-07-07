@@ -990,6 +990,10 @@ function renderUpload(
   container.querySelector('#oh-to-settings')!.addEventListener('click', onSettings);
   container.querySelector('#oh-home-demo')!.addEventListener('click', onDemo);
 
+  // Set by the two-step-confirm wiring below; lets input changes cancel a
+  // pending "click again to confirm" state (the AI key just changed).
+  let disarmOnInputChange: () => void = () => {};
+
   // Preset buttons
   const presetKeys = Object.keys(PRESETS) as StylePreset[];
   for (const key of presetKeys) {
@@ -1004,13 +1008,13 @@ function renderUpload(
         b.style.background = isSelected ? '#fff' : '#1a1a1a';
         b.style.color = isSelected ? '#111' : '#f0ece6';
       });
-      updateGenerateBtn(); // style is part of the AI key → refresh the cost hint
+      disarmOnInputChange(); // style is part of the AI key → refresh hint + cancel arm
     });
     presetsEl.appendChild(btn);
   }
 
   // Brief
-  briefInput.addEventListener('input', () => { data.userBrief = briefInput.value; updateGenerateBtn(); });
+  briefInput.addEventListener('input', () => { data.userBrief = briefInput.value; disarmOnInputChange(); });
 
   // File handling
   const genHint = container.querySelector('#oh-gen-hint') as HTMLElement;
@@ -1030,8 +1034,9 @@ function renderUpload(
       genHint.textContent = '⚠️ You changed the artworks, description, or style — this re-runs the AI and may use API credits.';
       genHint.style.color = '#d9a441';
     } else if (ready) {
-      genHint.textContent = 'Generating calls your AI provider and may use API credits.';
-      genHint.style.color = '#777';
+      // First generation — also calls the AI, so warn just as clearly.
+      genHint.textContent = '⚠️ This runs the AI to build your gallery and may use API credits.';
+      genHint.style.color = '#d9a441';
     } else {
       genHint.textContent = '';
     }
@@ -1158,7 +1163,7 @@ function renderUpload(
       data.artworks.push(artwork);
       addThumbnail(thumbnailGrid, artwork, data);
     }
-    updateGenerateBtn();
+    disarmOnInputChange(); // refreshes label/hint + cancels a pending confirm
     refreshFav(); // the auto favicon derives from the first artwork
   }
 
@@ -1176,9 +1181,35 @@ function renderUpload(
   for (const aw of data.artworks) addThumbnail(thumbnailGrid, aw, data);
   updateGenerateBtn();
 
+  // Two-step confirm — guards ONLY the billable path (a real AI call). The
+  // cached "Continue" path is free, so it stays a single click.
+  let armed = false;
+  let armTimer: ReturnType<typeof setTimeout> | undefined;
+  function disarmGenerate() {
+    if (armTimer) { clearTimeout(armTimer); armTimer = undefined; }
+    armed = false;
+    generateBtn.style.background = '#fff';
+    generateBtn.style.color = '#111';
+    updateGenerateBtn(); // refreshes label + cost hint
+  }
+  // Expose so the input handlers can cancel a stale armed state.
+  disarmOnInputChange = disarmGenerate;
+
   generateBtn.addEventListener('click', () => {
     data.userBrief = briefInput.value.trim();
     if (!data.userBrief) { alert('Please add a one-sentence description of your exhibition.'); return; }
+
+    const willCallAI = !(data.gallery && data.lastGenKey === aiInputKey(data));
+    if (willCallAI && !armed) {
+      // First click arms; a second click within the window confirms.
+      armed = true;
+      generateBtn.textContent = '⚠️ Click again to confirm — this uses API credits';
+      generateBtn.style.background = '#d9a441';
+      generateBtn.style.color = '#1a1a1a';
+      armTimer = setTimeout(disarmGenerate, 4500);
+      return;
+    }
+    disarmGenerate();
     onGenerate();
   });
 }
