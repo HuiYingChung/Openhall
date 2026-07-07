@@ -15,7 +15,7 @@ import { GalleryTour } from '../viewer/tour';
 import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay } from './overlay';
 import { escapeHtml } from './escape-html';
 import { sanitizePlacements } from './placement-sanity';
-import { resizeToDataUrl, createDisplayObjectUrl } from './image-utils';
+import { resizeToDataUrl, createDisplayObjectUrl, generateFaviconDataUrl } from './image-utils';
 import {
   WatsonxProvider,
   loadWatsonxSettings,
@@ -43,6 +43,12 @@ interface AppData {
   preset: StylePreset;
   analyses: WorkAnalysis[];
   gallery: Gallery | null;
+  /**
+   * Artist-uploaded custom favicon as a data URL. When set, it overrides the
+   * auto-generated (first-artwork) favicon at export time. Not persisted into
+   * gallery.json — lives only for the session.
+   */
+  customFaviconDataUrl?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +326,21 @@ export function bootApp(): void {
             await Promise.all(demoFetches);
           }
 
+          // Favicon: custom upload wins; otherwise auto-generate a square icon
+          // from the first artwork. Failure here must not block the export.
+          let faviconUrl: string | undefined = data.customFaviconDataUrl ?? undefined;
+          if (!faviconUrl) {
+            const firstId = data.gallery.artworks[0]?.id;
+            const firstUrl = firstId ? artworkUrls.get(firstId) : undefined;
+            if (firstUrl) {
+              try {
+                faviconUrl = await generateFaviconDataUrl(firstUrl);
+              } catch {
+                faviconUrl = undefined; // ship without a favicon rather than fail
+              }
+            }
+          }
+
           // Both dev and prod fetch from /assets/viewer.js (pre-built from public/).
           // Run 'npm run build:viewer' once before testing export locally.
           const viewerScriptUrl = '/assets/viewer.js';
@@ -328,6 +349,7 @@ export function bootApp(): void {
             artworkUrls,
             aspectRatios,
             viewerScriptUrl,
+            faviconUrl,
             onProgress: (msg, pct) => { expBtn.innerHTML = `${msg} ${pct}%`; },
           });
           downloadZip(blob);
@@ -1014,10 +1036,42 @@ function renderLabels(
 ): void {
   if (!data.gallery) { onEnterViewer(); return; }
 
+  // Branding fields are baked into the exported site (title/meta/OG/favicon).
+  const branding = (data.gallery!.branding ??= {});
+  const bTitle = data.gallery!.title ?? '';
+  const bDesc = branding.description ?? '';
+  const bAuthor = branding.authorName ?? '';
+  const bUrl = branding.authorUrl ?? '';
+  const inputStyle =
+    'width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.9rem;box-sizing:border-box;';
+
   container.innerHTML = `
     <div style="position:fixed;inset:0;display:flex;flex-direction:column;
       background:#0d0d0d;z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;overflow-y:auto;">
       <div style="max-width:640px;margin:0 auto;padding:2rem;width:100%;box-sizing:border-box;">
+        <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Gallery Details</h2>
+        <p style="color:#888;font-size:0.85rem;margin:0 0 1rem;">These become your exported site's title, description, share preview, and browser icon — so it reads like your own site.</p>
+        <div style="display:flex;flex-direction:column;gap:0.6rem;margin:0 0 1.25rem;">
+          <input id="oh-brand-title" type="text" value="${escapeHtml(bTitle)}" placeholder="Gallery title" aria-label="Gallery title"
+            style="${inputStyle}font-weight:600;">
+          <textarea id="oh-brand-desc" rows="2" placeholder="One-sentence description (shown in browser + when shared on social)" aria-label="Gallery description"
+            style="${inputStyle}resize:vertical;">${escapeHtml(bDesc)}</textarea>
+          <div style="display:flex;gap:0.5rem;">
+            <input id="oh-brand-author" type="text" value="${escapeHtml(bAuthor)}" placeholder="Your name / studio" aria-label="Artist name"
+              style="${inputStyle}flex:1;">
+            <input id="oh-brand-url" type="url" value="${escapeHtml(bUrl)}" placeholder="https://your-link.com" aria-label="Artist link"
+              style="${inputStyle}flex:1;">
+          </div>
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.25rem;">
+            <img id="oh-favicon-preview" alt="favicon preview" style="width:40px;height:40px;border-radius:8px;border:1px solid #333;object-fit:cover;background:#1a1a1a;">
+            <div style="flex:1;min-width:0;">
+              <label for="oh-favicon-input" style="display:inline-block;padding:0.45rem 0.8rem;background:#1a1a1a;border:1px solid #444;border-radius:6px;font-size:0.8rem;cursor:pointer;">Upload custom icon</label>
+              <button id="oh-favicon-reset" type="button" style="margin-left:0.5rem;padding:0.45rem 0.7rem;background:none;border:1px solid #333;color:#888;border-radius:6px;font-size:0.8rem;cursor:pointer;">Use first artwork</button>
+              <input id="oh-favicon-input" type="file" accept="image/*" style="display:none;">
+              <p style="font-size:0.72rem;color:#666;margin:0.35rem 0 0;">Browser-tab icon. Defaults to a square crop of your first artwork.</p>
+            </div>
+          </div>
+        </div>
         <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Review Wall Labels</h2>
         <p style="color:#888;font-size:0.85rem;margin:0 0 1.5rem;">Edit any title, medium, or label text before entering the gallery. Changes are saved automatically.</p>
         <div id="oh-labels-list"></div>
@@ -1030,6 +1084,47 @@ function renderLabels(
         <p style="font-size:0.75rem;color:#666;margin:0.5rem 0 0;">Back keeps your uploads and details, but you'll need to generate again.</p>
       </div>
     </div>`;
+
+  // --- Branding wiring ---
+  const firstAw = data.gallery!.artworks[0];
+  const firstThumb =
+    (firstAw && data.artworks.find((a) => a.id === firstAw.id)?.displayObjectUrl) ??
+    (firstAw && firstAw.imagePath && !firstAw.imagePath.startsWith('placeholder:') ? firstAw.imagePath : '');
+  const faviconPreview = container.querySelector('#oh-favicon-preview') as HTMLImageElement;
+  const refreshFaviconPreview = () => {
+    faviconPreview.src = data.customFaviconDataUrl ?? firstThumb ?? '';
+  };
+  refreshFaviconPreview();
+
+  container.querySelector('#oh-brand-title')!.addEventListener('input', (e) => {
+    data.gallery!.title = (e.target as HTMLInputElement).value;
+  });
+  container.querySelector('#oh-brand-desc')!.addEventListener('input', (e) => {
+    branding.description = (e.target as HTMLTextAreaElement).value || undefined;
+  });
+  container.querySelector('#oh-brand-author')!.addEventListener('input', (e) => {
+    branding.authorName = (e.target as HTMLInputElement).value || undefined;
+  });
+  container.querySelector('#oh-brand-url')!.addEventListener('input', (e) => {
+    branding.authorUrl = (e.target as HTMLInputElement).value || undefined;
+  });
+  const faviconInput = container.querySelector('#oh-favicon-input') as HTMLInputElement;
+  faviconInput.addEventListener('change', async () => {
+    const file = faviconInput.files?.[0];
+    if (!file) return;
+    try {
+      // Normalise any uploaded image to a square PNG so the exported icon is consistent.
+      data.customFaviconDataUrl = await generateFaviconDataUrl(URL.createObjectURL(file));
+      refreshFaviconPreview();
+    } catch {
+      alert('Could not read that image. Try a PNG or JPG.');
+    }
+  });
+  container.querySelector('#oh-favicon-reset')!.addEventListener('click', () => {
+    data.customFaviconDataUrl = null;
+    faviconInput.value = '';
+    refreshFaviconPreview();
+  });
 
   const list = container.querySelector('#oh-labels-list') as HTMLElement;
   for (const aw of data.gallery!.artworks) {

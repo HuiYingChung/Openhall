@@ -156,6 +156,26 @@ export const TourWaypointSchema = z.object({
 export type TourWaypoint = z.infer<typeof TourWaypointSchema>;
 
 // ---------------------------------------------------------------------------
+// Branding — artist identity baked into the exported site
+// ---------------------------------------------------------------------------
+
+/**
+ * Optional artist/branding metadata. Drives the exported index.html's
+ * <meta> description, author, and Open Graph / Twitter share tags so a
+ * self-hosted gallery reads like the artist's own site. The favicon itself
+ * is packaged at export time as a separate file, not stored here.
+ */
+export const BrandingSchema = z.object({
+  /** One-sentence gallery description for <meta name="description"> + OG. */
+  description: z.string().optional(),
+  /** Artist / studio name for <meta name="author"> + OG. */
+  authorName: z.string().optional(),
+  /** Artist's personal link (portfolio, socials). Only emitted if http(s). */
+  authorUrl: z.string().optional(),
+});
+export type Branding = z.infer<typeof BrandingSchema>;
+
+// ---------------------------------------------------------------------------
 // Top-level Gallery
 // ---------------------------------------------------------------------------
 
@@ -169,5 +189,7 @@ export const GallerySchema = z.object({
   placements: z.array(PlacementSchema),
   /** Ordered waypoints for guided tour mode */
   tour: z.array(TourWaypointSchema).default([]),
+  /** Optional artist branding for the exported site (favicon/meta/OG). */
+  branding: BrandingSchema.optional(),
 });
 export type Gallery = z.infer<typeof GallerySchema>;

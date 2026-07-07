@@ -36,6 +36,13 @@ export interface BundleOptions {
    * Written into gallery.json so the export viewer can size planes correctly.
    */
   aspectRatios?: Map<string, number>;
+  /**
+   * Optional favicon image URL (blob:, data:, or same-origin path). Packaged
+   * as favicon.<ext> and referenced from index.html. If omitted, no favicon
+   * link is emitted. The app auto-generates one from the first artwork when
+   * the artist hasn't uploaded a custom icon.
+   */
+  faviconUrl?: string;
   onProgress?: (msg: string, pct: number) => void;
 }
 
@@ -47,7 +54,7 @@ export interface BundleResult {
 }
 
 export async function buildExportBundle(opts: BundleOptions): Promise<BundleResult> {
-  const { gallery, artworkUrls, viewerScriptUrl, aspectRatios, onProgress } = opts;
+  const { gallery, artworkUrls, viewerScriptUrl, aspectRatios, faviconUrl, onProgress } = opts;
   const progress = onProgress ?? (() => {});
 
   const zip = new JSZip();
@@ -102,12 +109,36 @@ export async function buildExportBundle(opts: BundleOptions): Promise<BundleResu
   };
   zip.file('gallery.json', JSON.stringify(exportGallery, null, 2));
 
-  // --- 4. index.html ---
+  // --- 4. Favicon ---
+  let faviconPath: string | undefined;
+  if (faviconUrl) {
+    progress('Packaging favicon…', 63);
+    const favRes = await fetch(faviconUrl);
+    if (!favRes.ok) {
+      throw new Error(`Failed to fetch favicon: HTTP ${favRes.status} from ${faviconUrl}`);
+    }
+    const favMime = favRes.headers.get('content-type') ?? 'image/png';
+    const favExt = extensionFromMime(favMime);
+    faviconPath = `favicon${favExt}`;
+    zip.file(faviconPath, await favRes.arrayBuffer());
+  }
+
+  // --- 5. index.html ---
   progress('Writing index.html…', 65);
-  const html = buildIndexHtml(gallery.title);
+  // Use the first artwork as the social share (Open Graph) image.
+  const firstArtworkId = gallery.artworks[0]?.id;
+  const ogImagePath = firstArtworkId ? imageMap.get(firstArtworkId) : undefined;
+  const html = buildIndexHtml({
+    title: gallery.title,
+    description: gallery.branding?.description,
+    authorName: gallery.branding?.authorName,
+    authorUrl: gallery.branding?.authorUrl,
+    faviconPath,
+    ogImagePath,
+  });
   zip.file('index.html', html);
 
-  // --- 5. Generate zip ---
+  // --- 6. Generate zip ---
   progress('Compressing…', 70);
   const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
 
@@ -131,14 +162,73 @@ export function downloadZip(blob: Blob, filename = 'openhall-export.zip'): void 
 // Helpers
 // ---------------------------------------------------------------------------
 
-export function buildIndexHtml(title: string): string {
-  const safeTitle = escapeHtml(title);
+export interface IndexHtmlOptions {
+  title: string;
+  /** <meta name="description"> + og/twitter description. */
+  description?: string;
+  /** <meta name="author"> + og article author. */
+  authorName?: string;
+  /** Artist link — only emitted if it's an http(s) URL. */
+  authorUrl?: string;
+  /** Relative path to the favicon inside the bundle (e.g. "favicon.png"). */
+  faviconPath?: string;
+  /** Relative path to the social-share image (e.g. "images/aw-01.jpg"). */
+  ogImagePath?: string;
+}
+
+/**
+ * Build the exported index.html.
+ * Accepts a plain title (legacy) or a full branding options object so the
+ * self-hosted gallery carries a favicon, description, and social-share tags.
+ */
+export function buildIndexHtml(opts: IndexHtmlOptions | string): string {
+  const o: IndexHtmlOptions = typeof opts === 'string' ? { title: opts } : opts;
+  const safeTitle = escapeHtml(o.title);
+  const head: string[] = [
+    '<meta charset="UTF-8" />',
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+    `<title>${safeTitle}</title>`,
+  ];
+
+  if (o.faviconPath) {
+    const type = o.faviconPath.endsWith('.png') ? 'image/png'
+      : o.faviconPath.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+    head.push(`<link rel="icon" type="${type}" href="./${escapeHtml(o.faviconPath)}" />`);
+  }
+  if (o.description) {
+    head.push(`<meta name="description" content="${escapeHtml(o.description)}" />`);
+  }
+  if (o.authorName) {
+    head.push(`<meta name="author" content="${escapeHtml(o.authorName)}" />`);
+  }
+
+  // Open Graph + Twitter card for rich link previews when the gallery is shared.
+  head.push(`<meta property="og:title" content="${safeTitle}" />`);
+  head.push('<meta property="og:type" content="website" />');
+  if (o.description) {
+    head.push(`<meta property="og:description" content="${escapeHtml(o.description)}" />`);
+  }
+  if (o.ogImagePath) {
+    head.push(`<meta property="og:image" content="./${escapeHtml(o.ogImagePath)}" />`);
+    head.push('<meta name="twitter:card" content="summary_large_image" />');
+    head.push(`<meta name="twitter:image" content="./${escapeHtml(o.ogImagePath)}" />`);
+  } else {
+    head.push('<meta name="twitter:card" content="summary" />');
+  }
+  head.push(`<meta name="twitter:title" content="${safeTitle}" />`);
+  if (o.description) {
+    head.push(`<meta name="twitter:description" content="${escapeHtml(o.description)}" />`);
+  }
+  // Only surface the artist link if it's a safe http(s) URL.
+  if (o.authorUrl && /^https?:\/\//i.test(o.authorUrl)) {
+    head.push(`<link rel="author" href="${escapeHtml(o.authorUrl)}" />`);
+  }
+
+  const headHtml = head.map((line) => `    ${line}`).join('\n');
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${safeTitle}</title>
+${headHtml}
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { background: #000; overflow: hidden; }

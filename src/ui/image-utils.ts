@@ -54,3 +54,32 @@ function fitDimensions(w: number, h: number, maxEdge: number): { width: number; 
 export function createDisplayObjectUrl(file: File): string {
   return URL.createObjectURL(file);
 }
+
+/**
+ * Generate a square favicon from any image URL (blob:, data:, or same-origin
+ * path). Center-crops to a square ("cover" fit) and returns a PNG data URL.
+ * Used at export time to give a self-hosted gallery a browser-tab icon derived
+ * from the first artwork when the artist hasn't uploaded a custom favicon.
+ */
+export async function generateFaviconDataUrl(sourceUrl: string, size = 256): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    // Allow drawing cross-origin/same-origin images to the canvas without taint.
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Could not get 2D context')); return; }
+      // Cover-crop: scale so the shorter edge fills the square, center the rest.
+      const s = Math.min(img.naturalWidth, img.naturalHeight);
+      const sx = (img.naturalWidth - s) / 2;
+      const sy = (img.naturalHeight - s) / 2;
+      ctx.drawImage(img, sx, sy, s, s, 0, 0, size, size);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => reject(new Error(`Failed to load image for favicon: ${sourceUrl}`));
+    img.src = sourceUrl;
+  });
+}

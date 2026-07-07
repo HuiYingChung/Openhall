@@ -43,4 +43,28 @@ describe('GallerySchema', () => {
     const result = GallerySchema.safeParse(bad);
     expect(result.success).toBe(false);
   });
+
+  it('accepts an optional branding block', () => {
+    const withBranding = {
+      ...sampleGallery,
+      branding: {
+        description: 'A small exhibition of late works.',
+        authorName: 'Jane Artist',
+        authorUrl: 'https://jane.example',
+      },
+    };
+    const result = GallerySchema.safeParse(withBranding);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.branding?.authorName).toBe('Jane Artist');
+    }
+  });
+
+  it('treats branding as optional (absent is valid)', () => {
+    const result = GallerySchema.safeParse(sampleGallery);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.branding).toBeUndefined();
+    }
+  });
 });

@@ -375,6 +375,127 @@ describe('buildIndexHtml', () => {
     expect(html).not.toContain('<script>');
     expect(html).toContain('&lt;script&gt;');
   });
+
+  it('emits description, author, favicon link and OG/Twitter tags from options', () => {
+    const html = buildIndexHtml({
+      title: 'Late Works',
+      description: 'A quiet room of final paintings.',
+      authorName: 'Jane Artist',
+      authorUrl: 'https://jane.example',
+      faviconPath: 'favicon.png',
+      ogImagePath: 'images/aw-01.jpg',
+    });
+    expect(html).toContain('<meta name="description" content="A quiet room of final paintings." />');
+    expect(html).toContain('<meta name="author" content="Jane Artist" />');
+    expect(html).toContain('<link rel="icon" type="image/png" href="./favicon.png" />');
+    expect(html).toContain('<meta property="og:title" content="Late Works" />');
+    expect(html).toContain('<meta property="og:image" content="./images/aw-01.jpg" />');
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
+    expect(html).toContain('<link rel="author" href="https://jane.example" />');
+  });
+
+  it('omits favicon/description/author tags when not provided', () => {
+    const html = buildIndexHtml('Bare Gallery');
+    expect(html).not.toContain('rel="icon"');
+    expect(html).not.toContain('name="description"');
+    expect(html).not.toContain('name="author"');
+    // Falls back to a plain summary card with no share image
+    expect(html).toContain('<meta name="twitter:card" content="summary" />');
+  });
+
+  it('drops an unsafe (non-http) author URL', () => {
+    const html = buildIndexHtml({
+      title: 'X',
+      authorUrl: 'javascript:alert(1)',
+    });
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toContain('rel="author"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildExportBundle — branding (favicon + meta)
+// ---------------------------------------------------------------------------
+
+describe('buildExportBundle branding', () => {
+  it('packages favicon file and links it from index.html', async () => {
+    const gallery = makeGallery();
+    vi.stubGlobal('fetch', makeFetch());
+
+    const { blob } = await buildExportBundle({
+      gallery,
+      artworkUrls: makeArtworkUrls(gallery),
+      viewerScriptUrl: 'https://example.com/assets/viewer.js',
+      faviconUrl: 'https://example.com/favicon.png',
+    });
+
+    const zip = await JSZip.loadAsync(blob);
+    expect(zip.file('favicon.png')).not.toBeNull();
+    const html = await zip.file('index.html')!.async('string');
+    expect(html).toContain('rel="icon"');
+    expect(html).toContain('href="./favicon.png"');
+  });
+
+  it('uses the first artwork as the og:image', async () => {
+    const gallery = makeGallery();
+    vi.stubGlobal('fetch', makeFetch());
+
+    const { blob } = await buildExportBundle({
+      gallery,
+      artworkUrls: makeArtworkUrls(gallery),
+      viewerScriptUrl: 'https://example.com/assets/viewer.js',
+    });
+
+    const zip = await JSZip.loadAsync(blob);
+    const html = await zip.file('index.html')!.async('string');
+    const firstId = gallery.artworks[0].id;
+    expect(html).toContain(`<meta property="og:image" content="./images/${firstId}`);
+  });
+
+  it('bakes gallery.branding.description into the meta description', async () => {
+    const gallery: Gallery = {
+      ...makeGallery(),
+      branding: { description: 'Ten works on migration and memory.', authorName: 'H. Lin' },
+    };
+    vi.stubGlobal('fetch', makeFetch());
+
+    const { blob } = await buildExportBundle({
+      gallery,
+      artworkUrls: makeArtworkUrls(gallery),
+      viewerScriptUrl: 'https://example.com/assets/viewer.js',
+    });
+
+    const zip = await JSZip.loadAsync(blob);
+    const html = await zip.file('index.html')!.async('string');
+    expect(html).toContain('Ten works on migration and memory.');
+    expect(html).toContain('<meta name="author" content="H. Lin" />');
+  });
+
+  it('throws loudly when the favicon fetch fails', async () => {
+    const gallery = makeGallery();
+    vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => {
+      const urlStr = String(url);
+      if (urlStr.includes('viewer.js')) {
+        return new Response(DUMMY_JS, { status: 200, headers: { 'Content-Type': 'text/javascript' } });
+      }
+      if (urlStr.includes('favicon')) {
+        return new Response('nope', { status: 404 });
+      }
+      return new Response(DUMMY_IMAGE_BYTES.buffer as ArrayBuffer, {
+        status: 200,
+        headers: { 'Content-Type': 'image/png' },
+      });
+    }));
+
+    await expect(
+      buildExportBundle({
+        gallery,
+        artworkUrls: makeArtworkUrls(gallery),
+        viewerScriptUrl: 'https://example.com/assets/viewer.js',
+        faviconUrl: 'https://example.com/favicon.png',
+      })
+    ).rejects.toThrow(/Failed to fetch favicon/);
+  });
 });
 
 // ---------------------------------------------------------------------------
