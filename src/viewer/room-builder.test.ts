@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { GallerySchema, type Gallery } from '../schema/gallery.schema';
-import { buildScene } from './room-builder';
+import { buildScene, ARTIST_MESH_ID } from './room-builder';
 import { circleOverlapsAABB } from './collision';
 import sampleGallery from '../demo/sample-gallery.json';
 
@@ -130,5 +130,41 @@ describe('buildScene texture branch', () => {
     const h = bb.max.y - bb.min.y;
     expect(w).toBeCloseTo(1.4, 2);
     expect(h).toBeCloseTo(1.4 / 0.75, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artist plaque
+// ---------------------------------------------------------------------------
+
+describe('buildScene artist plaque', () => {
+  it('registers an artist mesh and prepends a tour intro when artist is set', () => {
+    const gallery = parsedSampleGallery();
+    gallery.artist = {
+      name: 'Jane Artist',
+      statement: 'I paint quiet interiors.',
+      links: [{ label: 'Web', url: 'https://jane.example' }],
+    };
+    const { artworkMeshes } = buildScene(gallery);
+
+    expect(artworkMeshes.get(ARTIST_MESH_ID)).toBeDefined();
+    expect(gallery.tour[0]?.artworkId).toBe(ARTIST_MESH_ID);
+    expect(gallery.tour[0]?.label).toContain('Jane Artist');
+  });
+
+  it('does not register an artist mesh when artist is absent', () => {
+    const gallery = parsedSampleGallery();
+    const { artworkMeshes } = buildScene(gallery);
+    expect(artworkMeshes.get(ARTIST_MESH_ID)).toBeUndefined();
+  });
+
+  it('does not double-prepend the tour intro on rebuild', () => {
+    const gallery = parsedSampleGallery();
+    gallery.artist = { name: 'Solo', links: [] };
+    buildScene(gallery);
+    const tourLenAfterFirst = gallery.tour.length;
+    buildScene(gallery); // rebuild with the same gallery object
+    expect(gallery.tour.length).toBe(tourLenAfterFirst);
+    expect(gallery.tour.filter((w) => w.artworkId === ARTIST_MESH_ID)).toHaveLength(1);
   });
 });

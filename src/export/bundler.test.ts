@@ -499,6 +499,88 @@ describe('buildExportBundle branding', () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildExportBundle — artist portrait
+// ---------------------------------------------------------------------------
+
+describe('buildExportBundle artist portrait', () => {
+  function galleryWithArtist(portraitPath?: string): Gallery {
+    return {
+      ...makeGallery(),
+      artist: {
+        name: 'Jane Artist',
+        statement: 'Quiet interiors.',
+        portraitPath, // e.g. a session blob: URL before export
+        links: [{ label: 'Web', url: 'https://jane.example' }],
+      },
+    };
+  }
+
+  it('packages the portrait and rewrites artist.portraitPath to images/portrait.*', async () => {
+    const gallery = galleryWithArtist('blob:session-portrait');
+    vi.stubGlobal('fetch', makeFetch());
+
+    const { blob } = await buildExportBundle({
+      gallery,
+      artworkUrls: makeArtworkUrls(gallery),
+      viewerScriptUrl: 'https://example.com/assets/viewer.js',
+      portraitUrl: 'blob:session-portrait',
+    });
+
+    const zip = await JSZip.loadAsync(blob);
+    const galleryJson = JSON.parse(await zip.file('gallery.json')!.async('string'));
+    expect(galleryJson.artist.portraitPath).toMatch(/^images\/portrait\./);
+    expect(zip.file(galleryJson.artist.portraitPath)).not.toBeNull();
+    // The session blob: URL must not leak into the exported gallery.json
+    expect(galleryJson.artist.portraitPath).not.toMatch(/^blob:/);
+    expect(galleryJson.artist.name).toBe('Jane Artist');
+  });
+
+  it('leaves portraitPath unset when artist has no portrait (monogram fallback)', async () => {
+    const gallery = galleryWithArtist(undefined);
+    vi.stubGlobal('fetch', makeFetch());
+
+    const { blob } = await buildExportBundle({
+      gallery,
+      artworkUrls: makeArtworkUrls(gallery),
+      viewerScriptUrl: 'https://example.com/assets/viewer.js',
+      // no portraitUrl
+    });
+
+    const zip = await JSZip.loadAsync(blob);
+    const galleryJson = JSON.parse(await zip.file('gallery.json')!.async('string'));
+    expect(galleryJson.artist.name).toBe('Jane Artist');
+    expect(galleryJson.artist.portraitPath).toBeUndefined();
+    expect(zip.file('images/portrait.jpg')).toBeNull();
+  });
+
+  it('throws loudly when the portrait fetch fails', async () => {
+    const gallery = galleryWithArtist('blob:session-portrait');
+    vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => {
+      const urlStr = String(url);
+      if (urlStr.includes('viewer.js')) {
+        return new Response(DUMMY_JS, { status: 200, headers: { 'Content-Type': 'text/javascript' } });
+      }
+      if (urlStr.includes('portrait')) {
+        return new Response('nope', { status: 404 });
+      }
+      return new Response(DUMMY_IMAGE_BYTES.buffer as ArrayBuffer, {
+        status: 200,
+        headers: { 'Content-Type': 'image/png' },
+      });
+    }));
+
+    await expect(
+      buildExportBundle({
+        gallery,
+        artworkUrls: makeArtworkUrls(gallery),
+        viewerScriptUrl: 'https://example.com/assets/viewer.js',
+        portraitUrl: 'blob:session-portrait',
+      })
+    ).rejects.toThrow(/Failed to fetch artist portrait/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // downloadZip
 // ---------------------------------------------------------------------------
 

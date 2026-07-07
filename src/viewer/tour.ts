@@ -18,7 +18,7 @@ import { escapeHtml } from '../ui/escape-html';
 
 import * as THREE from 'three';
 import type { TourWaypoint, Gallery } from '../schema/gallery.schema';
-import { wirePanelDrag, swapToUnlitMaterial } from './interactions';
+import { wirePanelDrag, swapToUnlitMaterial, ARTIST_MESH_ID } from './interactions';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -362,9 +362,10 @@ export class GalleryTour {
       if (this.elapsed >= PAUSE_DURATION) {
         this.phase = 'viewing';
         this.elapsed = 0;
-        // Unlit swap while viewing — original colors, no spotlight washout
+        // Unlit swap while viewing — original colors, no spotlight washout.
+        // The artist wall's transparent text material must not be swapped.
         const wp = this.waypoints[this.index];
-        if (wp.artworkId && this.getArtworkMesh) {
+        if (wp.artworkId && wp.artworkId !== ARTIST_MESH_ID && this.getArtworkMesh) {
           const mesh = this.getArtworkMesh(wp.artworkId);
           if (mesh) this.restoreMat = swapToUnlitMaterial(mesh);
         }
@@ -401,14 +402,17 @@ export class GalleryTour {
 
   private showLabel(): void {
     const wp = this.waypoints[this.index];
-    const artwork = wp.artworkId
+    const isArtist = wp.artworkId === ARTIST_MESH_ID;
+    const artist = isArtist ? this.gallery.artist : null;
+    const artwork = wp.artworkId && !isArtist
       ? this.gallery.artworks.find((a) => a.id === wp.artworkId)
       : null;
 
-    const title = artwork?.title ?? wp.label ?? '';
+    // Artist intro stop: show the artist's name + statement instead of artwork data.
+    const title = artist?.name ?? artwork?.title ?? wp.label ?? '';
     const medium = artwork?.medium ?? '';
     const year = artwork?.year != null ? `, ${artwork.year}` : '';
-    const label = artwork?.label ?? '';
+    const label = artist?.statement ?? artwork?.label ?? '';
     const counter = `${this.index + 1} / ${this.waypoints.length}`;
 
     const bodyHtml = `

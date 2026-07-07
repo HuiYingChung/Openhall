@@ -501,6 +501,203 @@ export function pickEntranceWall(
   return fallback;
 }
 
+/**
+ * Pick a wall + offset for the small artist plaque (~0.8 m wide). Mirrors
+ * pickEntranceWall's free-gap search but needs less room, tolerates shorter
+ * walls, and treats the chosen fake-entrance portal as an occupied span so the
+ * plaque never overlaps it. Returns the qualifying spot closest to a wall
+ * centre, or null when no wall has room. Pure — unit-testable.
+ */
+export function pickArtistSlot(
+  room: Room,
+  doorwayWalls: Set<string>,
+  artworkOffsets: Map<string, number[]>,
+  entrance: EntrancePick | null
+): EntrancePick | null {
+  const order: WallSide[] = ['n', 'e', 's', 'w'];
+  const PLAQUE_NEED = 1.4; // plaque + margin
+  const ART_BLOCK = 0.9; // half-interval an artwork blocks
+  const ENTRANCE_BLOCK = 1.6; // half-interval the portal blocks on its wall
+  const EDGE = 0.3;
+  let fallback: EntrancePick | null = null;
+
+  for (const side of order) {
+    if (doorwayWalls.has(side)) continue;
+    const len = side === 'n' || side === 's' ? room.width : room.depth;
+    if (len < 2.5) continue;
+
+    // Blocked intervals: each artwork on this wall, plus the entrance portal.
+    const blocks: Array<[number, number]> = [];
+    for (const o of artworkOffsets.get(side) ?? []) blocks.push([o - ART_BLOCK, o + ART_BLOCK]);
+    if (entrance && entrance.side === side) {
+      blocks.push([entrance.offset - ENTRANCE_BLOCK, entrance.offset + ENTRANCE_BLOCK]);
+    }
+
+    let gaps: Array<[number, number]> = [[-len / 2 + EDGE, len / 2 - EDGE]];
+    for (const [blo, bhi] of blocks) {
+      gaps = gaps.flatMap(([a, b]) => {
+        const clo = Math.max(a, blo);
+        const chi = Math.min(b, bhi);
+        if (clo >= chi) return [[a, b]] as Array<[number, number]>;
+        const out: Array<[number, number]> = [];
+        if (a < clo) out.push([a, clo]);
+        if (chi < b) out.push([chi, b]);
+        return out;
+      });
+    }
+
+    let best: number | null = null;
+    for (const [a, b] of gaps) {
+      if (b - a < PLAQUE_NEED) continue;
+      const c = Math.max(a + PLAQUE_NEED / 2, Math.min(b - PLAQUE_NEED / 2, 0));
+      if (best === null || Math.abs(c) < Math.abs(best)) best = c;
+    }
+    if (best === null) continue;
+    if (Math.abs(best) < 1e-9) return { side, offset: 0 };
+    if (!fallback) fallback = { side, offset: best };
+  }
+  return fallback;
+}
+
+/**
+ * Draw a monogram texture (artist initials on an accent-tinted card) used as
+ * the portrait fallback when no portrait image is supplied. Returns null in
+ * headless environments (no canvas) so the caller falls back to a flat colour.
+ */
+export function makeMonogramTexture(name: string, accentHex: number): THREE.Texture | null {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 640;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  const accent = new THREE.Color(accentHex);
+  const dark = accent.clone().multiplyScalar(0.35);
+  const g = ctx.createLinearGradient(0, 0, 0, 640);
+  g.addColorStop(0, `#${accent.getHexString()}`);
+  g.addColorStop(1, `#${dark.getHexString()}`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 640);
+
+  // Initials: first letters of up to two words.
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+  // Contrast text colour based on accent luminance.
+  const lum = 0.299 * accent.r + 0.587 * accent.g + 0.114 * accent.b;
+  ctx.fillStyle = lum > 0.6 ? 'rgba(20,20,20,0.9)' : 'rgba(255,255,255,0.92)';
+  ctx.font = '700 260px -apple-system, "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(initials || '?', 256, 330);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** Word-wrap `text` into `ctx` at (x,y); returns the y after the last line. */
+function wrapCanvasText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number
+): number {
+  const words = text.split(/\s+/);
+  let line = '';
+  let cursorY = y;
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, cursorY);
+      line = word;
+      cursorY += lineHeight;
+    } else {
+      line = test;
+    }
+  }
+  if (line) { ctx.fillText(line, x, cursorY); cursorY += lineHeight; }
+  return cursorY;
+}
+
+/**
+ * Typeset the artist "wall text" onto a transparent canvas — an eyebrow label,
+ * the name, an accent rule, the statement, and a links line. Applied to a plane
+ * flush on the wall so it reads like painted gallery vinyl (only the ink shows).
+ * Returns null in headless environments (no canvas).
+ */
+export function makeArtistWallTexture(
+  artist: { name: string; statement?: string; links: { label: string; url: string }[] },
+  opts: { textColor: string; accent: string }
+): THREE.Texture | null {
+  if (typeof document === 'undefined') return null;
+  const W = 1400;
+  const H = 1000;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  const pad = 80;
+  const nameMaxW = W - pad * 2 - 340; // reserve top-right space for the portrait
+  const font = (spec: string) => `${spec} -apple-system, "Segoe UI", system-ui, sans-serif`;
+  ctx.textBaseline = 'top';
+  let y = pad;
+
+  // Eyebrow
+  try { ctx.letterSpacing = '5px'; } catch { /* not supported everywhere */ }
+  ctx.fillStyle = opts.accent;
+  ctx.font = font('600 32px');
+  ctx.fillText('ABOUT THE ARTIST', pad, y);
+  try { ctx.letterSpacing = '0px'; } catch { /* noop */ }
+  y += 62;
+
+  // Name (wrapped, clear of the portrait corner)
+  ctx.fillStyle = opts.textColor;
+  ctx.font = font('700 88px');
+  y = wrapCanvasText(ctx, artist.name || 'Artist', pad, y, nameMaxW, 96);
+  y += 20;
+
+  // Accent rule
+  ctx.strokeStyle = opts.accent;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(pad, y);
+  ctx.lineTo(pad + 240, y);
+  ctx.stroke();
+  y += 46;
+
+  // Statement (wrapped, full width)
+  if (artist.statement) {
+    ctx.fillStyle = opts.textColor;
+    ctx.globalAlpha = 0.86;
+    ctx.font = font('400 40px');
+    y = wrapCanvasText(ctx, artist.statement, pad, y, W - pad * 2, 58);
+    ctx.globalAlpha = 1;
+    y += 26;
+  }
+
+  // Links line (labels only; the panel handles the clickable URLs)
+  const labels = artist.links.map((l) => l.label).filter(Boolean);
+  if (labels.length) {
+    ctx.fillStyle = opts.accent;
+    ctx.font = font('600 32px');
+    ctx.fillText(labels.join('    ·    '), pad, y);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
 const ENTRANCE_DOOR_COLORS: Record<StyleFamily, { leaf: number; handle: number }> = {
   'white-cube': { leaf: 0x2e2e2e, handle: 0xd8d8d8 },
   industrial: { leaf: 0x3a3a3a, handle: 0xb8b8b8 },

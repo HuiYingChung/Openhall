@@ -15,6 +15,9 @@ import * as THREE from 'three';
 import type { Gallery } from '../schema/gallery.schema';
 import { escapeHtml } from '../ui/escape-html';
 
+/** Reserved id for the artist plaque mesh (mirrors room-builder). */
+export const ARTIST_MESH_ID = '__artist__';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -344,9 +347,13 @@ export class ArtworkInteractions {
     this.currentArtworkId = artworkId;
 
     // Clear the hover highlight while the canvas still has its standard
-    // material, then render it unlit — see swapToUnlitMaterial.
+    // material, then render it unlit — see swapToUnlitMaterial. The artist wall
+    // uses a transparent text material that must NOT be swapped to unlit (which
+    // would drop transparency and paint a black rectangle), so skip it there.
     this.clearHighlight();
-    this.restoreArtworkMat = swapToUnlitMaterial(mesh);
+    if (artworkId !== ARTIST_MESH_ID) {
+      this.restoreArtworkMat = swapToUnlitMaterial(mesh);
+    }
   }
 
   private currentArtworkId: string | null = null;
@@ -354,6 +361,10 @@ export class ArtworkInteractions {
 
   private showInfoPanel(): void {
     if (!this.currentArtworkId) return;
+    if (this.currentArtworkId === ARTIST_MESH_ID) {
+      this.showArtistPanel();
+      return;
+    }
     const aw = this.opts.gallery.artworks.find((a) => a.id === this.currentArtworkId);
     if (!aw) return;
 
@@ -381,6 +392,62 @@ export class ArtworkInteractions {
           font-size:0.8rem;white-space:nowrap;">✕ Close</button>
       </div>
       <p style="font-size:0.72rem;color:#555;margin:0.75rem 0 0;">Press <kbd style="background:#222;border:1px solid #444;border-radius:3px;padding:1px 4px;">Esc</kbd> to close &nbsp;·&nbsp; drag this card to move it</p>
+    `;
+    this.infoPanel.style.display = 'block';
+
+    this.infoPanel.querySelector('#oh-close-inspect')!.addEventListener('click', () => {
+      this.closePanel();
+    });
+  }
+
+  /** Render the artist presence panel (name, statement, portrait, links). */
+  private showArtistPanel(): void {
+    const artist = this.opts.gallery.artist;
+    if (!artist) { this.closePanel(); return; }
+
+    this.inspecting = true;
+    this.clearHighlight();
+
+    // Portrait: real image if provided, else an initials monogram.
+    const initials = artist.name.trim().split(/\s+/).slice(0, 2)
+      .map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
+    const portrait = artist.portraitPath
+      ? `<img src="${escapeHtml(artist.portraitPath)}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid rgba(255,255,255,0.2);">`
+      : `<div aria-hidden="true" style="width:56px;height:56px;border-radius:50%;flex-shrink:0;background:rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.1rem;">${escapeHtml(initials)}</div>`;
+
+    const statementStr = artist.statement
+      ? `<p style="font-size:0.88rem;line-height:1.55;margin:0.85rem 0 0;">${escapeHtml(artist.statement)}</p>`
+      : '';
+
+    // Only surface http(s) links (guards against javascript: etc.).
+    const safeLinks = artist.links.filter((l) => /^https?:\/\//i.test(l.url));
+    const linksStr = safeLinks.length
+      ? `<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin:0.9rem 0 0;">${safeLinks
+          .map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" style="
+            text-decoration:none;color:#f0ece6;background:rgba(255,255,255,0.08);
+            border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:0.3rem 0.7rem;
+            font-size:0.8rem;">${escapeHtml(l.label || l.url)} ↗</a>`)
+          .join('')}</div>`
+      : '';
+
+    this.infoPanel.innerHTML = `
+      <div aria-hidden="true" style="width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,0.28);margin:0 auto 0.65rem;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;">
+        <div style="display:flex;gap:0.85rem;align-items:center;flex:1;min-width:0;">
+          ${portrait}
+          <div style="min-width:0;">
+            <p style="font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;color:#888;margin:0;">About the artist</p>
+            <p style="font-size:1.1rem;font-weight:700;margin:0.1rem 0 0;">${escapeHtml(artist.name)}</p>
+          </div>
+        </div>
+        <button id="oh-close-inspect" style="
+          flex-shrink:0;background:none;border:1px solid rgba(255,255,255,0.25);
+          color:#f0ece6;border-radius:6px;padding:0.3rem 0.6rem;cursor:pointer;
+          font-size:0.8rem;white-space:nowrap;">✕ Close</button>
+      </div>
+      ${statementStr}
+      ${linksStr}
+      <p style="font-size:0.72rem;color:#555;margin:0.85rem 0 0;">Press <kbd style="background:#222;border:1px solid #444;border-radius:3px;padding:1px 4px;">Esc</kbd> to close &nbsp;·&nbsp; drag this card to move it</p>
     `;
     this.infoPanel.style.display = 'block';
 

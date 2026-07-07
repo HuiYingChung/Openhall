@@ -43,6 +43,12 @@ export interface BundleOptions {
    * the artist hasn't uploaded a custom icon.
    */
   faviconUrl?: string;
+  /**
+   * Optional artist portrait image URL (blob:, data:, or same-origin path).
+   * Packaged as images/portrait.<ext> and written into gallery.artist.portraitPath
+   * so the exported viewer renders the plaque. Ignored when the gallery has no artist.
+   */
+  portraitUrl?: string;
   onProgress?: (msg: string, pct: number) => void;
 }
 
@@ -54,7 +60,7 @@ export interface BundleResult {
 }
 
 export async function buildExportBundle(opts: BundleOptions): Promise<BundleResult> {
-  const { gallery, artworkUrls, viewerScriptUrl, aspectRatios, faviconUrl, onProgress } = opts;
+  const { gallery, artworkUrls, viewerScriptUrl, aspectRatios, faviconUrl, portraitUrl, onProgress } = opts;
   const progress = onProgress ?? (() => {});
 
   const zip = new JSZip();
@@ -95,6 +101,19 @@ export async function buildExportBundle(opts: BundleOptions): Promise<BundleResu
     imageMap.set(artworkId, filename);
   }
 
+  // --- 2b. Artist portrait ---
+  let portraitPathInZip: string | undefined;
+  if (gallery.artist && portraitUrl) {
+    progress('Packaging portrait…', 60);
+    const pRes = await fetch(portraitUrl);
+    if (!pRes.ok) {
+      throw new Error(`Failed to fetch artist portrait: HTTP ${pRes.status} from ${portraitUrl}`);
+    }
+    const pMime = pRes.headers.get('content-type') ?? 'image/jpeg';
+    portraitPathInZip = `images/portrait${extensionFromMime(pMime)}`;
+    zip.file(portraitPathInZip, await pRes.arrayBuffer());
+  }
+
   // --- 3. Patch gallery to use relative image paths + embed aspectRatio ---
   progress('Writing gallery.json…', 62);
   const exportGallery: Gallery = {
@@ -106,6 +125,11 @@ export async function buildExportBundle(opts: BundleOptions): Promise<BundleResu
       aspectRatio: aspectRatios?.get(aw.id) ?? aw.aspectRatio,
     })),
     placements: gallery.placements as Placement[],
+    // Rewrite the artist's portrait to its packaged relative path (drop the
+    // session blob: URL). Leave portraitPath unset when no portrait was packaged.
+    artist: gallery.artist
+      ? { ...gallery.artist, portraitPath: portraitPathInZip ?? undefined }
+      : undefined,
   };
   zip.file('gallery.json', JSON.stringify(exportGallery, null, 2));
 

@@ -67,4 +67,41 @@ describe('GallerySchema', () => {
       expect(result.data.branding).toBeUndefined();
     }
   });
+
+  it('accepts an optional artist block with links', () => {
+    const withArtist = {
+      ...sampleGallery,
+      artist: {
+        name: 'Jane Artist',
+        statement: 'I paint quiet interiors.',
+        portraitPath: 'images/portrait.jpg',
+        links: [
+          { label: 'Instagram', url: 'https://instagram.com/jane' },
+          { label: 'Website', url: 'https://jane.example' },
+        ],
+      },
+    };
+    const result = GallerySchema.safeParse(withArtist);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.artist?.name).toBe('Jane Artist');
+      expect(result.data.artist?.links).toHaveLength(2);
+    }
+  });
+
+  it('defaults artist.links to an empty array and allows no portrait', () => {
+    const withArtist = { ...sampleGallery, artist: { name: 'Solo' } };
+    const result = GallerySchema.safeParse(withArtist);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.artist?.links).toEqual([]);
+      expect(result.data.artist?.portraitPath).toBeUndefined();
+    }
+  });
+
+  it('rejects an artist block with no name', () => {
+    const bad = { ...sampleGallery, artist: { statement: 'no name here' } };
+    const result = GallerySchema.safeParse(bad);
+    expect(result.success).toBe(false);
+  });
 });

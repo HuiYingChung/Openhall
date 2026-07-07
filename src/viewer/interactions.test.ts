@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as THREE from 'three';
-import { ArtworkInteractions } from './interactions';
+import { ArtworkInteractions, ARTIST_MESH_ID } from './interactions';
 import type { Gallery } from '../schema/gallery.schema';
 import { GallerySchema } from '../schema/gallery.schema';
 
@@ -203,6 +203,55 @@ describe('ArtworkInteractions onClick guards', () => {
 
     expect(priv.dollyActive).toBe(false);
     hud.remove();
+    interactions.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artist panel
+// ---------------------------------------------------------------------------
+
+describe('ArtworkInteractions artist panel', () => {
+  afterEach(() => {
+    document.querySelectorAll('#oh-crosshair, #oh-info-panel').forEach((el) => el.remove());
+  });
+
+  function makeArtistInteractions() {
+    const gallery = makeGallery();
+    gallery.artist = {
+      name: 'Jane Artist',
+      statement: 'I paint quiet interiors at dusk.',
+      links: [
+        { label: 'Instagram', url: 'https://instagram.com/jane' },
+        { label: 'Bad', url: 'javascript:alert(1)' },
+      ],
+    };
+    const interactions = new ArtworkInteractions({
+      camera: new THREE.PerspectiveCamera(70, 1, 0.05, 200),
+      scene: new THREE.Scene(),
+      artworkMeshes: new Map(),
+      gallery,
+      onInspectOpen: vi.fn(),
+      onInspectClose: vi.fn(),
+      getIsLocked: vi.fn(() => true),
+    });
+    return interactions;
+  }
+
+  it('renders the artist name, statement and only safe links', () => {
+    const interactions = makeArtistInteractions();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const priv = interactions as any;
+    priv.currentArtworkId = ARTIST_MESH_ID;
+    priv.showInfoPanel();
+
+    const panel = document.querySelector('#oh-info-panel')!;
+    expect(panel.innerHTML).toContain('Jane Artist');
+    expect(panel.innerHTML).toContain('I paint quiet interiors at dusk.');
+    expect(panel.innerHTML).toContain('https://instagram.com/jane');
+    // javascript: link must be filtered out
+    expect(panel.innerHTML).not.toContain('javascript:');
+    expect(interactions.isInspecting).toBe(true);
     interactions.dispose();
   });
 });

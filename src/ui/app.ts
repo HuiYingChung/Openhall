@@ -49,6 +49,62 @@ interface AppData {
    * gallery.json — lives only for the session.
    */
   customFaviconDataUrl?: string | null;
+  /**
+   * Identity/branding entered on the upload screen, injected into the gallery
+   * after generation (no AI needed). Editable again on the review screen.
+   */
+  identity?: {
+    title?: string;
+    description?: string;
+    artistName?: string;
+    artistStatement?: string;
+    /** Blob object URL for the portrait — used live and for export packaging. */
+    portraitObjectUrl?: string | null;
+    links: { label: string; url: string }[];
+  };
+  /**
+   * Fingerprint of the AI inputs (artwork ids + brief + preset) captured when
+   * `gallery` was last generated. Lets us skip re-calling the AI (and re-billing)
+   * when the user returns to a gallery whose AI inputs haven't changed.
+   */
+  lastGenKey?: string;
+}
+
+/** Fingerprint of the inputs that require an AI call to (re)generate a gallery. */
+function aiInputKey(data: AppData): string {
+  const ids = data.artworks.map((a) => a.id).sort().join(',');
+  return `${ids}|${data.userBrief.trim()}|${data.preset}`;
+}
+
+/**
+ * Fold the artist's identity/branding drafts into the gallery object. Pure data
+ * work — no AI. The artist name/links also seed the export branding (author),
+ * and set up the in-world artist plaque. Called before every scene build so
+ * edits made on the upload/review screens take effect on the next build.
+ */
+function applyIdentity(gallery: Gallery, data: AppData): void {
+  const idv = data.identity;
+  if (!idv) return;
+
+  if (idv.title) gallery.title = idv.title;
+
+  const authorUrl = idv.links.find((l) => /^https?:\/\//i.test(l.url))?.url;
+  const branding = { ...(gallery.branding ?? {}) };
+  if (idv.description) branding.description = idv.description;
+  if (idv.artistName) branding.authorName = idv.artistName;
+  if (authorUrl) branding.authorUrl = authorUrl;
+  if (Object.keys(branding).length) gallery.branding = branding;
+
+  if (idv.artistName) {
+    gallery.artist = {
+      name: idv.artistName,
+      statement: idv.artistStatement,
+      portraitPath: idv.portraitObjectUrl ?? undefined,
+      links: idv.links.filter((l) => l.label.trim() && /^https?:\/\//i.test(l.url)),
+    };
+  } else {
+    gallery.artist = undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +397,11 @@ export function bootApp(): void {
             }
           }
 
+          // Artist portrait: the live gallery holds a blob:/same-origin URL in
+          // artist.portraitPath; hand it to the bundler to package (it rewrites
+          // the path to images/portrait.*). Undefined when there's no portrait.
+          const portraitUrl = data.gallery.artist?.portraitPath || undefined;
+
           // Both dev and prod fetch from /assets/viewer.js (pre-built from public/).
           // Run 'npm run build:viewer' once before testing export locally.
           const viewerScriptUrl = '/assets/viewer.js';
@@ -350,6 +411,7 @@ export function bootApp(): void {
             aspectRatios,
             viewerScriptUrl,
             faviconUrl,
+            portraitUrl,
             onProgress: (msg, pct) => { expBtn.innerHTML = `${msg} ${pct}%`; },
           });
           downloadZip(blob);
@@ -535,8 +597,48 @@ export function bootApp(): void {
           }).catch((e) => alert(`Demo mode failed: ${String(e)}`));
   }
 
+  /**
+   * Non-clickable progress indicator across the setup funnel. Persisted on
+   * document.body (survives ui.innerHTML resets) and hidden inside the viewer
+   * to keep the 3D space immersive.
+   */
+  function renderStepper(state: AppState): void {
+    const steps: { key: AppState; label: string }[] = [
+      { key: 'settings', label: 'Settings' },
+      { key: 'upload', label: 'Upload' },
+      { key: 'generating', label: 'Generate' },
+      { key: 'labels', label: 'Review' },
+      { key: 'viewer', label: 'Gallery' },
+    ];
+    let el = document.getElementById('oh-stepper');
+    if (state === 'viewer') { el?.remove(); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'oh-stepper';
+      el.style.cssText =
+        "position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:60;pointer-events:none;" +
+        "display:flex;gap:0.85rem;align-items:center;padding:0.4rem 1rem;background:rgba(13,13,13,0.72);" +
+        "backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.08);border-top:none;" +
+        "border-radius:0 0 10px 10px;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;";
+      document.body.appendChild(el);
+    }
+    const activeIdx = steps.findIndex((s) => s.key === state);
+    el.innerHTML = steps
+      .map((s, i) => {
+        const active = i === activeIdx;
+        const done = i < activeIdx;
+        const color = active ? '#fff' : done ? '#8a8f98' : '#5a5a5a';
+        const dot = active ? '#fff' : done ? '#6a9a6a' : '#3a3a3a';
+        return `<span style="display:flex;align-items:center;gap:0.35rem;color:${color};font-size:0.72rem;font-weight:${active ? 700 : 400};white-space:nowrap;">
+          <span style="width:7px;height:7px;border-radius:50%;background:${dot};"></span>${s.label}
+        </span>`;
+      })
+      .join('');
+  }
+
   function setState(state: AppState) {
     ui.innerHTML = '';
+    renderStepper(state);
     switch (state) {
       case 'settings': {
         const hasKey = !!(loadWatsonxSettings()?.apiKey || loadOpenAISettings()?.apiKey);
@@ -745,9 +847,25 @@ async function loadDemoGallery(data: AppData): Promise<Gallery> {
   const { default: sampleGallery } = await import('../demo/sample-gallery.json');
   const result = GallerySchema.safeParse(sampleGallery);
   if (!result.success) throw new Error('Demo gallery schema invalid');
-  data.gallery = result.data;
+  const gallery = result.data;
+
+  // Attach a sample artist so the demo showcases the in-world artist wall.
+  // Injected at runtime (not in sample-gallery.json) to keep test fixtures clean.
+  if (!gallery.artist) {
+    gallery.artist = {
+      name: 'Camille Aurnette',
+      statement:
+        'A fictional curator-artist created to demo Openhall. This wall is generated from your name, statement, and links — click it, or start the tour, to see how visitors meet the artist.',
+      links: [
+        { label: 'Website', url: 'https://example.com' },
+        { label: 'Instagram', url: 'https://instagram.com' },
+      ],
+    };
+  }
+
+  data.gallery = gallery;
   data.artworks = [];
-  return result.data;
+  return gallery;
 }
 
 // ---------------------------------------------------------------------------
@@ -761,6 +879,20 @@ function renderUpload(
   onSettings: () => void,
   onDemo: () => void
 ): void {
+  const idv = (data.identity ??= { links: [] });
+  const linkRows = [0, 1, 2]
+    .map((i) => {
+      const l = idv.links[i] ?? { label: '', url: '' };
+      return `<div style="display:flex;gap:0.5rem;margin-bottom:0.4rem;">
+        <input data-link-idx="${i}" data-link-field="label" type="text" value="${escapeHtml(l.label)}" placeholder="Label (e.g. Instagram)" aria-label="Link label"
+          style="flex:1;min-width:0;padding:0.45rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.85rem;box-sizing:border-box;">
+        <input data-link-idx="${i}" data-link-field="url" type="url" value="${escapeHtml(l.url)}" placeholder="https://…" aria-label="Link URL"
+          style="flex:1.4;min-width:0;padding:0.45rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.85rem;box-sizing:border-box;">
+      </div>`;
+    })
+    .join('');
+  const idInput =
+    'width:100%;padding:0.55rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:8px;font-size:0.92rem;box-sizing:border-box;';
   container.innerHTML = `
     <div style="position:fixed;inset:0;display:flex;flex-direction:column;
       background:#0d0d0d;z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;overflow-y:auto;">
@@ -798,6 +930,48 @@ function renderUpload(
 
         <label style="display:block;font-size:0.9rem;margin-bottom:0.5rem;">Gallery style</label>
         <div id="oh-presets" style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem;margin-bottom:1.5rem;"></div>
+
+        <details style="margin-bottom:1.5rem;border:1px solid #2a2a2a;border-radius:10px;padding:0.5rem 1rem 0.25rem;">
+          <summary style="cursor:pointer;font-size:0.95rem;font-weight:600;padding:0.35rem 0;">About you &amp; your gallery <span style="color:#777;font-weight:400;">(optional)</span></summary>
+          <p style="font-size:0.78rem;color:#777;margin:0.25rem 0 0.9rem;">Sets your gallery's title, share preview, browser icon, and an in-world artist wall visitors can click. You can review and change all of this before entering.</p>
+
+          <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.25rem;">Gallery title</label>
+          <input id="oh-id-title" type="text" value="${escapeHtml(idv.title ?? '')}" placeholder="Leave blank to let AI name it" aria-label="Gallery title"
+            style="${idInput}margin-bottom:0.75rem;">
+
+          <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.25rem;">One-line description</label>
+          <textarea id="oh-id-desc" rows="2" placeholder="Shown in the browser tab and when your gallery is shared" aria-label="Gallery description"
+            style="${idInput}resize:vertical;margin-bottom:0.75rem;">${escapeHtml(idv.description ?? '')}</textarea>
+
+          <div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;margin-bottom:0.9rem;">
+            <img id="oh-id-favicon-preview" alt="" style="width:36px;height:36px;border-radius:8px;border:1px solid #333;object-fit:cover;background:#1a1a1a;">
+            <label id="oh-id-favicon-label" for="oh-id-favicon" style="padding:0.4rem 0.75rem;border-radius:6px;font-size:0.8rem;cursor:pointer;">Upload favicon</label>
+            <button id="oh-id-favicon-reset" type="button" style="padding:0.4rem 0.65rem;border-radius:6px;font-size:0.8rem;cursor:pointer;">Auto from artwork</button>
+            <span id="oh-id-favicon-status" style="font-size:0.75rem;color:#8a8f98;"></span>
+            <input id="oh-id-favicon" type="file" accept="image/*" style="display:none;">
+          </div>
+
+          <div style="height:1px;background:#2a2a2a;margin:0.5rem 0 0.9rem;"></div>
+
+          <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.25rem;">Your name / studio</label>
+          <input id="oh-id-name" type="text" value="${escapeHtml(idv.artistName ?? '')}" placeholder="Shown on a clickable artist wall in the gallery" aria-label="Artist name"
+            style="${idInput}margin-bottom:0.75rem;">
+
+          <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.25rem;">Short statement / bio</label>
+          <textarea id="oh-id-statement" rows="3" placeholder="A few sentences about you or this body of work" aria-label="Artist statement"
+            style="${idInput}resize:vertical;margin-bottom:0.75rem;">${escapeHtml(idv.artistStatement ?? '')}</textarea>
+
+          <div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;margin-bottom:0.9rem;">
+            <img id="oh-id-portrait-preview" alt="" style="width:44px;height:44px;border-radius:50%;border:1px solid #333;object-fit:cover;background:#1a1a1a;">
+            <label id="oh-id-portrait-label" for="oh-id-portrait" style="padding:0.4rem 0.75rem;border-radius:6px;font-size:0.8rem;cursor:pointer;">Upload portrait</label>
+            <button id="oh-id-portrait-reset" type="button" style="padding:0.4rem 0.65rem;border-radius:6px;font-size:0.8rem;cursor:pointer;">Use initials</button>
+            <span id="oh-id-portrait-status" style="font-size:0.75rem;color:#8a8f98;"></span>
+            <input id="oh-id-portrait" type="file" accept="image/*" style="display:none;">
+          </div>
+
+          <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.35rem;">Links</label>
+          ${linkRows}
+        </details>
 
         <button id="oh-generate-btn" style="width:100%;padding:0.85rem;background:#fff;color:#111;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;opacity:0.4;" disabled>
           Generate Gallery →
@@ -841,7 +1015,114 @@ function renderUpload(
     const ready = data.artworks.length > 0 && data.artworks.length <= 10;
     generateBtn.disabled = !ready;
     generateBtn.style.opacity = ready ? '1' : '0.4';
+    // If a gallery already exists and the AI inputs are unchanged, re-entering
+    // costs nothing — surface that so the user knows they won't be re-billed.
+    const cached = !!data.gallery && data.lastGenKey === aiInputKey(data);
+    generateBtn.textContent = cached ? 'Continue → (no AI, no cost)' : 'Generate Gallery →';
   }
+
+  // --- Identity / branding wiring ---
+  const favPrev = container.querySelector('#oh-id-favicon-preview') as HTMLImageElement;
+  const portPrev = container.querySelector('#oh-id-portrait-preview') as HTMLImageElement;
+  const favInput = container.querySelector('#oh-id-favicon') as HTMLInputElement;
+  const portInput = container.querySelector('#oh-id-portrait') as HTMLInputElement;
+  const favLabel = container.querySelector('#oh-id-favicon-label') as HTMLElement;
+  const favReset = container.querySelector('#oh-id-favicon-reset') as HTMLElement;
+  const favStatus = container.querySelector('#oh-id-favicon-status') as HTMLElement;
+  const portLabel = container.querySelector('#oh-id-portrait-label') as HTMLElement;
+  const portReset = container.querySelector('#oh-id-portrait-reset') as HTMLElement;
+  const portStatus = container.querySelector('#oh-id-portrait-status') as HTMLElement;
+
+  // Toggle styling so the currently-selected source is obviously highlighted.
+  const ACTIVE = 'padding:0.4rem 0.75rem;border-radius:6px;font-size:0.8rem;cursor:pointer;background:#20361f;border:1px solid #6a9a6a;color:#d7ecd7;font-weight:600;';
+  const IDLE = 'padding:0.4rem 0.75rem;border-radius:6px;font-size:0.8rem;cursor:pointer;background:#1a1a1a;border:1px solid #333;color:#888;font-weight:400;';
+  const setToggle = (uploaded: boolean, uploadEl: HTMLElement, resetEl: HTMLElement) => {
+    uploadEl.style.cssText = uploaded ? ACTIVE : IDLE;
+    resetEl.style.cssText = uploaded ? IDLE : ACTIVE;
+  };
+
+  // Small initials avatar for the portrait preview when "Use initials" is active.
+  const initialsDataUrl = (name: string): string => {
+    const s = 88;
+    const c = document.createElement('canvas');
+    c.width = s; c.height = s;
+    const ctx = c.getContext('2d');
+    if (!ctx) return '';
+    ctx.fillStyle = '#3a3a3a';
+    ctx.beginPath(); ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2); ctx.fill();
+    const initials = (name || '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
+    ctx.fillStyle = '#e6e6e6';
+    ctx.font = '700 40px -apple-system, "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(initials, s / 2, s / 2 + 3);
+    return c.toDataURL('image/png');
+  };
+
+  const refreshFav = () => {
+    const uploaded = !!data.customFaviconDataUrl;
+    favPrev.src = data.customFaviconDataUrl ?? (data.artworks[0]?.displayObjectUrl ?? '');
+    setToggle(uploaded, favLabel, favReset);
+    favStatus.textContent = uploaded
+      ? 'Current: your icon'
+      : data.artworks.length
+        ? 'Current: auto (first artwork)'
+        : 'Current: auto (add an artwork first)';
+  };
+  const refreshPort = () => {
+    const uploaded = !!idv.portraitObjectUrl;
+    portPrev.src = uploaded ? idv.portraitObjectUrl! : initialsDataUrl(idv.artistName ?? '');
+    setToggle(uploaded, portLabel, portReset);
+    portStatus.textContent = uploaded ? 'Current: your photo' : 'Current: initials';
+  };
+  refreshFav();
+  refreshPort();
+
+  container.querySelector('#oh-id-title')!.addEventListener('input', (e) => {
+    idv.title = (e.target as HTMLInputElement).value || undefined;
+  });
+  container.querySelector('#oh-id-desc')!.addEventListener('input', (e) => {
+    idv.description = (e.target as HTMLTextAreaElement).value || undefined;
+  });
+  container.querySelector('#oh-id-name')!.addEventListener('input', (e) => {
+    idv.artistName = (e.target as HTMLInputElement).value || undefined;
+    if (!idv.portraitObjectUrl) refreshPort(); // keep the initials preview in sync
+  });
+  container.querySelector('#oh-id-statement')!.addEventListener('input', (e) => {
+    idv.artistStatement = (e.target as HTMLTextAreaElement).value || undefined;
+  });
+  for (const inp of Array.from(container.querySelectorAll('[data-link-idx]'))) {
+    inp.addEventListener('input', (e) => {
+      const el = e.target as HTMLInputElement;
+      const i = Number(el.dataset['linkIdx']);
+      const field = el.dataset['linkField'] as 'label' | 'url';
+      idv.links[i] = { label: '', url: '', ...idv.links[i], [field]: el.value };
+    });
+  }
+  favInput.addEventListener('change', async () => {
+    const file = favInput.files?.[0];
+    if (!file) return;
+    try {
+      data.customFaviconDataUrl = await generateFaviconDataUrl(URL.createObjectURL(file));
+      refreshFav();
+    } catch { alert('Could not read that image. Try a PNG or JPG.'); }
+  });
+  favReset.addEventListener('click', () => {
+    data.customFaviconDataUrl = null;
+    favInput.value = '';
+    refreshFav();
+  });
+  portInput.addEventListener('change', () => {
+    const file = portInput.files?.[0];
+    if (!file) return;
+    idv.portraitObjectUrl = createDisplayObjectUrl(file);
+    refreshPort();
+  });
+  portReset.addEventListener('click', () => {
+    idv.portraitObjectUrl = null;
+    portInput.value = '';
+    refreshPort();
+  });
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -861,6 +1142,7 @@ function renderUpload(
       addThumbnail(thumbnailGrid, artwork, data);
     }
     updateGenerateBtn();
+    refreshFav(); // the auto favicon derives from the first artwork
   }
 
   dropzone.addEventListener('click', () => fileInput.click());
@@ -973,34 +1255,50 @@ function renderGenerating(
 
   (async () => {
     try {
-      // Stage 1: vision analysis
-      const analyses: WorkAnalysis[] = [];
-      for (let i = 0; i < data.artworks.length; i++) {
-        setProgress(`Analysing artwork ${i + 1} of ${data.artworks.length}…`, 5 + (i / data.artworks.length) * 40);
-        const analysis = await provider.analyzeArtwork(data.artworks[i]);
-        analyses.push(analysis);
+      const key = aiInputKey(data);
+      let gallery: Gallery;
+
+      if (data.gallery && data.lastGenKey === key) {
+        // Cache hit — artworks/brief/style are unchanged since the last
+        // generation, so skip the (billable) AI stages entirely and reuse the
+        // existing gallery. Only identity edits + a free scene rebuild remain.
+        setProgress('Reusing your gallery — no AI call…', 60);
+        gallery = data.gallery;
+      } else {
+        // Stage 1: vision analysis
+        const analyses: WorkAnalysis[] = [];
+        for (let i = 0; i < data.artworks.length; i++) {
+          setProgress(`Analysing artwork ${i + 1} of ${data.artworks.length}…`, 5 + (i / data.artworks.length) * 40);
+          const analysis = await provider.analyzeArtwork(data.artworks[i]);
+          analyses.push(analysis);
+        }
+        data.analyses = analyses;
+
+        // Stage 2: curation
+        setProgress('Curating exhibition…', 50);
+        const plan = await provider.curate(analyses, data.userBrief);
+
+        // Stage 3: gallery generation
+        setProgress('Designing gallery…', 65);
+        const rawGallery = await provider.generateGallery(data.artworks, analyses, plan, data.preset);
+
+        // Sanity pass
+        setProgress('Verifying layout…', 85);
+        gallery = sanitizePlacements(rawGallery);
+        data.gallery = gallery;
+        data.lastGenKey = key; // remember these inputs so a return trip is free
       }
-      data.analyses = analyses;
 
-      // Stage 2: curation
-      setProgress('Curating exhibition…', 50);
-      const plan = await provider.curate(analyses, data.userBrief);
-
-      // Stage 3: gallery generation
-      setProgress('Designing gallery…', 65);
-      const rawGallery = await provider.generateGallery(data.artworks, analyses, plan, data.preset);
-
-      // Sanity pass
-      setProgress('Verifying layout…', 85);
-      const gallery = sanitizePlacements(rawGallery);
-      data.gallery = gallery;
-
-      // Patch imagePaths to use display object URLs
+      // Patch imagePaths to use display object URLs (idempotent across rebuilds)
       const urlMap = new Map(data.artworks.map((a) => [a.id, a.displayObjectUrl]));
       gallery.artworks = gallery.artworks.map((aw) => ({
         ...aw,
         imagePath: urlMap.get(aw.id) ?? aw.imagePath,
       }));
+
+      // Apply the artist's identity/branding drafts — no AI needed, and runs on
+      // both fresh and cached paths so edits take effect on the next build.
+      applyIdentity(gallery, data);
 
       // Build scene with real textures
       setProgress('Building scene…', 92);
@@ -1038,19 +1336,27 @@ function renderLabels(
 
   // Branding fields are baked into the exported site (title/meta/OG/favicon).
   const branding = (data.gallery!.branding ??= {});
+  const artistObj = data.gallery!.artist;
   const bTitle = data.gallery!.title ?? '';
   const bDesc = branding.description ?? '';
   const bAuthor = branding.authorName ?? '';
   const bUrl = branding.authorUrl ?? '';
+  const aStatement = artistObj?.statement ?? '';
   const inputStyle =
     'width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.9rem;box-sizing:border-box;';
+  // Editable artist statement — only when an artist wall exists. Reads live in
+  // the click panel + tour, so edits here take effect without regenerating.
+  const artistReviewBlock = artistObj
+    ? `<textarea id="oh-brand-statement" rows="3" placeholder="Artist statement (shown on your artist wall)" aria-label="Artist statement"
+        style="${inputStyle}resize:vertical;">${escapeHtml(aStatement)}</textarea>`
+    : '';
 
   container.innerHTML = `
     <div style="position:fixed;inset:0;display:flex;flex-direction:column;
       background:#0d0d0d;z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;overflow-y:auto;">
       <div style="max-width:640px;margin:0 auto;padding:2rem;width:100%;box-sizing:border-box;">
         <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Gallery Details</h2>
-        <p style="color:#888;font-size:0.85rem;margin:0 0 1rem;">These become your exported site's title, description, share preview, and browser icon — so it reads like your own site.</p>
+        <p style="color:#888;font-size:0.85rem;margin:0 0 1rem;">Prefilled from what you entered — a last check before you enter. These set your exported site's title, description, share preview, browser icon${artistObj ? ', and your in-world artist wall' : ''}. Edits here are free (no AI).</p>
         <div style="display:flex;flex-direction:column;gap:0.6rem;margin:0 0 1.25rem;">
           <input id="oh-brand-title" type="text" value="${escapeHtml(bTitle)}" placeholder="Gallery title" aria-label="Gallery title"
             style="${inputStyle}font-weight:600;">
@@ -1062,6 +1368,7 @@ function renderLabels(
             <input id="oh-brand-url" type="url" value="${escapeHtml(bUrl)}" placeholder="https://your-link.com" aria-label="Artist link"
               style="${inputStyle}flex:1;">
           </div>
+          ${artistReviewBlock}
           <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.25rem;">
             <img id="oh-favicon-preview" alt="favicon preview" style="width:40px;height:40px;border-radius:8px;border:1px solid #333;object-fit:cover;background:#1a1a1a;">
             <div style="flex:1;min-width:0;">
@@ -1081,7 +1388,10 @@ function renderLabels(
             Enter Gallery →
           </button>
         </div>
-        <p style="font-size:0.75rem;color:#666;margin:0.5rem 0 0;">Back keeps your uploads and details, but you'll need to generate again.</p>
+        <p style="display:flex;gap:0.5rem;align-items:flex-start;font-size:0.75rem;color:#d9a441;background:rgba(217,164,65,0.08);border:1px solid rgba(217,164,65,0.25);border-radius:8px;padding:0.6rem 0.75rem;margin:0.6rem 0 0;">
+          <span aria-hidden="true">⚠️</span>
+          <span>Going back keeps everything you've entered. Your gallery is only re-generated — re-calling the AI, which may cost API credits — if you change your <strong>artworks, description, or style</strong>. Editing names, labels, or branding is free.</span>
+        </p>
       </div>
     </div>`;
 
@@ -1103,10 +1413,18 @@ function renderLabels(
     branding.description = (e.target as HTMLTextAreaElement).value || undefined;
   });
   container.querySelector('#oh-brand-author')!.addEventListener('input', (e) => {
-    branding.authorName = (e.target as HTMLInputElement).value || undefined;
+    const v = (e.target as HTMLInputElement).value;
+    branding.authorName = v || undefined;
+    // Keep the in-world artist wall's name in sync (panel + tour read it live).
+    if (data.gallery!.artist && v) data.gallery!.artist.name = v;
   });
   container.querySelector('#oh-brand-url')!.addEventListener('input', (e) => {
     branding.authorUrl = (e.target as HTMLInputElement).value || undefined;
+  });
+  container.querySelector('#oh-brand-statement')?.addEventListener('input', (e) => {
+    if (data.gallery!.artist) {
+      data.gallery!.artist.statement = (e.target as HTMLTextAreaElement).value || undefined;
+    }
   });
   const faviconInput = container.querySelector('#oh-favicon-input') as HTMLInputElement;
   faviconInput.addEventListener('change', async () => {

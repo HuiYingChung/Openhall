@@ -6,7 +6,7 @@
  */
 
 import * as THREE from 'three';
-import type { Gallery, Room, Placement, Artwork, Doorway } from '../schema/gallery.schema';
+import type { Gallery, Room, Placement, Artwork, Doorway, Artist } from '../schema/gallery.schema';
 import { buildWallAABBs, type AABB, type DoorwayCut } from './collision';
 import {
   resolveStyleFamily,
@@ -21,6 +21,9 @@ import {
   makeStudioEnvTexture,
   pickEntranceWall,
   buildFakeEntrance,
+  pickArtistSlot,
+  makeMonogramTexture,
+  makeArtistWallTexture,
   type StyleFamily,
 } from './decor';
 
@@ -277,6 +280,40 @@ export function buildScene(
         entrancePick.side,
         entrancePick.offset
       );
+    }
+
+    // Artist wall — vinyl wall text on a free wall of the first room.
+    if (gallery.artist) {
+      const slot = pickArtistSlot(entryRoom, doorwayWalls, artworkOffsets, entrancePick);
+      if (slot) {
+        const { group, mesh, worldPos, normal } = buildArtistPlaque(
+          gallery.artist, entryRoom, entryOrigin, slot.side, slot.offset
+        );
+        scene.add(group);
+        artworkMeshes.set(ARTIST_MESH_ID, mesh);
+        artworkPositions.set(ARTIST_MESH_ID, worldPos);
+
+        // A soft wash so the wall text reads even in dim styles.
+        const washColor = temperatureColor(entryRoom.lighting.temperature);
+        const wash = new THREE.SpotLight(washColor, 6, 6.5, Math.PI / 5.5, 0.6, 2);
+        wash.position.copy(worldPos).addScaledVector(normal, 1.1);
+        wash.position.y = entryRoom.height - 0.3;
+        wash.target.position.copy(worldPos);
+        scene.add(wash);
+        scene.add(wash.target);
+
+        // Make the artist wall the opening stop of the guided tour.
+        if (gallery.tour[0]?.artworkId !== ARTIST_MESH_ID) {
+          const stand = worldPos.clone().addScaledVector(normal, 2.0);
+          stand.y = 1.6;
+          gallery.tour.unshift({
+            artworkId: ARTIST_MESH_ID,
+            position: { x: stand.x, y: stand.y, z: stand.z },
+            lookAt: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
+            label: `Welcome — ${gallery.artist.name}`,
+          });
+        }
+      }
     }
   }
 
@@ -669,6 +706,84 @@ function buildArtworkPlane(
   group.rotation.y = rotY;
 
   return { group, canvasMesh, worldPos: new THREE.Vector3(wx, hangingHeight, wz) };
+}
+
+// ---------------------------------------------------------------------------
+// Artist wall — gallery "vinyl" wall text (name + statement + links) painted
+// flat on the wall, with a small circular portrait/monogram. No frame. The
+// text plane is the clickable mesh (registered under the reserved id).
+// ---------------------------------------------------------------------------
+
+export const ARTIST_MESH_ID = '__artist__';
+
+/** Dark wall families want light ink; light walls want dark ink. */
+function wallInkColors(wall: string): { text: string } {
+  const dark = wall === 'black-plaster' || wall === 'dark-wood' || wall === 'concrete';
+  return { text: dark ? '#f2efe9' : '#1b1b1b' };
+}
+
+function buildArtistPlaque(
+  artist: Artist,
+  room: Room,
+  origin: { x: number; z: number },
+  side: 'n' | 's' | 'e' | 'w',
+  offset: number
+): { group: THREE.Group; mesh: THREE.Mesh; worldPos: THREE.Vector3; normal: THREE.Vector3 } {
+  const panelW = 1.75;
+  const panelH = panelW * (1000 / 1400); // match makeArtistWallTexture canvas ratio
+  const centreY = 1.55;
+
+  const group = new THREE.Group();
+  const accentHex = parseInt(room.surfaces.accentColor.replace('#', ''), 16) || 0xc0a070;
+  const ink = wallInkColors(room.surfaces.wall);
+
+  // Wall text (transparent — only the ink shows over the wall surface).
+  const textTex = makeArtistWallTexture(artist, {
+    textColor: ink.text,
+    accent: `#${new THREE.Color(accentHex).getHexString()}`,
+  });
+  // Lit by a dedicated wall wash (added in buildScene); no emissive so the
+  // hover-highlight's emissive toggle stays the sole owner of that channel.
+  const mat = textTex
+    ? new THREE.MeshStandardMaterial({ map: textTex, transparent: true, roughness: 0.95 })
+    : new THREE.MeshStandardMaterial({ color: accentHex, transparent: true, opacity: 0.9, roughness: 0.95 });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(panelW, panelH), mat);
+  mesh.userData['artworkId'] = ARTIST_MESH_ID;
+  mesh.position.z = 0.006;
+  group.add(mesh);
+
+  // Small circular portrait (or initials monogram) at the top-right corner.
+  const hasPortrait = !!artist.portraitPath && !artist.portraitPath.startsWith('placeholder:');
+  const circTex = hasPortrait
+    ? (() => { const t = new THREE.TextureLoader().load(artist.portraitPath!); t.colorSpace = THREE.SRGBColorSpace; return t; })()
+    : makeMonogramTexture(artist.name, accentHex);
+  if (circTex) {
+    const r = 0.26;
+    const circle = new THREE.Mesh(
+      new THREE.CircleGeometry(r, 48),
+      new THREE.MeshStandardMaterial({ map: circTex, roughness: 0.85 })
+    );
+    circle.position.set(panelW / 2 - r - 0.08, panelH / 2 - r - 0.05, 0.008);
+    group.add(circle);
+  }
+
+  const cx = origin.x + room.width / 2;
+  const cz = origin.z + room.depth / 2;
+  let wx = cx;
+  let wz = cz;
+  let rotY = 0;
+  const normal = new THREE.Vector3();
+  const inset = 0.02;
+  switch (side) {
+    case 'n': wz = origin.z + inset; wx = cx + offset; rotY = 0; normal.set(0, 0, 1); break;
+    case 's': wz = origin.z + room.depth - inset; wx = cx + offset; rotY = Math.PI; normal.set(0, 0, -1); break;
+    case 'w': wx = origin.x + inset; wz = cz + offset; rotY = Math.PI / 2; normal.set(1, 0, 0); break;
+    case 'e': wx = origin.x + room.width - inset; wz = cz + offset; rotY = -Math.PI / 2; normal.set(-1, 0, 0); break;
+  }
+  group.position.set(wx, centreY, wz);
+  group.rotation.y = rotY;
+
+  return { group, mesh, worldPos: new THREE.Vector3(wx, centreY, wz), normal };
 }
 
 // ---------------------------------------------------------------------------

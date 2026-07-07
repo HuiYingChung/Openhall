@@ -176,6 +176,36 @@ export const BrandingSchema = z.object({
 export type Branding = z.infer<typeof BrandingSchema>;
 
 // ---------------------------------------------------------------------------
+// Artist — in-world presence (rendered as a clickable plaque on a wall)
+// ---------------------------------------------------------------------------
+
+/** A labelled outbound link shown in the artist panel (e.g. Instagram). */
+export const ArtistLinkSchema = z.object({
+  label: z.string(),
+  url: z.string(),
+});
+export type ArtistLink = z.infer<typeof ArtistLinkSchema>;
+
+/**
+ * Optional artist presence. When set, the viewer renders a framed portrait
+ * plaque on a free wall of the first room; clicking it opens a panel with the
+ * name, statement, and links. Also used as the guided tour's opening stop.
+ */
+export const ArtistSchema = z.object({
+  name: z.string(),
+  /** Short bio / artist statement (a few sentences). */
+  statement: z.string().optional(),
+  /**
+   * Relative path to the portrait image (e.g. "images/portrait.jpg"), packaged
+   * at export like artwork images. Optional — a monogram is drawn when absent.
+   */
+  portraitPath: z.string().optional(),
+  /** Outbound links (portfolio, socials). Capped to keep the panel tidy. */
+  links: z.array(ArtistLinkSchema).max(6).default([]),
+});
+export type Artist = z.infer<typeof ArtistSchema>;
+
+// ---------------------------------------------------------------------------
 // Top-level Gallery
 // ---------------------------------------------------------------------------
 
@@ -191,5 +221,7 @@ export const GallerySchema = z.object({
   tour: z.array(TourWaypointSchema).default([]),
   /** Optional artist branding for the exported site (favicon/meta/OG). */
   branding: BrandingSchema.optional(),
+  /** Optional in-world artist presence (portrait plaque + panel + tour intro). */
+  artist: ArtistSchema.optional(),
 });
 export type Gallery = z.infer<typeof GallerySchema>;

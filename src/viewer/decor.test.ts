@@ -12,6 +12,7 @@ import {
   FLOOR_FINISH,
   buildFloorMaterial,
   pickEntranceWall,
+  pickArtistSlot,
   type StyleFamily,
 } from './decor';
 import type { Room } from '../schema/gallery.schema';
@@ -267,5 +268,39 @@ describe('benchSpec', () => {
     const spec = benchSpec(makeRoom(12, 10), 100, 50)!;
     expect(spec.cx).toBeCloseTo(106);
     expect(spec.aabb.minX).toBeGreaterThan(100);
+  });
+});
+
+describe('pickArtistSlot', () => {
+  const noArt = new Map<string, number[]>();
+
+  it('returns a centred slot on a free wall when nothing blocks', () => {
+    const pick = pickArtistSlot(makeRoom(12, 10), new Set(), noArt, null);
+    expect(pick).not.toBeNull();
+    expect(Math.abs(pick!.offset)).toBeLessThan(1e-6);
+  });
+
+  it('avoids the wall+span taken by the fake entrance', () => {
+    // Entrance centred on north wall — artist plaque must not sit on top of it.
+    const entrance = { side: 'n' as const, offset: 0 };
+    const pick = pickArtistSlot(makeRoom(12, 10), new Set(), noArt, entrance);
+    expect(pick).not.toBeNull();
+    if (pick!.side === 'n') {
+      // Same wall is allowed only if clear of the portal's blocked half-span.
+      expect(Math.abs(pick!.offset)).toBeGreaterThan(1.5);
+    }
+  });
+
+  it('skips walls with doorways', () => {
+    const pick = pickArtistSlot(makeRoom(12, 10), new Set(['n', 'e', 's']), noArt, null);
+    expect(pick?.side).toBe('w');
+  });
+
+  it('tolerates shorter walls than the entrance portal needs', () => {
+    // Only the 3 m side walls are free — too short for the 2.4 m portal, but
+    // fine for the 0.8 m plaque (needs ≥ 2.5 m of wall).
+    const pick = pickArtistSlot(makeRoom(12, 3), new Set(['n', 's']), noArt, null);
+    expect(pick).not.toBeNull();
+    expect(['e', 'w']).toContain(pick!.side);
   });
 });
