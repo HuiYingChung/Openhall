@@ -261,8 +261,9 @@ export class ArtworkInteractions {
         // Only standard materials support emissive. Never touch the unlit
         // swap material — assigning an emissive property to a basic material
         // makes the renderer look up a uniform that doesn't exist and crashes
-        // the render loop on every frame.
-        if (mat.isMeshStandardMaterial) {
+        // the render loop on every frame. The artist wall owns its emissive
+        // channel (self-lit text), so leave it alone too.
+        if (mat.isMeshStandardMaterial && hit.userData['artworkId'] !== ARTIST_MESH_ID) {
           mat.emissive = HIGHLIGHT_EMISSIVE;
           mat.emissiveIntensity = 0.18;
         }
@@ -273,7 +274,7 @@ export class ArtworkInteractions {
   private clearHighlight(): void {
     if (this.hoveredMesh) {
       const mat = this.hoveredMesh.material as THREE.MeshStandardMaterial;
-      if (mat.isMeshStandardMaterial) {
+      if (mat.isMeshStandardMaterial && this.hoveredMesh.userData['artworkId'] !== ARTIST_MESH_ID) {
         mat.emissive = HIGHLIGHT_EMISSIVE_OFF;
         mat.emissiveIntensity = 0;
       }

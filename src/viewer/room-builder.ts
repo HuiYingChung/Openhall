@@ -748,11 +748,15 @@ function buildArtistPlaque(
   const accentHex = parseInt(room.surfaces.accentColor.replace('#', ''), 16) || 0xc0a070;
   const ink = wallInkColors(room.surfaces.wall);
 
-  // Contrast-safe accent: the bright room accent pops on a dark wall, but on a
-  // light wall it washes out — darken it there so the eyebrow, rule, and links
-  // stay legible.
+  // Contrast-safe accent: guarantee the eyebrow/rule/links read on either a
+  // light wall (darken a pale accent) or a dark wall (lighten a dim accent).
   const accentColor = new THREE.Color(accentHex);
-  if (!ink.dark) accentColor.multiplyScalar(0.42);
+  const accentLum = 0.299 * accentColor.r + 0.587 * accentColor.g + 0.114 * accentColor.b;
+  if (!ink.dark && accentLum > 0.45) {
+    accentColor.multiplyScalar(0.42);
+  } else if (ink.dark && accentLum < 0.55) {
+    accentColor.lerp(new THREE.Color(0xf0d18a), 0.7); // push toward a bright warm gold
+  }
   const accentStr = `#${accentColor.getHexString()}`;
 
   // Wall text (transparent — only the ink shows over the wall surface).
@@ -761,11 +765,19 @@ function buildArtistPlaque(
     accent: accentStr,
     textLeftPx,
   });
-  // Lit by a dedicated wall wash (added in buildScene); no emissive so the
-  // hover-highlight's emissive toggle stays the sole owner of that channel.
+  // Gentle self-illumination via emissiveMap so the lettering reads EVENLY
+  // across the whole panel, independent of the single wall-wash spotlight
+  // (which otherwise hotspots the centre and lets the edges fall dark). The
+  // artist mesh is excluded from the hover-emissive toggle so this survives
+  // (see interactions.ts).
   const mat = textTex
     ? new THREE.MeshStandardMaterial({ map: textTex, transparent: true, roughness: 0.95 })
     : new THREE.MeshStandardMaterial({ color: accentHex, transparent: true, opacity: 0.9, roughness: 0.95 });
+  if (textTex) {
+    mat.emissive = new THREE.Color(0xffffff);
+    mat.emissiveMap = textTex;
+    mat.emissiveIntensity = 0.6;
+  }
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(panelW, panelH), mat);
   mesh.userData['artworkId'] = ARTIST_MESH_ID;
   mesh.position.z = 0.006;
