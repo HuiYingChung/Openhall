@@ -1033,19 +1033,33 @@ function renderLabels(
 
   const list = container.querySelector('#oh-labels-list') as HTMLElement;
   for (const aw of data.gallery!.artworks) {
+    // Thumbnail so the user can tell which artwork each label belongs to:
+    // prefer the upload's display URL, fall back to the gallery imagePath.
+    const thumbSrc =
+      data.artworks.find((a) => a.id === aw.id)?.displayObjectUrl ??
+      (aw.imagePath && !aw.imagePath.startsWith('placeholder:') ? aw.imagePath : null);
+    // Don't pre-fill the assembler's sentinel defaults — an empty input with
+    // a placeholder is easier to edit than text you must delete first.
+    const titleValue = aw.title === 'Untitled' ? '' : (aw.title ?? '');
+    const mediumValue = aw.medium === 'Unknown medium' ? '' : (aw.medium ?? '');
     const block = document.createElement('div');
-    block.style.cssText = 'margin-bottom:1.25rem;';
+    block.style.cssText = 'display:flex;gap:0.75rem;align-items:flex-start;margin-bottom:1.25rem;';
     block.innerHTML = `
-      <div style="display:flex;gap:0.5rem;margin:0 0 0.35rem;">
-        <input data-id="${escapeHtml(aw.id)}" data-field="title" type="text"
-          value="${escapeHtml(aw.title ?? '')}" placeholder="Untitled" aria-label="Artwork title"
-          style="flex:1.4;min-width:0;padding:0.4rem 0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.9rem;font-weight:600;box-sizing:border-box;">
-        <input data-id="${escapeHtml(aw.id)}" data-field="medium" type="text"
-          value="${escapeHtml(aw.medium ?? '')}" placeholder="Medium (e.g. Oil on canvas)" aria-label="Artwork medium"
-          style="flex:1;min-width:0;padding:0.4rem 0.5rem;background:#111;color:#999;border:1px solid #2a2a2a;border-radius:6px;font-size:0.85rem;box-sizing:border-box;">
-      </div>
-      <textarea data-id="${escapeHtml(aw.id)}" rows="3" aria-label="Wall label text"
-        style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.85rem;resize:vertical;box-sizing:border-box;">${escapeHtml(aw.label)}</textarea>`;
+      ${thumbSrc
+        ? `<img src="${escapeHtml(thumbSrc)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid #333;flex-shrink:0;background:#1a1a1a;">`
+        : '<div style="width:72px;height:72px;border-radius:6px;border:1px solid #333;background:#1a1a1a;flex-shrink:0;"></div>'}
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;gap:0.5rem;margin:0 0 0.35rem;">
+          <input data-id="${escapeHtml(aw.id)}" data-field="title" type="text"
+            value="${escapeHtml(titleValue)}" placeholder="Untitled" aria-label="Artwork title"
+            style="flex:1.4;min-width:0;padding:0.4rem 0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.9rem;font-weight:600;box-sizing:border-box;">
+          <input data-id="${escapeHtml(aw.id)}" data-field="medium" type="text"
+            value="${escapeHtml(mediumValue)}" placeholder="Medium (e.g. Oil on canvas)" aria-label="Artwork medium"
+            style="flex:1;min-width:0;padding:0.4rem 0.5rem;background:#111;color:#999;border:1px solid #2a2a2a;border-radius:6px;font-size:0.85rem;box-sizing:border-box;">
+        </div>
+        <textarea data-id="${escapeHtml(aw.id)}" rows="3" aria-label="Wall label text"
+          style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.85rem;resize:vertical;box-sizing:border-box;">${escapeHtml(aw.label)}</textarea>
+      </div>`;
     // Title + medium inputs write straight back to the gallery object —
     // inspect panel / tour read these live, so edits show up in the viewer.
     for (const input of Array.from(block.querySelectorAll('input'))) {
