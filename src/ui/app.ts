@@ -1096,7 +1096,8 @@ function renderUpload(
       const el = e.target as HTMLInputElement;
       const i = Number(el.dataset['linkIdx']);
       const field = el.dataset['linkField'] as 'label' | 'url';
-      idv.links[i] = { label: '', url: '', ...idv.links[i], [field]: el.value };
+      const cur = idv.links[i] ?? { label: '', url: '' };
+      idv.links[i] = { ...cur, [field]: el.value };
     });
   }
   favInput.addEventListener('change', async () => {
