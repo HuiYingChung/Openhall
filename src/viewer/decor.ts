@@ -514,17 +514,22 @@ export function pickArtistSlot(
   artworkOffsets: Map<string, number[]>,
   entrance: EntrancePick | null
 ): EntrancePick | null {
-  const order: WallSide[] = ['n', 'e', 's', 'w'];
-  const PLAQUE_NEED = 1.4; // plaque + margin
-  const ART_BLOCK = 0.9; // half-interval an artwork blocks
-  const ENTRANCE_BLOCK = 1.6; // half-interval the portal blocks on its wall
-  const EDGE = 0.3;
+  // The wall text panel is ~1.65 m wide; reserve a gap at least that wide plus
+  // margin, and keep the panel a clear distance from any neighbouring artwork.
+  const PLAQUE_NEED = 1.85; // free gap the panel needs (panel width + slack)
+  const ART_BLOCK = 1.0; // artwork half-interval → ~0.3 m clearance to its edge
+  const ENTRANCE_BLOCK = 1.7; // half-interval the portal blocks on its wall
+  const EDGE = 0.35;
+  // Prefer the least-crowded wall so the panel gets breathing room.
+  const order = (['n', 'e', 's', 'w'] as WallSide[])
+    .slice()
+    .sort((a, b) => (artworkOffsets.get(a)?.length ?? 0) - (artworkOffsets.get(b)?.length ?? 0));
   let fallback: EntrancePick | null = null;
 
   for (const side of order) {
     if (doorwayWalls.has(side)) continue;
     const len = side === 'n' || side === 's' ? room.width : room.depth;
-    if (len < 2.5) continue;
+    if (len < 2.6) continue;
 
     // Blocked intervals: each artwork on this wall, plus the entrance portal.
     const blocks: Array<[number, number]> = [];
@@ -632,13 +637,14 @@ function wrapCanvasText(
  * flush on the wall so it reads like painted gallery vinyl (only the ink shows).
  * Returns null in headless environments (no canvas).
  */
+export const ARTIST_WALL_CANVAS = { W: 1400, H: 1000 };
+
 export function makeArtistWallTexture(
   artist: { name: string; statement?: string; links: { label: string; url: string }[] },
-  opts: { textColor: string; accent: string }
+  opts: { textColor: string; accent: string; textLeftPx?: number }
 ): THREE.Texture | null {
   if (typeof document === 'undefined') return null;
-  const W = 1400;
-  const H = 1000;
+  const { W, H } = ARTIST_WALL_CANVAS;
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
@@ -646,42 +652,45 @@ export function makeArtistWallTexture(
   if (!ctx) return null;
 
   const pad = 80;
-  const nameMaxW = W - pad * 2 - 340; // reserve top-right space for the portrait
+  // Text lives in a right-hand column; the left gutter is left clear for the
+  // portrait/monogram disc (positioned separately as 3D geometry).
+  const x = pad + (opts.textLeftPx ?? 0);
+  const maxW = W - pad - x;
   const font = (spec: string) => `${spec} -apple-system, "Segoe UI", system-ui, sans-serif`;
   ctx.textBaseline = 'top';
-  let y = pad;
+  let y = pad + 30;
 
   // Eyebrow
   try { ctx.letterSpacing = '5px'; } catch { /* not supported everywhere */ }
   ctx.fillStyle = opts.accent;
   ctx.font = font('600 32px');
-  ctx.fillText('ABOUT THE ARTIST', pad, y);
+  ctx.fillText('ABOUT THE ARTIST', x, y);
   try { ctx.letterSpacing = '0px'; } catch { /* noop */ }
   y += 62;
 
-  // Name (wrapped, clear of the portrait corner)
+  // Name
   ctx.fillStyle = opts.textColor;
-  ctx.font = font('700 88px');
-  y = wrapCanvasText(ctx, artist.name || 'Artist', pad, y, nameMaxW, 96);
-  y += 20;
+  ctx.font = font('700 84px');
+  y = wrapCanvasText(ctx, artist.name || 'Artist', x, y, maxW, 92);
+  y += 18;
 
   // Accent rule
   ctx.strokeStyle = opts.accent;
   ctx.lineWidth = 5;
   ctx.beginPath();
-  ctx.moveTo(pad, y);
-  ctx.lineTo(pad + 240, y);
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + 220, y);
   ctx.stroke();
-  y += 46;
+  y += 42;
 
-  // Statement (wrapped, full width)
+  // Statement (wrapped within the text column)
   if (artist.statement) {
     ctx.fillStyle = opts.textColor;
     ctx.globalAlpha = 0.86;
-    ctx.font = font('400 40px');
-    y = wrapCanvasText(ctx, artist.statement, pad, y, W - pad * 2, 58);
+    ctx.font = font('400 38px');
+    y = wrapCanvasText(ctx, artist.statement, x, y, maxW, 54);
     ctx.globalAlpha = 1;
-    y += 26;
+    y += 24;
   }
 
   // Links line (labels only; the panel handles the clickable URLs)
@@ -689,7 +698,7 @@ export function makeArtistWallTexture(
   if (labels.length) {
     ctx.fillStyle = opts.accent;
     ctx.font = font('600 32px');
-    ctx.fillText(labels.join('    ·    '), pad, y);
+    ctx.fillText(labels.join('    ·    '), x, y);
   }
 
   const tex = new THREE.CanvasTexture(canvas);

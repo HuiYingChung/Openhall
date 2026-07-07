@@ -729,9 +729,11 @@ function buildArtistPlaque(
   side: 'n' | 's' | 'e' | 'w',
   offset: number
 ): { group: THREE.Group; mesh: THREE.Mesh; worldPos: THREE.Vector3; normal: THREE.Vector3 } {
-  const panelW = 1.75;
+  const panelW = 1.65;
   const panelH = panelW * (1000 / 1400); // match makeArtistWallTexture canvas ratio
   const centreY = 1.55;
+  // Reserve a left gutter (in canvas px) for the portrait; text flows right of it.
+  const textLeftPx = 480;
 
   const group = new THREE.Group();
   const accentHex = parseInt(room.surfaces.accentColor.replace('#', ''), 16) || 0xc0a070;
@@ -741,6 +743,7 @@ function buildArtistPlaque(
   const textTex = makeArtistWallTexture(artist, {
     textColor: ink.text,
     accent: `#${new THREE.Color(accentHex).getHexString()}`,
+    textLeftPx,
   });
   // Lit by a dedicated wall wash (added in buildScene); no emissive so the
   // hover-highlight's emissive toggle stays the sole owner of that channel.
@@ -752,18 +755,22 @@ function buildArtistPlaque(
   mesh.position.z = 0.006;
   group.add(mesh);
 
-  // Small circular portrait (or initials monogram) at the top-right corner.
+  // Circular portrait (or initials monogram) in the left gutter, aligned with
+  // the upper text — never overlapping the copy.
   const hasPortrait = !!artist.portraitPath && !artist.portraitPath.startsWith('placeholder:');
   const circTex = hasPortrait
     ? (() => { const t = new THREE.TextureLoader().load(artist.portraitPath!); t.colorSpace = THREE.SRGBColorSpace; return t; })()
     : makeMonogramTexture(artist.name, accentHex);
   if (circTex) {
     const r = 0.26;
+    // Centre of the left gutter (canvas x 0 … pad+textLeftPx) mapped to world x.
+    const textStartPx = 80 + textLeftPx;
+    const gutterCentreX = -panelW / 2 + (textStartPx / 2 / 1400) * panelW;
     const circle = new THREE.Mesh(
       new THREE.CircleGeometry(r, 48),
       new THREE.MeshStandardMaterial({ map: circTex, roughness: 0.85 })
     );
-    circle.position.set(panelW / 2 - r - 0.08, panelH / 2 - r - 0.05, 0.008);
+    circle.position.set(gutterCentreX, panelH / 2 - r - 0.12, 0.008);
     group.add(circle);
   }
 
