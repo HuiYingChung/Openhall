@@ -13,6 +13,7 @@ import { FirstPersonControls } from '../viewer/controls';
 import { ArtworkInteractions } from '../viewer/interactions';
 import { GalleryTour } from '../viewer/tour';
 import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay } from './overlay';
+import { showToast, buildErrorCard, showFieldError, translateError, type ErrorAction } from './feedback';
 import { escapeHtml } from './escape-html';
 import { sanitizePlacements } from './placement-sanity';
 import { resizeToDataUrl, createDisplayObjectUrl, generateFaviconDataUrl } from './image-utils';
@@ -445,7 +446,12 @@ export function bootApp(): void {
           });
           downloadZip(blob);
         } catch (e) {
-          alert(`Export failed: ${String(e)}`);
+          showToast({
+            message: `Export failed: ${String(e).slice(0, 140)}`,
+            tone: 'error',
+            actionLabel: 'Retry',
+            onAction: () => expBtn.click(),
+          });
         } finally {
           expBtn.disabled = false;
           expBtn.innerHTML = `${svgDownload()}Export`;
@@ -622,7 +628,14 @@ export function bootApp(): void {
                 });
               }
             }
-          }).catch((e) => alert(`Demo mode failed: ${String(e)}`));
+          }).catch((e) => {
+            showToast({
+              message: `Demo mode failed to load: ${String(e).slice(0, 120)}`,
+              tone: 'error',
+              actionLabel: 'Retry',
+              onAction: () => startDemo(),
+            });
+          });
   }
 
   /**
@@ -733,7 +746,28 @@ export function bootApp(): void {
 
           setState('labels');
         },
-        (err) => { alert(`Generation failed:\n${err}`); setState('upload'); }); break;
+        (err) => {
+          // Failure keeps the user on a recoverable error screen instead of
+          // bouncing to upload — uploads/brief live in `data` and are kept.
+          const t = translateError(err);
+          const actionDefs: Record<ErrorAction, { label: string; primary?: boolean; onClick: () => void }> = {
+            retry: { label: 'Try again', primary: true, onClick: () => setState('generating') },
+            settings: { label: 'Open settings', onClick: () => setState('settings') },
+            back: { label: 'Back to edit', onClick: () => setState('upload') },
+          };
+          ui.innerHTML = '';
+          const screen = document.createElement('div');
+          screen.className = 'oh-screen oh-screen--center';
+          const card = buildErrorCard({
+            title: t.title,
+            hint: t.hint,
+            detail: t.detail,
+            actions: t.actions.map((a) => actionDefs[a]),
+          });
+          screen.appendChild(card);
+          ui.appendChild(screen);
+          card.focus();
+        }); break;
       case 'viewer': {
         // Remove UI overlay and show viewer HUD buttons
         ui.innerHTML = '';
@@ -853,17 +887,28 @@ function renderSettings(
   });
 
   container.querySelector('#oh-save-settings')!.addEventListener('click', () => {
+    const errEl = container.querySelector('#oh-settings-error') as HTMLElement;
     if (providerSel.value === 'watsonx') {
-      const key = (container.querySelector('#oh-wx-key') as HTMLInputElement).value.trim();
-      const proj = (container.querySelector('#oh-wx-project') as HTMLInputElement).value.trim();
+      const keyEl = container.querySelector('#oh-wx-key') as HTMLInputElement;
+      const projEl = container.querySelector('#oh-wx-project') as HTMLInputElement;
+      const key = keyEl.value.trim();
+      const proj = projEl.value.trim();
       const worker = (container.querySelector('#oh-wx-worker') as HTMLInputElement).value.trim();
-      if (!key || !proj) { alert('API key and Project ID are required for watsonx.'); return; }
+      if (!key || !proj) {
+        const missing = [!key ? keyEl : null, !proj ? projEl : null].filter(Boolean) as HTMLElement[];
+        showFieldError(errEl, 'API key and Project ID are required for watsonx.', missing);
+        return;
+      }
       saveWatsonxSettings({ apiKey: key, projectId: proj, wxUrl: 'https://us-south.ml.cloud.ibm.com', tokenWorkerUrl: worker });
     } else {
-      const key = (container.querySelector('#oh-oai-key') as HTMLInputElement).value.trim();
+      const keyEl = container.querySelector('#oh-oai-key') as HTMLInputElement;
+      const key = keyEl.value.trim();
       const url = (container.querySelector('#oh-oai-url') as HTMLInputElement).value.trim();
       const model = (container.querySelector('#oh-oai-model') as HTMLInputElement).value.trim();
-      if (!key) { alert('API key is required.'); return; }
+      if (!key) {
+        showFieldError(errEl, 'API key is required.', [keyEl]);
+        return;
+      }
       saveOpenAISettings({
         apiKey: key,
         baseUrl: (url || 'https://api.openai.com/v1').replace(/\/+$/, ''),
@@ -1163,7 +1208,7 @@ function renderUpload(
     try {
       data.customFaviconDataUrl = await generateFaviconDataUrl(URL.createObjectURL(file));
       refreshFav();
-    } catch { alert('Could not read that image. Try a PNG or JPG.'); }
+    } catch { showToast({ message: 'Could not read that image. Try a PNG or JPG.', tone: 'error', duration: 6000 }); }
   });
   favReset.addEventListener('click', () => {
     data.customFaviconDataUrl = null;
@@ -1232,7 +1277,12 @@ function renderUpload(
 
   generateBtn.addEventListener('click', () => {
     data.userBrief = briefInput.value.trim();
-    if (!data.userBrief) { alert('Please add a one-sentence description of your exhibition.'); return; }
+    if (!data.userBrief) {
+      const errEl = container.querySelector('#oh-brief-error') as HTMLElement;
+      showFieldError(errEl, 'Add a one-sentence description of your exhibition.', [briefInput]);
+      briefInput.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
 
     const willCallAI = !(data.gallery && data.lastGenKey === aiInputKey(data));
     if (willCallAI && !armed) {
@@ -1297,7 +1347,7 @@ function renderGenerating(
     gallery: Gallery,
     artworkMeshes: Map<string, THREE.Mesh>
   ) => void,
-  onError: (msg: string) => void
+  onError: (err: unknown) => void
 ): void {
   container.innerHTML = `
     <div class="oh-screen oh-screen--center" style="background:rgba(0,0,0,0.9);">
@@ -1397,7 +1447,7 @@ function renderGenerating(
 
       onDone(scene, newControls, gallery, artworkMeshes);
     } catch (e) {
-      onError(String(e));
+      onError(e);
     }
   })();
 }
@@ -1511,7 +1561,7 @@ function renderLabels(
       data.customFaviconDataUrl = await generateFaviconDataUrl(URL.createObjectURL(file));
       refreshFaviconPreview();
     } catch {
-      alert('Could not read that image. Try a PNG or JPG.');
+      showToast({ message: 'Could not read that image. Try a PNG or JPG.', tone: 'error', duration: 6000 });
     }
   });
   container.querySelector('#oh-favicon-reset')!.addEventListener('click', () => {

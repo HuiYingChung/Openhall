@@ -246,6 +246,87 @@ textarea.oh-field { resize: vertical; }
 .oh-dropzone:hover { border-color: #777; }
 .oh-dropzone.is-dragover { border-color: var(--oh-ink-dim); background: rgba(255, 255, 255, 0.03); }
 
+/* ------------------------------------------------------------------ */
+/* Feedback: toast + error card (see feedback.ts)                      */
+/* ------------------------------------------------------------------ */
+
+#oh-toast-root {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  z-index: 400;
+  display: flex;
+  justify-content: center;
+  width: max-content;
+  max-width: min(560px, 92vw);
+  font-family: var(--oh-font);
+}
+
+.oh-toast {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--oh-panel);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--oh-radius);
+  padding: 0.65rem 0.9rem;
+  color: var(--oh-ink);
+  font-size: 0.88rem;
+  max-width: 100%;
+}
+.oh-toast--error { border-color: rgba(207, 111, 90, 0.55); }
+.oh-toast--success { border-color: rgba(106, 154, 106, 0.55); }
+.oh-toast-msg { min-width: 0; }
+.oh-toast-action { padding: 0.35rem 0.8rem; font-size: 0.82rem; flex-shrink: 0; }
+.oh-toast-close {
+  background: none;
+  border: none;
+  color: var(--oh-ink-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.2rem 0.3rem;
+  flex-shrink: 0;
+}
+.oh-toast-close:hover { color: var(--oh-ink); }
+
+.oh-error-card {
+  background: var(--oh-panel);
+  border: 1px solid rgba(217, 164, 65, 0.4);
+  border-radius: var(--oh-radius);
+  padding: 1.1rem 1.35rem;
+  max-width: min(440px, 88vw);
+  text-align: left;
+  outline: none;
+  font-family: var(--oh-font);
+  color: var(--oh-ink);
+}
+.oh-error-title {
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--oh-ink);
+}
+.oh-error-hint {
+  margin: 0 0 0.9rem;
+  font-size: 0.83rem;
+  color: var(--oh-ink-muted);
+  line-height: 1.5;
+}
+.oh-error-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.oh-error-detail { margin-top: 0.8rem; }
+.oh-error-detail summary {
+  font-size: 0.72rem;
+  color: #555;
+  cursor: pointer;
+}
+.oh-error-detail p {
+  font-size: 0.72rem;
+  color: var(--oh-ink-faint);
+  margin: 0.35rem 0 0;
+  word-break: break-word;
+}
+
 /* Wordmark — glyph + text lockup used on the upload header and overlays */
 .oh-wordmark {
   display: inline-flex;
