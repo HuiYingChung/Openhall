@@ -507,4 +507,35 @@ describe('GalleryTour autoplay progress bar', () => {
     expect(parseFloat(fill.style.width)).toBeGreaterThan(w1);
     tour.dispose();
   });
+
+  it('Pause freezes the dwell clock; Play continues from the frozen point', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    toViewing(tour); // 'Waypoint 1' label → 5 s dwell
+    tour.setAutoplay(true);
+    tour.update(2); // 2 s into the 5 s dwell → 40%
+    tour.setAutoplay(false); // Pause — freeze at 2 s
+    tour.update(5); // paused wall time must NOT count toward the dwell
+    tour.setAutoplay(true); // Play — continue from 2 s, not 0, not 7
+    tour.update(0.5);
+    const fill = document.getElementById('oh-tour-progress')!;
+    const pct = parseFloat(fill.style.width);
+    expect(pct).toBeGreaterThan(45); // (2 + 0.5) / 5 = 50%
+    expect(pct).toBeLessThan(55); // reset-to-zero bug would give 10%
+    expect(camera.position.x).toBeCloseTo(0, 0); // unfrozen 7.5 s would have advanced
+    tour.dispose();
+  });
+
+  it('enabling autoplay fresh at a stop still restarts the dwell clock', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    toViewing(tour);
+    tour.update(3); // long manual look, autoplay never on at this stop
+    tour.setAutoplay(true); // fresh enable → full reading time
+    tour.update(0.5);
+    const fill = document.getElementById('oh-tour-progress')!;
+    expect(parseFloat(fill.style.width)).toBeLessThan(20); // 0.5 / 5 = 10%
+    expect(camera.position.x).toBeCloseTo(0, 0); // no instant jump
+    tour.dispose();
+  });
 });

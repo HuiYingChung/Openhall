@@ -478,6 +478,13 @@ export class GalleryTour {
     // manual 'viewing' — waiting for user interaction; touch drag via TouchLook
   }
 
+  /**
+   * Dwell-clock reading frozen by Pause, restored by Play — so pausing
+   * mid-stop continues from the same point (progress bar included) instead
+   * of granting the stop a fresh full dwell. Null = nothing frozen.
+   */
+  private pausedDwellElapsed: number | null = null;
+
   /** Turn autoplay on/off and reflect the state on the Play/Pause button. */
   setAutoplay(on: boolean): void {
     this.autoplay = on;
@@ -491,12 +498,18 @@ export class GalleryTour {
           this.startWaypoint(0);
           return; // startWaypoint resets elapsed; button already updated above
         }
-        // Resume a paused utterance if one exists, then restart the dwell clock.
+        // Resume a paused utterance if one exists.
         if (this.narrator.isPaused) this.narrator.resume();
-        this.elapsed = 0;
+        // Resuming from Pause continues the dwell clock where it froze;
+        // enabling autoplay fresh at a stop restarts it (so a long manual
+        // look never turns Play into an instant jump to the next artwork).
+        this.elapsed = this.pausedDwellElapsed ?? 0;
+        this.pausedDwellElapsed = null;
       }
     } else {
-      // Pause freezes EVERYTHING: movement (autoplay) AND voice mid-sentence.
+      // Pause freezes EVERYTHING: movement (autoplay), voice mid-sentence,
+      // and the dwell clock (progress bar resumes where it stopped).
+      if (this.phase === 'viewing') this.pausedDwellElapsed = this.elapsed;
       if (this.narrator.isSpeaking) this.narrator.pause();
     }
     this.playBtn.innerHTML = on ? `${svgPause()}Pause` : `${svgPlay()}Autoplay`;
@@ -552,6 +565,9 @@ export class GalleryTour {
   toggleVoice(): void {
     if (this.voiceUnavailable) return; // disabled button; belt-and-braces
     this.voiceOn = !this.voiceOn;
+    // Voice change re-times the current stop — a frozen dwell reading from
+    // before the toggle would restore a clock that no longer applies.
+    this.pausedDwellElapsed = null;
 
     if (this.phase === 'viewing') {
       const { labelText, spoken } = this.currentStopTexts(this.voiceOn);
@@ -608,6 +624,8 @@ export class GalleryTour {
 
   private startWaypoint(index: number): void {
     if (!this.waypoints.length) return;
+    // A new stop gets a fresh dwell clock — drop any frozen reading.
+    this.pausedDwellElapsed = null;
     // Cancel any in-progress narration when leaving a stop.
     this.narrator.cancel();
     // Leaving the previous waypoint — restore its artwork material
