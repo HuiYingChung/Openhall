@@ -53,6 +53,8 @@ docs/            bob-sessions/  ← commit BobShell logs here
 3. **Tests are the spec.** Write/update the unit test alongside the code, not after. Never weaken, skip, or delete a failing test to make the suite green — a failing test means the code is wrong, not the test. If a test is truly wrong, say so explicitly and justify before touching it.
 4. **Fail loudly.** No silent `catch` blocks, no swallowing errors to make the demo look smooth, no fallback fake data without an explicit `// DEMO FALLBACK` marker. A visible error beats an invisible lie.
 5. **No leftovers.** Don't commit `TODO: implement`, commented-out blocks, unused exports, or console.log debugging. Done means done.
+6. **Log the session.** Any AI-agent session that changes code or docs ends with a committed summary log — Bob sessions to `docs/bob-sessions/`, Claude sessions to `docs/claude-sessions/`, following the existing format. Paste the actual tail output of the verification commands you ran; never summarize a red run as green — if something failed (even for environment reasons), say so in both the log and your summary. Read-only sessions need no log.
+7. **One agent per working tree.** Never run git operations (switch, branch, commit, stash) in this repo while another agent's session is active in it — an uncommitted tree that isn't yours means stop and wait. (Learned 2026-07-08: a mid-session branch switch by a second agent silently rerouted the first agent's commits.)
 
 ### Known AI-agent pitfalls — actively avoid
 
