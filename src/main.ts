@@ -4,6 +4,7 @@
  * In Week 1 demo mode (no key) the sample gallery loads automatically.
  */
 
+import './ui/ui.css';
 import { bootApp } from './ui/app';
 import { saveWatsonxSettings, loadWatsonxSettings } from './ai/watsonx';
 

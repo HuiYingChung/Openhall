@@ -302,14 +302,8 @@ export function bootApp(): void {
     showViewerButtons(gallery);
   }
 
-  /** HUD button shared style. */
-  const HUD_BTN_CSS = `
-    background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.25);
-    color:#f0ece6;padding:0.45rem 0.9rem;border-radius:8px;
-    font-size:0.88rem;cursor:pointer;
-    font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
-    display:inline-flex;align-items:center;
-  `;
+  /** HUD button shared class (see ui.css). */
+  const HUD_BTN_CLASS = 'oh-btn oh-btn--hud';
 
   /** Top-left HUD container — flex row so buttons never overlap. */
   function ensureHudLeft(): HTMLElement {
@@ -333,7 +327,7 @@ export function bootApp(): void {
       const menuBtn = document.createElement('button');
       menuBtn.id = 'oh-menu-btn';
       menuBtn.innerHTML = `${svgArrowLeft()}Menu`;
-      menuBtn.style.cssText = HUD_BTN_CSS;
+      menuBtn.className = HUD_BTN_CLASS;
       menuBtn.addEventListener('click', () => exitToMenu());
       ensureHudLeft().appendChild(menuBtn);
     }
@@ -343,7 +337,7 @@ export function bootApp(): void {
       const expBtn = document.createElement('button');
       expBtn.id = 'oh-export-btn';
       expBtn.innerHTML = `${svgDownload()}Export`;
-      expBtn.style.cssText = HUD_BTN_CSS;
+      expBtn.className = HUD_BTN_CLASS;
       expBtn.addEventListener('click', async () => {
         if (!data.gallery) return;
         expBtn.disabled = true;
@@ -466,7 +460,8 @@ export function bootApp(): void {
     const btn = document.createElement('button');
     btn.id = 'oh-tour-btn';
     btn.innerHTML = `${svgTour()}Tour`;
-    btn.style.cssText = `position:fixed;top:1rem;right:1rem;z-index:200;${HUD_BTN_CSS}`;
+    btn.className = HUD_BTN_CLASS;
+    btn.style.cssText = 'position:fixed;top:1rem;right:1rem;z-index:200;';
     btn.addEventListener('click', () => {
       if (!data.gallery) return;
       // Bug 2: dismiss any lingering Paused overlay before the tour begins
@@ -503,13 +498,11 @@ export function bootApp(): void {
     const btn = document.createElement('button');
     btn.id = 'oh-touch-tour-btn';
     btn.innerHTML = `${svgTour()}Start Tour`;
+    btn.className = HUD_BTN_CLASS;
     btn.style.cssText = `
       position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:200;
-      background:rgba(0,0,0,0.85);border:1px solid rgba(255,255,255,0.3);
-      color:#f0ece6;padding:0.75rem 2rem;border-radius:8px;
-      font-size:1rem;cursor:pointer;font-weight:600;
-      font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
-      display:inline-flex;align-items:center;
+      background:rgba(0,0,0,0.85);border-color:rgba(255,255,255,0.3);
+      padding:0.75rem 2rem;font-size:1rem;font-weight:600;
     `;
     btn.addEventListener('click', () => {
       btn.remove();
@@ -758,6 +751,27 @@ export function bootApp(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Module-level inline SVG icons (14 px, stroke=currentColor) — used by the
+// setup screens. Site rule: never emoji / emoji-rendered glyphs (✓ ⚠️ etc.).
+// ---------------------------------------------------------------------------
+
+/** Check mark — success/cache-hit hints. */
+function svgCheck(): string {
+  return `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7-8"/></svg>`;
+}
+
+/** Warning triangle — cost/credit hints. */
+function svgWarn(): string {
+  return `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><path d="M8 2.2L14.8 13.4H1.2L8 2.2z"/><path d="M8 6.5v3.2"/><circle cx="8" cy="11.6" r="0.4" fill="currentColor"/></svg>`;
+}
+
+/** Openhall wordmark — arch glyph + text. App chrome only (not the export bundle). */
+function wordmark(sizeRem = 1.6): string {
+  const px = Math.round(sizeRem * 16);
+  return `<span class="oh-wordmark"><svg width="${px}" height="${px}" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.45"/><path d="M10 24 V14 a6 6 0 0 1 12 0 V24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><line x1="8" y1="24" x2="24" y2="24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span style="font-size:${sizeRem}rem;font-weight:700;letter-spacing:0.01em;">Openhall</span></span>`;
+}
+
+// ---------------------------------------------------------------------------
 // Settings screen
 // ---------------------------------------------------------------------------
 
@@ -779,51 +793,45 @@ function renderSettings(
         : 'openai';
 
   container.innerHTML = `
-    <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-      background:rgba(0,0,0,0.88);z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;">
-      <div style="background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto;">
+    <div class="oh-screen oh-screen--center">
+      <div class="oh-panel">
         <h2 style="margin:0 0 0.25rem;font-size:1.4rem;">API Settings</h2>
-        <p style="color:#888;font-size:0.85rem;margin:0 0 1.5rem;">Keys are stored in your browser only and never sent anywhere except directly to the AI provider.</p>
+        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Keys are stored in your browser only and never sent anywhere except directly to the AI provider.</p>
 
-        <label style="display:block;margin-bottom:0.5rem;font-size:0.9rem;">Provider</label>
-        <select id="oh-provider" style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:1rem;">
+        <label class="oh-label" style="font-size:0.9rem;margin-bottom:0.5rem;">Provider</label>
+        <select id="oh-provider" class="oh-field" style="margin-bottom:1rem;">
           <option value="watsonx" ${providerDefault === 'watsonx' ? 'selected' : ''}>IBM watsonx.ai (Granite + Llama Vision)</option>
           <option value="openai" ${providerDefault === 'openai' ? 'selected' : ''}>OpenAI-compatible (OpenAI, Together, etc.)</option>
         </select>
 
         <div id="oh-watsonx-fields" style="display:${providerDefault === 'watsonx' ? 'block' : 'none'}">
-          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">IBM Cloud API Key</label>
-          <input id="oh-wx-key" type="password" placeholder="ApiKey-..."
-            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
-          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">watsonx Project ID (UUID)</label>
-          <input id="oh-wx-project" type="text" placeholder="xxxxxxxx-xxxx-4xxx-xxxx-xxxxxxxxxxxx"
-            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
-          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">Token Worker URL <span style="color:#888;">(leave blank if deploying locally)</span></label>
-          <input id="oh-wx-worker" type="text" placeholder="https://your-worker.workers.dev"
-            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
-          <p style="font-size:0.75rem;color:#666;margin:0 0 1rem;">
+          <label class="oh-label">IBM Cloud API Key</label>
+          <input id="oh-wx-key" class="oh-field" type="password" placeholder="ApiKey-..." style="margin-bottom:0.75rem;" />
+          <label class="oh-label">watsonx Project ID (UUID)</label>
+          <input id="oh-wx-project" class="oh-field" type="text" placeholder="xxxxxxxx-xxxx-4xxx-xxxx-xxxxxxxxxxxx" style="margin-bottom:0.75rem;" />
+          <label class="oh-label">Token Worker URL <span style="color:var(--oh-ink-muted);">(leave blank if deploying locally)</span></label>
+          <input id="oh-wx-worker" class="oh-field" type="text" placeholder="https://your-worker.workers.dev" style="margin-bottom:0.75rem;" />
+          <p class="oh-help" style="margin:0 0 1rem;">
             The token worker proxies IBM IAM authentication (required for browser use).<br>
             Deploy <code>worker/token-exchange.ts</code> to Cloudflare Workers — it's free.
           </p>
         </div>
 
         <div id="oh-openai-fields" style="display:${providerDefault === 'openai' ? 'block' : 'none'}">
-          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">API Key</label>
-          <input id="oh-oai-key" type="password" placeholder="sk-..."
-            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
-          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">Base URL</label>
-          <input id="oh-oai-url" type="text" placeholder="https://api.openai.com/v1"
-            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:0.75rem;box-sizing:border-box;" />
-          <label style="display:block;margin-bottom:0.25rem;font-size:0.85rem;">Model</label>
-          <input id="oh-oai-model" type="text" placeholder="gpt-4o"
-            style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:6px;margin-bottom:1rem;box-sizing:border-box;" />
+          <label class="oh-label">API Key</label>
+          <input id="oh-oai-key" class="oh-field" type="password" placeholder="sk-..." style="margin-bottom:0.75rem;" />
+          <label class="oh-label">Base URL</label>
+          <input id="oh-oai-url" class="oh-field" type="text" placeholder="https://api.openai.com/v1" style="margin-bottom:0.75rem;" />
+          <label class="oh-label">Model</label>
+          <input id="oh-oai-model" class="oh-field" type="text" placeholder="gpt-4o" style="margin-bottom:1rem;" />
         </div>
 
+        <p id="oh-settings-error" class="oh-field-error" style="display:none;margin:0 0 0.75rem;" role="alert"></p>
         <div style="display:flex;gap:0.75rem;">
-          ${onCancel ? `<button id="oh-cancel-settings" style="flex:0 0 auto;padding:0.7rem 1.2rem;background:none;border:1px solid #444;color:#aaa;border-radius:8px;font-size:1rem;cursor:pointer;">Cancel</button>` : ''}
-          <button id="oh-save-settings" style="flex:1;padding:0.7rem;background:#fff;color:#111;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;">Save & Continue</button>
+          ${onCancel ? `<button id="oh-cancel-settings" class="oh-btn oh-btn--ghost" style="flex:0 0 auto;padding:0.7rem 1.2rem;font-size:1rem;">Cancel</button>` : ''}
+          <button id="oh-save-settings" class="oh-btn oh-btn--primary" style="flex:1;padding:0.7rem;font-size:1rem;">Save & Continue</button>
         </div>
-        <p style="font-size:0.75rem;color:#555;margin:1rem 0 0;text-align:center;">No key? Try the <button id="oh-demo-btn" style="background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;font-size:0.75rem;">demo mode</button> instead.</p>
+        <p style="font-size:0.75rem;color:#555;margin:1rem 0 0;text-align:center;">No key? Try the <button id="oh-demo-btn" class="oh-btn--link" style="color:var(--oh-ink-muted);font-size:0.75rem;">demo mode</button> instead.</p>
       </div>
     </div>`;
 
@@ -919,96 +927,94 @@ function renderUpload(
     .map((i) => {
       const l = idv.links[i] ?? { label: '', url: '' };
       return `<div style="display:flex;gap:0.5rem;margin-bottom:0.4rem;">
-        <input data-link-idx="${i}" data-link-field="label" type="text" value="${escapeHtml(l.label)}" placeholder="Label (e.g. Instagram)" aria-label="Link label"
-          style="flex:1;min-width:0;padding:0.45rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.85rem;box-sizing:border-box;">
-        <input data-link-idx="${i}" data-link-field="url" type="url" value="${escapeHtml(l.url)}" placeholder="https://…" aria-label="Link URL"
-          style="flex:1.4;min-width:0;padding:0.45rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.85rem;box-sizing:border-box;">
+        <input data-link-idx="${i}" data-link-field="label" class="oh-field" type="text" value="${escapeHtml(l.label)}" placeholder="Label (e.g. Instagram)" aria-label="Link label"
+          style="flex:1;min-width:0;padding:0.45rem;font-size:0.85rem;">
+        <input data-link-idx="${i}" data-link-field="url" class="oh-field" type="url" value="${escapeHtml(l.url)}" placeholder="https://…" aria-label="Link URL"
+          style="flex:1.4;min-width:0;padding:0.45rem;font-size:0.85rem;">
       </div>`;
     })
     .join('');
-  const idInput =
-    'width:100%;padding:0.55rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:8px;font-size:0.92rem;box-sizing:border-box;';
   container.innerHTML = `
-    <div style="position:fixed;inset:0;display:flex;flex-direction:column;
-      background:#0d0d0d;z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;overflow-y:auto;">
+    <div class="oh-screen">
       <div style="max-width:760px;margin:0 auto;padding:2rem;width:100%;box-sizing:border-box;">
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
-          <h1 style="margin:0;font-size:1.6rem;font-weight:700;">Openhall</h1>
-          <button id="oh-to-settings" style="background:none;border:1px solid #444;color:#aaa;padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.85rem;">Settings</button>
+          <h1 style="margin:0;font-size:1.6rem;line-height:1;">${wordmark(1.6)}</h1>
+          <button id="oh-to-settings" class="oh-btn oh-btn--ghost" style="padding:0.4rem 0.8rem;font-size:0.85rem;">Settings</button>
         </div>
 
-        <p style="color:#aaa;font-size:0.92rem;margin:0 0 0.8rem;">Turn up to 10 artworks into a walkable 3D gallery — fully AI-generated, exportable as a website you own.</p>
-        <div style="display:flex;flex-wrap:wrap;gap:0.35rem 1.2rem;margin-bottom:0.6rem;color:#888;font-size:0.8rem;">
+        <p style="color:var(--oh-ink-dim);font-size:0.92rem;margin:0 0 0.8rem;">Turn up to 10 artworks into a walkable 3D gallery — fully AI-generated, exportable as a website you own.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:0.35rem 1.2rem;margin-bottom:0.6rem;color:var(--oh-ink-muted);font-size:0.8rem;">
           <span><span style="color:#ddd;font-weight:600;">1</span> · Upload your artworks</span>
           <span><span style="color:#ddd;font-weight:600;">2</span> · Describe the show and pick a style</span>
           <span><span style="color:#ddd;font-weight:600;">3</span> · AI designs the gallery</span>
           <span><span style="color:#ddd;font-weight:600;">4</span> · Walk through it, then export</span>
         </div>
-        <p style="color:#888;font-size:0.8rem;margin:0 0 1.5rem;">
+        <p style="color:var(--oh-ink-muted);font-size:0.8rem;margin:0 0 1.5rem;">
           First time here? Add your AI API key via the <span style="color:#ccc;">Settings</span> button (top right) —
-          or <button id="oh-home-demo" style="background:none;border:none;color:#ccc;text-decoration:underline;cursor:pointer;font-size:0.8rem;padding:0;">view the demo gallery</button> first, no key needed.
+          or <button id="oh-home-demo" class="oh-btn--link" style="font-size:0.8rem;">view the demo gallery</button> first, no key needed.
         </p>
 
-        <div id="oh-dropzone" style="border:2px dashed #444;border-radius:12px;padding:3rem 1rem;text-align:center;cursor:pointer;transition:border-color 0.2s;margin-bottom:1rem;">
+        <div id="oh-dropzone" class="oh-dropzone" style="margin-bottom:1rem;">
           <p style="font-size:1.1rem;margin:0 0 0.5rem;">Drop artworks here, or click to browse</p>
-          <p style="color:#666;font-size:0.85rem;margin:0;">Up to 10 images · JPEG, PNG, WebP</p>
+          <p style="color:var(--oh-ink-faint);font-size:0.85rem;margin:0;">Up to 10 images · JPEG, PNG, WebP</p>
           <input id="oh-file-input" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none;" />
         </div>
 
         <div id="oh-thumbnail-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:1rem;margin-bottom:1.5rem;"></div>
 
-        <label style="display:block;font-size:0.9rem;margin-bottom:0.2rem;">Describe your exhibition in one sentence</label>
-        <p style="font-size:0.75rem;color:#777;margin:0 0 0.5rem;">This shapes how your works are grouped into rooms, the tour order, and the tone of the wall labels.</p>
-        <textarea id="oh-brief" rows="2" placeholder="e.g. A series of abstract landscapes exploring the tension between the natural world and urban decay"
-          style="width:100%;padding:0.6rem;background:#111;color:#f0ece6;border:1px solid #444;border-radius:8px;font-size:0.95rem;resize:vertical;margin-bottom:1rem;box-sizing:border-box;">${data.userBrief}</textarea>
+        <label class="oh-label" style="font-size:0.9rem;margin-bottom:0.2rem;">Describe your exhibition in one sentence</label>
+        <p class="oh-help" style="color:#777;margin:0 0 0.5rem;">This shapes how your works are grouped into rooms, the tour order, and the tone of the wall labels.</p>
+        <textarea id="oh-brief" class="oh-field" rows="2" placeholder="e.g. A series of abstract landscapes exploring the tension between the natural world and urban decay"
+          style="padding:0.6rem;font-size:0.95rem;margin-bottom:1rem;">${data.userBrief}</textarea>
+        <p id="oh-brief-error" class="oh-field-error" style="display:none;margin:-0.6rem 0 1rem;" role="alert"></p>
 
-        <label style="display:block;font-size:0.9rem;margin-bottom:0.5rem;">Gallery style</label>
+        <label class="oh-label" style="font-size:0.9rem;margin-bottom:0.5rem;">Gallery style</label>
         <div id="oh-presets" style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem;margin-bottom:1.5rem;"></div>
 
         <details style="margin-bottom:1.5rem;border:1px solid #2a2a2a;border-radius:10px;padding:0.5rem 1rem 0.25rem;">
           <summary style="cursor:pointer;font-size:0.95rem;font-weight:600;padding:0.35rem 0;">About you &amp; your gallery <span style="color:#777;font-weight:400;">(optional)</span></summary>
-          <p style="font-size:0.78rem;color:#777;margin:0.25rem 0 0.9rem;">Sets your gallery's title, share preview, browser icon, and an in-world artist wall visitors can click. You can review and change all of this before entering.</p>
+          <p class="oh-help" style="color:#777;margin:0.25rem 0 0.9rem;">Sets your gallery's title, share preview, browser icon, and an in-world artist wall visitors can click. You can review and change all of this before entering.</p>
 
-          <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.25rem;">Gallery title</label>
-          <input id="oh-id-title" type="text" value="${escapeHtml(idv.title ?? '')}" placeholder="Leave blank to let AI name it" aria-label="Gallery title"
-            style="${idInput}margin-bottom:0.75rem;">
+          <label class="oh-label" style="font-size:0.82rem;color:#bbb;">Gallery title</label>
+          <input id="oh-id-title" class="oh-field" type="text" value="${escapeHtml(idv.title ?? '')}" placeholder="Leave blank to let AI name it" aria-label="Gallery title"
+            style="margin-bottom:0.75rem;">
 
-          <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.25rem;">One-line description</label>
-          <textarea id="oh-id-desc" rows="2" placeholder="Shown in the browser tab and when your gallery is shared" aria-label="Gallery description"
-            style="${idInput}resize:vertical;margin-bottom:0.75rem;">${escapeHtml(idv.description ?? '')}</textarea>
+          <label class="oh-label" style="font-size:0.82rem;color:#bbb;">One-line description</label>
+          <textarea id="oh-id-desc" class="oh-field" rows="2" placeholder="Shown in the browser tab and when your gallery is shared" aria-label="Gallery description"
+            style="margin-bottom:0.75rem;">${escapeHtml(idv.description ?? '')}</textarea>
 
           <div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;margin-bottom:0.9rem;">
-            <img id="oh-id-favicon-preview" alt="" style="width:36px;height:36px;border-radius:8px;border:1px solid #333;object-fit:cover;background:#1a1a1a;">
-            <label id="oh-id-favicon-label" for="oh-id-favicon" style="padding:0.4rem 0.75rem;border-radius:6px;font-size:0.8rem;cursor:pointer;">Upload favicon</label>
-            <button id="oh-id-favicon-reset" type="button" style="padding:0.4rem 0.65rem;border-radius:6px;font-size:0.8rem;cursor:pointer;">Auto from artwork</button>
+            <img id="oh-id-favicon-preview" alt="" style="width:36px;height:36px;border-radius:8px;border:1px solid var(--oh-border);object-fit:cover;background:var(--oh-panel);">
+            <label id="oh-id-favicon-label" for="oh-id-favicon" class="oh-toggle">Upload favicon</label>
+            <button id="oh-id-favicon-reset" type="button" class="oh-toggle">Auto from artwork</button>
             <span id="oh-id-favicon-status" style="font-size:0.75rem;color:#8a8f98;"></span>
             <input id="oh-id-favicon" type="file" accept="image/*" style="display:none;">
           </div>
 
           <div style="height:1px;background:#2a2a2a;margin:0.5rem 0 0.9rem;"></div>
 
-          <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.25rem;">Your name / studio</label>
-          <input id="oh-id-name" type="text" maxlength="80" value="${escapeHtml(idv.artistName ?? '')}" placeholder="Shown on a clickable artist wall in the gallery" aria-label="Artist name"
-            style="${idInput}margin-bottom:0.75rem;">
+          <label class="oh-label" style="font-size:0.82rem;color:#bbb;">Your name / studio</label>
+          <input id="oh-id-name" class="oh-field" type="text" maxlength="80" value="${escapeHtml(idv.artistName ?? '')}" placeholder="Shown on a clickable artist wall in the gallery" aria-label="Artist name"
+            style="margin-bottom:0.75rem;">
 
-          <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.25rem;">Short statement / bio</label>
-          <textarea id="oh-id-statement" rows="3" maxlength="400" placeholder="A few sentences about you or this body of work (the wall shows a preview; the full text appears when visitors click it)" aria-label="Artist statement"
-            style="${idInput}resize:vertical;margin-bottom:0.75rem;">${escapeHtml(idv.artistStatement ?? '')}</textarea>
+          <label class="oh-label" style="font-size:0.82rem;color:#bbb;">Short statement / bio</label>
+          <textarea id="oh-id-statement" class="oh-field" rows="3" maxlength="400" placeholder="A few sentences about you or this body of work (the wall shows a preview; the full text appears when visitors click it)" aria-label="Artist statement"
+            style="margin-bottom:0.75rem;">${escapeHtml(idv.artistStatement ?? '')}</textarea>
 
           <div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;margin-bottom:0.9rem;">
-            <img id="oh-id-portrait-preview" alt="" style="width:44px;height:44px;border-radius:50%;border:1px solid #333;object-fit:cover;background:#1a1a1a;">
-            <label id="oh-id-portrait-label" for="oh-id-portrait" style="padding:0.4rem 0.75rem;border-radius:6px;font-size:0.8rem;cursor:pointer;">Upload portrait</label>
-            <button id="oh-id-portrait-reset" type="button" style="padding:0.4rem 0.65rem;border-radius:6px;font-size:0.8rem;cursor:pointer;">Use initials</button>
+            <img id="oh-id-portrait-preview" alt="" style="width:44px;height:44px;border-radius:50%;border:1px solid var(--oh-border);object-fit:cover;background:var(--oh-panel);">
+            <label id="oh-id-portrait-label" for="oh-id-portrait" class="oh-toggle">Upload portrait</label>
+            <button id="oh-id-portrait-reset" type="button" class="oh-toggle">Use initials</button>
             <span id="oh-id-portrait-status" style="font-size:0.75rem;color:#8a8f98;"></span>
             <input id="oh-id-portrait" type="file" accept="image/*" style="display:none;">
           </div>
 
-          <label style="display:block;font-size:0.82rem;color:#bbb;margin:0 0 0.35rem;">Links</label>
+          <label class="oh-label" style="font-size:0.82rem;color:#bbb;margin-bottom:0.35rem;">Links</label>
           ${linkRows}
         </details>
 
-        <button id="oh-generate-btn" style="width:100%;padding:0.85rem;background:#fff;color:#111;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;opacity:0.4;" disabled>
+        <button id="oh-generate-btn" class="oh-btn oh-btn--primary" style="width:100%;padding:0.85rem;font-size:1rem;font-weight:700;" disabled>
           Generate Gallery →
         </button>
         <p id="oh-gen-hint" style="font-size:0.78rem;margin:0.5rem 0 0;text-align:center;"></p>
@@ -1034,14 +1040,12 @@ function renderUpload(
   for (const key of presetKeys) {
     const btn = document.createElement('button');
     btn.dataset['preset'] = key;
-    btn.style.cssText = `padding:0.6rem 0.75rem;background:${data.preset === key ? '#fff' : '#1a1a1a'};color:${data.preset === key ? '#111' : '#f0ece6'};border:1px solid #444;border-radius:8px;cursor:pointer;text-align:left;font-size:0.85rem;`;
-    btn.innerHTML = `<strong>${PRESETS[key].label}</strong><br><span style="color:#888;font-size:0.75rem;">${PRESETS[key].description}</span>`;
+    btn.className = `oh-preset${data.preset === key ? ' is-selected' : ''}`;
+    btn.innerHTML = `<strong>${PRESETS[key].label}</strong><br><span class="oh-preset-desc">${PRESETS[key].description}</span>`;
     btn.addEventListener('click', () => {
       data.preset = key;
       presetsEl.querySelectorAll('button').forEach((b) => {
-        const isSelected = (b as HTMLButtonElement).dataset['preset'] === key;
-        b.style.background = isSelected ? '#fff' : '#1a1a1a';
-        b.style.color = isSelected ? '#111' : '#f0ece6';
+        b.classList.toggle('is-selected', (b as HTMLButtonElement).dataset['preset'] === key);
       });
       disarmOnInputChange(); // style is part of the AI key → refresh hint + cancel arm
     });
@@ -1056,22 +1060,21 @@ function renderUpload(
   function updateGenerateBtn() {
     const ready = data.artworks.length > 0 && data.artworks.length <= 10;
     generateBtn.disabled = !ready;
-    generateBtn.style.opacity = ready ? '1' : '0.4';
     // Cache state drives both the button label and the cost hint below it.
     const cached = !!data.gallery && data.lastGenKey === aiInputKey(data);
     const hadGallery = !!data.gallery;
     generateBtn.textContent = cached ? 'Continue → (no AI, no cost)' : 'Generate Gallery →';
     if (cached) {
-      genHint.textContent = '✓ Same artworks, description & style — continues with no new AI call.';
-      genHint.style.color = '#6a9a6a';
+      genHint.innerHTML = `${svgCheck()}Same artworks, description &amp; style — continues with no new AI call.`;
+      genHint.className = 'oh-hint--ok';
     } else if (hadGallery) {
       // They already had a gallery and changed the artworks/description/style.
-      genHint.textContent = '⚠️ You changed the artworks, description, or style — this re-runs the AI and may use API credits.';
-      genHint.style.color = '#d9a441';
+      genHint.innerHTML = `${svgWarn()}You changed the artworks, description, or style — this re-runs the AI and may use API credits.`;
+      genHint.className = 'oh-hint--warn';
     } else if (ready) {
       // First generation — also calls the AI, so warn just as clearly.
-      genHint.textContent = '⚠️ This runs the AI to build your gallery and may use API credits.';
-      genHint.style.color = '#d9a441';
+      genHint.innerHTML = `${svgWarn()}This runs the AI to build your gallery and may use API credits.`;
+      genHint.className = 'oh-hint--warn';
     } else {
       genHint.textContent = '';
     }
@@ -1090,11 +1093,9 @@ function renderUpload(
   const portStatus = container.querySelector('#oh-id-portrait-status') as HTMLElement;
 
   // Toggle styling so the currently-selected source is obviously highlighted.
-  const ACTIVE = 'padding:0.4rem 0.75rem;border-radius:6px;font-size:0.8rem;cursor:pointer;background:#20361f;border:1px solid #6a9a6a;color:#d7ecd7;font-weight:600;';
-  const IDLE = 'padding:0.4rem 0.75rem;border-radius:6px;font-size:0.8rem;cursor:pointer;background:#1a1a1a;border:1px solid #333;color:#888;font-weight:400;';
   const setToggle = (uploaded: boolean, uploadEl: HTMLElement, resetEl: HTMLElement) => {
-    uploadEl.style.cssText = uploaded ? ACTIVE : IDLE;
-    resetEl.style.cssText = uploaded ? IDLE : ACTIVE;
+    uploadEl.classList.toggle('is-active', uploaded);
+    resetEl.classList.toggle('is-active', !uploaded);
   };
 
   // Small initials avatar for the portrait preview when "Use initials" is active.
@@ -1203,11 +1204,11 @@ function renderUpload(
   }
 
   dropzone.addEventListener('click', () => fileInput.click());
-  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.style.borderColor = '#aaa'; });
-  dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = '#444'; });
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('is-dragover'); });
+  dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('is-dragover'); });
   dropzone.addEventListener('drop', (e) => {
     e.preventDefault();
-    dropzone.style.borderColor = '#444';
+    dropzone.classList.remove('is-dragover');
     handleFiles(e.dataTransfer?.files ?? null);
   });
   fileInput.addEventListener('change', () => handleFiles(fileInput.files));
@@ -1223,8 +1224,7 @@ function renderUpload(
   function disarmGenerate() {
     if (armTimer) { clearTimeout(armTimer); armTimer = undefined; }
     armed = false;
-    generateBtn.style.background = '#fff';
-    generateBtn.style.color = '#111';
+    generateBtn.classList.remove('oh-btn--armed');
     updateGenerateBtn(); // refreshes label + cost hint
   }
   // Expose so the input handlers can cancel a stale armed state.
@@ -1238,9 +1238,8 @@ function renderUpload(
     if (willCallAI && !armed) {
       // First click arms; a second click within the window confirms.
       armed = true;
-      generateBtn.textContent = '⚠️ Click again to confirm — this uses API credits';
-      generateBtn.style.background = '#d9a441';
-      generateBtn.style.color = '#1a1a1a';
+      generateBtn.innerHTML = `${svgWarn()}Click again to confirm — this uses API credits`;
+      generateBtn.classList.add('oh-btn--armed');
       armTimer = setTimeout(disarmGenerate, 4500);
       return;
     }
@@ -1251,19 +1250,19 @@ function renderUpload(
 
 function addThumbnail(grid: HTMLElement, artwork: UploadedArtwork, data: AppData): void {
   const card = document.createElement('div');
-  card.style.cssText = 'background:#1a1a1a;border-radius:8px;overflow:hidden;border:1px solid #333;';
+  card.style.cssText = 'background:var(--oh-panel);border-radius:8px;overflow:hidden;border:1px solid var(--oh-border);';
   card.innerHTML = `
     <div style="position:relative;">
       <img src="${artwork.displayObjectUrl}" style="width:100%;height:100px;object-fit:cover;display:block;" />
-      <button data-remove="${escapeHtml(artwork.id)}" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;padding:2px 6px;">✕</button>
+      <button data-remove="${escapeHtml(artwork.id)}" aria-label="Remove artwork" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;padding:2px 6px;">✕</button>
     </div>
     <div style="padding:0.4rem;">
-      <input data-field="title" data-id="${escapeHtml(artwork.id)}" placeholder="Title" value="${escapeHtml(artwork.title)}"
-        style="width:100%;background:#111;color:#f0ece6;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;box-sizing:border-box;" />
-      <input data-field="medium" data-id="${escapeHtml(artwork.id)}" placeholder="Medium" value="${escapeHtml(artwork.medium)}"
-        style="width:100%;background:#111;color:#f0ece6;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;box-sizing:border-box;" />
-      <input data-field="year" data-id="${escapeHtml(artwork.id)}" placeholder="Year" type="number" value="${escapeHtml(String(artwork.year ?? ''))}"
-        style="width:100%;background:#111;color:#f0ece6;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:0.75rem;box-sizing:border-box;" />
+      <input data-field="title" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Title" value="${escapeHtml(artwork.title)}" aria-label="Artwork title"
+        style="border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;" />
+      <input data-field="medium" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Medium" value="${escapeHtml(artwork.medium)}" aria-label="Artwork medium"
+        style="border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;" />
+      <input data-field="year" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Year" type="number" value="${escapeHtml(String(artwork.year ?? ''))}" aria-label="Artwork year"
+        style="border-radius:4px;padding:3px 6px;font-size:0.75rem;" />
     </div>`;
 
   card.querySelector(`[data-remove="${artwork.id}"]`)!.addEventListener('click', () => {
@@ -1301,10 +1300,9 @@ function renderGenerating(
   onError: (msg: string) => void
 ): void {
   container.innerHTML = `
-    <div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-      background:rgba(0,0,0,0.9);z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;">
+    <div class="oh-screen oh-screen--center" style="background:rgba(0,0,0,0.9);">
       <p id="oh-progress-msg" style="font-size:1.1rem;margin:0 0 1rem;">Initialising AI…</p>
-      <div style="width:280px;height:4px;background:#333;border-radius:2px;">
+      <div style="width:280px;height:4px;background:var(--oh-border);border-radius:2px;">
         <div id="oh-progress-bar" style="height:100%;background:#fff;border-radius:2px;width:0%;transition:width 0.4s;"></div>
       </div>
     </div>`;
@@ -1425,54 +1423,49 @@ function renderLabels(
   const bAuthor = branding.authorName ?? '';
   const bUrl = branding.authorUrl ?? '';
   const aStatement = artistObj?.statement ?? '';
-  const inputStyle =
-    'width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.9rem;box-sizing:border-box;';
   // Editable artist statement — only when an artist wall exists. Reads live in
   // the click panel + tour, so edits here take effect without regenerating.
   const artistReviewBlock = artistObj
-    ? `<textarea id="oh-brand-statement" rows="3" maxlength="400" placeholder="Artist statement (shown on your artist wall)" aria-label="Artist statement"
-        style="${inputStyle}resize:vertical;">${escapeHtml(aStatement)}</textarea>`
+    ? `<textarea id="oh-brand-statement" class="oh-field" rows="3" maxlength="400" placeholder="Artist statement (shown on your artist wall)" aria-label="Artist statement">${escapeHtml(aStatement)}</textarea>`
     : '';
 
   container.innerHTML = `
-    <div style="position:fixed;inset:0;display:flex;flex-direction:column;
-      background:#0d0d0d;z-index:50;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;color:#f0ece6;overflow-y:auto;">
+    <div class="oh-screen">
       <div style="max-width:640px;margin:0 auto;padding:2rem;width:100%;box-sizing:border-box;">
         <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Gallery Details</h2>
-        <p style="color:#888;font-size:0.85rem;margin:0 0 1rem;">Prefilled from what you entered — a last check before you enter. These set your exported site's title, description, share preview, browser icon${artistObj ? ', and your in-world artist wall' : ''}. Edits here are free (no AI).</p>
+        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1rem;">Prefilled from what you entered — a last check before you enter. These set your exported site's title, description, share preview, browser icon${artistObj ? ', and your in-world artist wall' : ''}. Edits here are free (no AI).</p>
         <div style="display:flex;flex-direction:column;gap:0.6rem;margin:0 0 1.25rem;">
-          <input id="oh-brand-title" type="text" value="${escapeHtml(bTitle)}" placeholder="Gallery title" aria-label="Gallery title"
-            style="${inputStyle}font-weight:600;">
-          <textarea id="oh-brand-desc" rows="2" placeholder="One-sentence description (shown in browser + when shared on social)" aria-label="Gallery description"
-            style="${inputStyle}resize:vertical;">${escapeHtml(bDesc)}</textarea>
+          <input id="oh-brand-title" class="oh-field" type="text" value="${escapeHtml(bTitle)}" placeholder="Gallery title" aria-label="Gallery title"
+            style="font-weight:600;">
+          <textarea id="oh-brand-desc" class="oh-field" rows="2" placeholder="One-sentence description (shown in browser + when shared on social)" aria-label="Gallery description">${escapeHtml(bDesc)}</textarea>
           <div style="display:flex;gap:0.5rem;">
-            <input id="oh-brand-author" type="text" value="${escapeHtml(bAuthor)}" placeholder="Your name / studio" aria-label="Artist name"
-              style="${inputStyle}flex:1;">
-            <input id="oh-brand-url" type="url" value="${escapeHtml(bUrl)}" placeholder="https://your-link.com" aria-label="Artist link"
-              style="${inputStyle}flex:1;">
+            <input id="oh-brand-author" class="oh-field" type="text" value="${escapeHtml(bAuthor)}" placeholder="Your name / studio" aria-label="Artist name"
+              style="flex:1;">
+            <input id="oh-brand-url" class="oh-field" type="url" value="${escapeHtml(bUrl)}" placeholder="https://your-link.com" aria-label="Artist link"
+              style="flex:1;">
           </div>
           ${artistReviewBlock}
           <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.25rem;">
-            <img id="oh-favicon-preview" alt="favicon preview" style="width:40px;height:40px;border-radius:8px;border:1px solid #333;object-fit:cover;background:#1a1a1a;">
+            <img id="oh-favicon-preview" alt="favicon preview" style="width:40px;height:40px;border-radius:8px;border:1px solid var(--oh-border);object-fit:cover;background:var(--oh-panel);">
             <div style="flex:1;min-width:0;">
-              <label for="oh-favicon-input" style="display:inline-block;padding:0.45rem 0.8rem;background:#1a1a1a;border:1px solid #444;border-radius:6px;font-size:0.8rem;cursor:pointer;">Upload custom icon</label>
-              <button id="oh-favicon-reset" type="button" style="margin-left:0.5rem;padding:0.45rem 0.7rem;background:none;border:1px solid #333;color:#888;border-radius:6px;font-size:0.8rem;cursor:pointer;">Use first artwork</button>
+              <label for="oh-favicon-input" class="oh-toggle" style="display:inline-block;">Upload custom icon</label>
+              <button id="oh-favicon-reset" type="button" class="oh-toggle" style="margin-left:0.5rem;">Use first artwork</button>
               <input id="oh-favicon-input" type="file" accept="image/*" style="display:none;">
-              <p style="font-size:0.72rem;color:#666;margin:0.35rem 0 0;">Browser-tab icon. Defaults to a square crop of your first artwork.</p>
+              <p style="font-size:0.72rem;color:var(--oh-ink-faint);margin:0.35rem 0 0;">Browser-tab icon. Defaults to a square crop of your first artwork.</p>
             </div>
           </div>
         </div>
         <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Review Wall Labels</h2>
-        <p style="color:#888;font-size:0.85rem;margin:0 0 1.5rem;">Edit any title, medium, or label text before entering the gallery. Changes are saved automatically.</p>
+        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Edit any title, medium, or label text before entering the gallery. Changes are saved automatically.</p>
         <div id="oh-labels-list"></div>
         <div style="display:flex;gap:0.75rem;margin-top:1rem;">
-          <button id="oh-back-labels" style="flex:0 0 auto;padding:0.85rem 1.2rem;background:none;border:1px solid #444;color:#aaa;border-radius:8px;font-size:1rem;cursor:pointer;">&larr; Back to edit</button>
-          <button id="oh-enter-gallery" style="flex:1;padding:0.85rem;background:#fff;color:#111;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">
+          <button id="oh-back-labels" class="oh-btn oh-btn--ghost" style="flex:0 0 auto;padding:0.85rem 1.2rem;font-size:1rem;">&larr; Back to edit</button>
+          <button id="oh-enter-gallery" class="oh-btn oh-btn--primary" style="flex:1;padding:0.85rem;font-size:1rem;font-weight:700;">
             Enter Gallery →
           </button>
         </div>
-        <p style="display:flex;gap:0.5rem;align-items:flex-start;font-size:0.75rem;color:#d9a441;background:rgba(217,164,65,0.08);border:1px solid rgba(217,164,65,0.25);border-radius:8px;padding:0.6rem 0.75rem;margin:0.6rem 0 0;">
-          <span aria-hidden="true">⚠️</span>
+        <p style="display:flex;gap:0.5rem;align-items:flex-start;font-size:0.75rem;color:var(--oh-warn);background:rgba(217,164,65,0.08);border:1px solid rgba(217,164,65,0.25);border-radius:8px;padding:0.6rem 0.75rem;margin:0.6rem 0 0;">
+          <span aria-hidden="true" style="flex-shrink:0;margin-top:0.1rem;">${svgWarn()}</span>
           <span>Going back keeps everything you've entered. Your gallery is only re-generated — re-calling the AI, which may cost API credits — if you change your <strong>artworks, description, or style</strong>. Editing names, labels, or branding is free.</span>
         </p>
       </div>
@@ -1542,19 +1535,19 @@ function renderLabels(
     block.style.cssText = 'display:flex;gap:0.75rem;align-items:flex-start;margin-bottom:1.25rem;';
     block.innerHTML = `
       ${thumbSrc
-        ? `<img src="${escapeHtml(thumbSrc)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid #333;flex-shrink:0;background:#1a1a1a;">`
-        : '<div style="width:72px;height:72px;border-radius:6px;border:1px solid #333;background:#1a1a1a;flex-shrink:0;"></div>'}
+        ? `<img src="${escapeHtml(thumbSrc)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--oh-border);flex-shrink:0;background:var(--oh-panel);">`
+        : '<div style="width:72px;height:72px;border-radius:6px;border:1px solid var(--oh-border);background:var(--oh-panel);flex-shrink:0;"></div>'}
       <div style="flex:1;min-width:0;">
         <div style="display:flex;gap:0.5rem;margin:0 0 0.35rem;">
-          <input data-id="${escapeHtml(aw.id)}" data-field="title" type="text"
+          <input data-id="${escapeHtml(aw.id)}" data-field="title" class="oh-field" type="text"
             value="${escapeHtml(titleValue)}" placeholder="Untitled" aria-label="Artwork title"
-            style="flex:1.4;min-width:0;padding:0.4rem 0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.9rem;font-weight:600;box-sizing:border-box;">
-          <input data-id="${escapeHtml(aw.id)}" data-field="medium" type="text"
+            style="flex:1.4;min-width:0;padding:0.4rem 0.5rem;font-size:0.9rem;font-weight:600;">
+          <input data-id="${escapeHtml(aw.id)}" data-field="medium" class="oh-field" type="text"
             value="${escapeHtml(mediumValue)}" placeholder="Medium (e.g. Oil on canvas)" aria-label="Artwork medium"
-            style="flex:1;min-width:0;padding:0.4rem 0.5rem;background:#111;color:#999;border:1px solid #2a2a2a;border-radius:6px;font-size:0.85rem;box-sizing:border-box;">
+            style="flex:1;min-width:0;padding:0.4rem 0.5rem;font-size:0.85rem;color:#999;">
         </div>
-        <textarea data-id="${escapeHtml(aw.id)}" rows="3" aria-label="Wall label text"
-          style="width:100%;padding:0.5rem;background:#111;color:#f0ece6;border:1px solid #333;border-radius:6px;font-size:0.85rem;resize:vertical;box-sizing:border-box;">${escapeHtml(aw.label)}</textarea>
+        <textarea data-id="${escapeHtml(aw.id)}" class="oh-field" rows="3" aria-label="Wall label text"
+          style="padding:0.5rem;font-size:0.85rem;">${escapeHtml(aw.label)}</textarea>
       </div>`;
     // Title + medium inputs write straight back to the gallery object —
     // inspect panel / tour read these live, so edits show up in the viewer.
