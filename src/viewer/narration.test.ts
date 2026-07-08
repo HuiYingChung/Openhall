@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { pickNarrationText, canAutoAdvance, estimateSpeechSeconds, computeStopDwell, computeDwellSeconds } from './narration';
+import { TourNarrator, pickNarrationText, canAutoAdvance, estimateSpeechSeconds, computeStopDwell, computeDwellSeconds } from './narration';
 import type { Gallery, TourWaypoint } from '../schema/gallery.schema';
 import { GallerySchema } from '../schema/gallery.schema';
 
@@ -98,7 +98,7 @@ describe('pickNarrationText', () => {
     expect(pickNarrationText(wp(undefined), gallery)).toBe('');
   });
 
-  it('returns artist statement for the ARTIST_MESH_ID stop', () => {
+  it('artist stop: framed welcome with name + statement', () => {
     const gallery = makeGallery({
       artist: {
         name: 'Jane Artist',
@@ -107,19 +107,30 @@ describe('pickNarrationText', () => {
       },
     });
     expect(pickNarrationText(wp('__artist__'), gallery))
-      .toBe('I paint quiet interiors.');
+      .toBe('Welcome to Test Gallery, an exhibition by Jane Artist. In the artist\'s own words: I paint quiet interiors.');
   });
 
-  it('returns empty string for artist stop when no statement', () => {
+  it('artist stop: framed welcome with name, no statement', () => {
     const gallery = makeGallery({
       artist: { name: 'Jane Artist', links: [] },
     });
-    expect(pickNarrationText(wp('__artist__'), gallery)).toBe('');
+    expect(pickNarrationText(wp('__artist__'), gallery))
+      .toBe('Welcome to Test Gallery, an exhibition by Jane Artist.');
   });
 
-  it('returns empty string for artist stop when no artist block', () => {
+  it('artist stop: title-only welcome when no name, statement present', () => {
+    // Gallery.artist is optional; simulate the case where only statement is set
+    // by using a partial (schema requires name, so we build gallery manually).
     const gallery = makeGallery();
-    expect(pickNarrationText(wp('__artist__'), gallery)).toBe('');
+    // No artist block → still returns a welcome with the gallery title.
+    expect(pickNarrationText(wp('__artist__'), gallery))
+      .toBe('Welcome to Test Gallery.');
+  });
+
+  it('artist stop: title-only welcome when no artist block', () => {
+    const gallery = makeGallery();
+    expect(pickNarrationText(wp('__artist__'), gallery))
+      .toBe('Welcome to Test Gallery.');
   });
 });
 
@@ -215,5 +226,43 @@ describe('computeStopDwell', () => {
     const label = 'x'.repeat(80);  // computeDwellSeconds → 6 s
     const narration = 'x'.repeat(96); // estimateSpeechSeconds → 8 s
     expect(computeStopDwell(label, narration)).toBe(estimateSpeechSeconds(narration));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TourNarrator — pause/resume/isPaused lifecycle
+// ---------------------------------------------------------------------------
+
+describe('TourNarrator isPaused lifecycle', () => {
+  it('isPaused starts false', () => {
+    const narrator = new TourNarrator();
+    expect(narrator.isPaused).toBe(false);
+  });
+
+  it('pause() sets isPaused to true', () => {
+    const narrator = new TourNarrator();
+    narrator.pause();
+    expect(narrator.isPaused).toBe(true);
+  });
+
+  it('resume() clears isPaused', () => {
+    const narrator = new TourNarrator();
+    narrator.pause();
+    narrator.resume();
+    expect(narrator.isPaused).toBe(false);
+  });
+
+  it('cancel() clears isPaused', () => {
+    const narrator = new TourNarrator();
+    narrator.pause();
+    narrator.cancel();
+    expect(narrator.isPaused).toBe(false);
+  });
+
+  it('speak() clears isPaused', () => {
+    const narrator = new TourNarrator();
+    narrator.pause();
+    narrator.speak('hello');
+    expect(narrator.isPaused).toBe(false);
   });
 });

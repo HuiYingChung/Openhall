@@ -62,6 +62,9 @@ export function computeStopDwell(labelText: string, spokenText: string): number 
 // ---------------------------------------------------------------------------
 
 export class TourNarrator {
+  /** Internal flag to track whether we issued a pause(). */
+  private _paused = false;
+
   /** True if speechSynthesis is present in window (voices may still be loading). */
   get isSupported(): boolean {
     return typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -70,8 +73,10 @@ export class TourNarrator {
   /**
    * Speak `text`. Calls `onEnd` when the utterance finishes or is cancelled.
    * Cancels any current utterance before starting the new one.
+   * Clears the paused flag so a resumed state is never left stale.
    */
   speak(text: string, onEnd?: () => void): void {
+    this._paused = false;
     if (!this.isSupported || !text) {
       onEnd?.();
       return;
@@ -85,16 +90,48 @@ export class TourNarrator {
     window.speechSynthesis.speak(utterance);
   }
 
-  /** Cancel any in-progress utterance. */
+  /**
+   * Pause the current utterance mid-word.
+   * The paused flag is always set (even when isSupported is false) so
+   * resume() and tests can reliably inspect it; the actual browser pause
+   * is only attempted when the API is present.
+   */
+  pause(): void {
+    this._paused = true;
+    if (this.isSupported) {
+      window.speechSynthesis.pause();
+    }
+  }
+
+  /**
+   * Resume a paused utterance.
+   * NOTE: speechSynthesis.resume() is unreliable on some mobile browsers.
+   * If resume does not work the user can recover by toggling Voice off then on,
+   * which re-speaks the current stop from the beginning (see toggleVoice).
+   */
+  resume(): void {
+    this._paused = false;
+    if (this.isSupported) {
+      window.speechSynthesis.resume();
+    }
+  }
+
+  /** Cancel any in-progress utterance. Clears the paused flag. */
   cancel(): void {
+    this._paused = false;
     if (this.isSupported) {
       window.speechSynthesis.cancel();
     }
   }
 
-  /** Whether the browser is currently speaking. */
+  /** Whether the browser is currently speaking (not paused). */
   get isSpeaking(): boolean {
     return this.isSupported && window.speechSynthesis.speaking;
+  }
+
+  /** Whether we have paused the current utterance. */
+  get isPaused(): boolean {
+    return this._paused;
   }
 }
 
@@ -106,12 +143,17 @@ export class TourNarrator {
  * Choose the text to speak at a tour stop.
  *
  * Fallback chain:
+ *   - No artworkId → ''
  *   - Artist stop (artworkId === ARTIST_MESH_ID):
- *       artist.statement ?? ''
+ *       Docent-framed welcome composed from gallery.title and artist data:
+ *       • With name + statement: "Welcome to {title}, an exhibition by {name}.
+ *           In the artist's own words: {statement}"
+ *       • With name, no statement: "Welcome to {title}, an exhibition by {name}."
+ *       • Name missing, statement present: "Welcome to {title}. {statement}"
+ *       • No artist block at all: "Welcome to {title}."
  *   - Artwork stop:
  *       artwork.narration ?? artwork.label ?? ''
- *   - Unknown artworkId or no artworkId:
- *       ''  (skip speech)
+ *   - Unknown artworkId → ''
  *
  * An empty string return means "skip speech for this stop".
  */
@@ -119,7 +161,19 @@ export function pickNarrationText(wp: TourWaypoint, gallery: Gallery): string {
   if (!wp.artworkId) return '';
 
   if (wp.artworkId === ARTIST_MESH_ID) {
-    return gallery.artist?.statement ?? '';
+    const name = gallery.artist?.name;
+    const statement = gallery.artist?.statement;
+    const titlePart = `Welcome to ${gallery.title}`;
+    if (name && statement) {
+      return `${titlePart}, an exhibition by ${name}. In the artist's own words: ${statement}`;
+    }
+    if (name) {
+      return `${titlePart}, an exhibition by ${name}.`;
+    }
+    if (statement) {
+      return `${titlePart}. ${statement}`;
+    }
+    return `${titlePart}.`;
   }
 
   const artwork = gallery.artworks.find((a) => a.id === wp.artworkId);
