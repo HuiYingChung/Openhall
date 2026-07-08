@@ -916,7 +916,8 @@ function renderSettings(
           <label class="oh-label">Base URL</label>
           <input id="oh-oai-url" class="oh-field" type="text" placeholder="https://api.openai.com/v1" style="margin-bottom:0.75rem;" />
           <label class="oh-label">Model</label>
-          <input id="oh-oai-model" class="oh-field" type="text" placeholder="gpt-4o" style="margin-bottom:1rem;" />
+          <input id="oh-oai-model" class="oh-field" type="text" placeholder="gpt-4o" style="margin-bottom:0.35rem;" />
+          <p class="oh-help" style="margin:0 0 1rem;">Must support image input (vision) — gpt-4o is a safe default. Text-only models will fail at artwork analysis.</p>
         </div>
 
         <p id="oh-settings-error" class="oh-field-error" style="display:none;margin:0 0 0.75rem;" role="alert"></p>
