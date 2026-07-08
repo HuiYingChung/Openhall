@@ -206,9 +206,16 @@ async function bootViewer() {
     controls.pointerLock.addEventListener('unlock', onUnlock);
   }
 
+  // The exported site opens with the exhibition's own identity — the title
+  // and artist lead; Openhall appears only as the "Made with" credit.
+  const overlayBranding = {
+    title: gallery.title,
+    artistName: gallery.artist?.name ?? gallery.branding?.authorName,
+  };
+
   if (supportsPointerLock()) {
     // Pointer-lock devices: "Click to Enter" overlay
-    const { dismiss } = mountHintOverlay(() => controls.lock());
+    const { dismiss } = mountHintOverlay(() => controls.lock(), undefined, overlayBranding);
     const onLock = () => {
       controls.pointerLock.removeEventListener('lock', onLock);
       dismiss();
@@ -222,7 +229,7 @@ async function bootViewer() {
     const { dismiss } = mountHintOverlayTouchFallback(() => {
       dismiss();
       startTour();
-    });
+    }, overlayBranding);
   }
 }
 

@@ -615,7 +615,7 @@ export function bootApp(): void {
                 // return to the menu (overlay already dismissed by mountHintOverlay).
                 controls!.pointerLock.removeEventListener('lock', onLock);
                 exitToMenu();
-              });
+              }, { title: gallery.title, artistName: gallery.artist?.name });
               onLock = () => {
                 controls!.pointerLock.removeEventListener('lock', onLock);
                 dismiss();
@@ -642,7 +642,7 @@ export function bootApp(): void {
                       mountTourStartOverlay(gallery);
                     },
                   });
-                });
+                }, { title: gallery.title, artistName: gallery.artist?.name });
               }
             }
           }).catch((e) => {
@@ -1712,6 +1712,9 @@ function renderLabels(
     }, () => {
       // × button: overlay already dismissed by mountHintOverlay — labels screen reappears
       c.pointerLock.removeEventListener('lock', onLock);
+    }, {
+      title: data.gallery!.title,
+      artistName: data.gallery!.artist?.name ?? data.gallery!.branding?.authorName,
     });
 
     onLock = () => {
