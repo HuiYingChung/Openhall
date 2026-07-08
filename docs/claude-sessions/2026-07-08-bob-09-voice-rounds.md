@@ -89,9 +89,28 @@ output.
   Rule adopted into AGENTS.md: never run git in this working tree while another
   agent's session is active.
 
+## Post-merge follow-up: button labels (branch tour-button-labels)
+
+Huiying questioned the button semantics after using the tour: "Play" doesn't
+say what it plays, and "Voice" hides the narration feature — costly now that
+voice defaults off. Decision (hers): rename rather than add a one-time hint —
+a good label is permanent self-documentation. Play → "Autoplay" (toggles with
+Pause), Voice → "Audio guide" (museum metaphor, matches the opt-in design),
+shortening to "Audio" on <768 px viewports where five buttons share the bar; a
+shared refreshVoiceButton() re-syncs icon/label/aria on toggle and resize.
+Also assessed voice-tour portability on request: works on Windows/macOS/
+iOS/Android system voices (quality varies; Edge best); known gap is Linux
+desktops without a speech engine — API present, no sound; a no-voice guard is
+a candidate follow-up. Verified: 277/277 unit tests, lint, build, plus a
+real-Chromium check of both labels, the Autoplay↔Pause toggle, and the live
+resize relabel. Two harness stumbles recorded honestly: toContain('Play')
+does not match 'Autoplay' (case), and clicking during the entry fade times
+out — wait for the viewing phase.
+
 ## State at end of session
 
 Voice stack (voice-tour → voice-tour-fixes → voice-tour-ux) merged by Huiying
 as a single PR #7 from the stack tip — the cumulative stack let one PR carry
 all three rounds. 276/276 tests, lint, both builds re-verified green on the
-merged main. Remaining: README rewrite, hosted deploy, demo video.
+merged main; 277/277 after the button-label follow-up. Remaining: README
+rewrite, hosted deploy, demo video.
