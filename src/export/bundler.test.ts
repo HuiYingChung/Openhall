@@ -650,7 +650,7 @@ describe('slugifyTitle', () => {
 
   it('keeps CJK characters and strips filename-illegal ones', () => {
     expect(slugifyTitle('靜物與光')).toBe('靜物與光');
-    expect(slugifyTitle('a/b\c:d*e?f"g<h>i|j')).toBe('abcdefghij');
+    expect(slugifyTitle('a/b\\c:d*e?f"g<h>i|j')).toBe('abcdefghij');
   });
 
   it('falls back when the title slugs to nothing', () => {

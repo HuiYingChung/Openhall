@@ -20,7 +20,10 @@ executed by IBM Bob in fresh sessions. Each prompt pairs with a session log in
 | BOB_PROMPT_06C | Tour button/overlay UI-state fixes |
 | BOB_PROMPT_06D | Keyboard-activated click guard |
 | BOB_PROMPT_07 | Polish — exit-to-menu funnel, export staleness guard, SVG icons |
-| BOB_PROMPT_08 | Polish — Esc hint, Settings cancel, labels back button (Bob's final credited session) |
+| BOB_PROMPT_08 | Polish — Esc hint, Settings cancel, labels back button (last session on the first trial account) |
+| BOB_PROMPT_09 | AI voice narration for tour mode (speechSynthesis, AI-written docent text) |
 
-After Bob's trial credits ran out (mid BOB_PROMPT_08 era), remaining polish was
-implemented directly by Claude — see `docs/claude-sessions/`.
+After the first Bob trial account's credits ran out (mid BOB_PROMPT_08 era),
+interim polish was implemented directly by Claude — see `docs/claude-sessions/`.
+BOB_PROMPT_09 onward runs on a fresh trial account (the officially suggested
+path when free credits are exhausted).
