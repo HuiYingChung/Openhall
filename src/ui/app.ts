@@ -14,6 +14,7 @@ import { ArtworkInteractions } from '../viewer/interactions';
 import { GalleryTour } from '../viewer/tour';
 import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay, fadeThroughBlack } from './overlay';
 import { showToast, buildErrorCard, showFieldError, translateError, type ErrorAction } from './feedback';
+import { createGenerationView } from './generation-view';
 import { escapeHtml } from './escape-html';
 import { sanitizePlacements } from './placement-sanity';
 import { resizeToDataUrl, createDisplayObjectUrl, generateFaviconDataUrl } from './image-utils';
@@ -1408,19 +1409,14 @@ function renderGenerating(
 ): void {
   container.innerHTML = `
     <div class="oh-screen oh-screen--center" style="background:rgba(0,0,0,0.9);">
-      <p id="oh-progress-msg" style="font-size:1.1rem;margin:0 0 1rem;">Initialising AI…</p>
-      <div style="width:280px;height:4px;background:var(--oh-border);border-radius:2px;">
-        <div id="oh-progress-bar" style="height:100%;background:#fff;border-radius:2px;width:0%;transition:width 0.4s;"></div>
-      </div>
+      <div id="oh-gen-view"></div>
     </div>`;
 
-  const msg = container.querySelector('#oh-progress-msg') as HTMLElement;
-  const bar = container.querySelector('#oh-progress-bar') as HTMLElement;
-
-  function setProgress(text: string, pct: number) {
-    msg.textContent = text;
-    bar.style.width = `${pct}%`;
-  }
+  const view = createGenerationView(
+    container.querySelector('#oh-gen-view') as HTMLElement,
+    data.artworks
+  );
+  const setProgress = (text: string, pct: number) => view.setStatus(text, pct);
 
   // Build provider — honour the explicitly chosen provider first, then fall
   // back to whichever key exists (legacy behaviour for pre-existing settings).
@@ -1445,6 +1441,7 @@ function renderGenerating(
     try {
       const key = aiInputKey(data);
       let gallery: Gallery;
+      let showedPlan = false;
 
       if (data.gallery && data.lastGenKey === key) {
         // Cache hit — artworks/brief/style are unchanged since the last
@@ -1453,26 +1450,32 @@ function renderGenerating(
         setProgress('Reusing your gallery — no AI call…', 60);
         gallery = data.gallery;
       } else {
-        // Stage 1: vision analysis
+        // Stage 1: vision analysis — each returned analysis feeds the stage
+        // (thumbnail lights up, palette/style/mood readout appears).
         const analyses: WorkAnalysis[] = [];
         for (let i = 0; i < data.artworks.length; i++) {
           setProgress(`Analysing artwork ${i + 1} of ${data.artworks.length}…`, 5 + (i / data.artworks.length) * 40);
+          view.startArtwork(i);
           const analysis = await provider.analyzeArtwork(data.artworks[i]);
+          view.finishArtwork(i, analysis);
           analyses.push(analysis);
         }
         data.analyses = analyses;
 
-        // Stage 2: curation
+        // Stage 2: curation — thumbnails regroup into the curator's rooms
         setProgress('Curating exhibition…', 50);
         const plan = await provider.curate(analyses, data.userBrief);
+        view.showCuration(plan);
 
         // Stage 3: gallery generation
         setProgress('Designing gallery…', 65);
         const rawGallery = await provider.generateGallery(data.artworks, analyses, plan, data.preset);
 
-        // Sanity pass
+        // Sanity pass — the finished layout draws itself as a floor plan
         setProgress('Verifying layout…', 85);
         gallery = sanitizePlacements(rawGallery);
+        view.showFloorPlan(gallery);
+        showedPlan = true;
         data.gallery = gallery;
         data.lastGenKey = key; // remember these inputs so a return trip is free
       }
@@ -1500,7 +1503,9 @@ function renderGenerating(
       newControls.teleport(firstLayout.originX + 3, firstLayout.originZ + 3);
 
       setProgress('Ready!', 100);
-      await new Promise((r) => setTimeout(r, 400));
+      // Fresh generations show the floor plan here — hold long enough for
+      // its draw-in animation to finish; the cached path keeps the quick beat.
+      await new Promise((r) => setTimeout(r, showedPlan ? 1600 : 400));
 
       onDone(scene, newControls, gallery, artworkMeshes);
     } catch (e) {

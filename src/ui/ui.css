@@ -327,6 +327,119 @@ textarea.oh-field { resize: vertical; }
   word-break: break-word;
 }
 
+/* ------------------------------------------------------------------ */
+/* Generation stage (see generation-view.ts)                           */
+/* ------------------------------------------------------------------ */
+
+.oh-gen-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  opacity: 0.25;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  transition: opacity 0.35s;
+}
+.oh-gen-thumb.is-analysing {
+  opacity: 1;
+  animation: oh-gen-pulse 1.2s ease-in-out infinite;
+}
+.oh-gen-thumb.is-done { opacity: 1; }
+@keyframes oh-gen-pulse {
+  0%, 100% { outline-color: var(--oh-warn); }
+  50% { outline-color: rgba(217, 164, 65, 0.2); }
+}
+
+.oh-gen-readout {
+  min-height: 1.4rem;
+  font-size: 0.82rem;
+  color: var(--oh-ink);
+  background: var(--oh-panel);
+  border-radius: 6px;
+  padding: 0.45rem 0.7rem;
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+}
+.oh-gen-readout:empty { visibility: hidden; }
+.oh-gen-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.oh-gen-room {
+  background: var(--oh-panel);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  flex: 1;
+  min-width: 150px;
+  max-width: 260px;
+  animation: oh-gen-fadein 0.4s ease;
+}
+.oh-gen-room-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  color: var(--oh-ok);
+}
+.oh-gen-mini {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  display: inline-block;
+  background: var(--oh-field);
+}
+.oh-gen-mini img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.oh-gen-order {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--oh-ink);
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+.oh-gen-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--oh-ink-muted);
+  font-style: italic;
+  text-align: center;
+  max-width: 420px;
+}
+
+@keyframes oh-gen-fadein {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Floor plan: rooms draw themselves in; the tour path marches. */
+.oh-plan-room {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  animation: oh-plan-draw 1.1s ease forwards;
+}
+.oh-plan-art { animation: oh-gen-fadein 0.5s ease 0.7s backwards; }
+.oh-plan-tour {
+  stroke-dasharray: 6 5;
+  animation: oh-plan-march 1.6s linear infinite;
+}
+@keyframes oh-plan-draw { to { stroke-dashoffset: 0; } }
+@keyframes oh-plan-march { to { stroke-dashoffset: -22; } }
+
 /* Wordmark — glyph + text lockup used on the upload header and overlays */
 .oh-wordmark {
   display: inline-flex;
