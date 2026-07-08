@@ -2,7 +2,7 @@
 
 ## What this project is
 
-**Openhall**: an open-source web tool that turns up to 10 uploaded artwork images into a fully AI-generated, walkable 3D gallery (first-person WASD + mouse), exportable as a self-contained static site the artist hosts themselves. BYOK (bring-your-own-API-key); IBM watsonx.ai is the primary AI provider. See PRODUCT_PLAN.md for full context, ROADMAP.md for schedule.
+**Openhall**: an open-source web tool that turns up to 10 uploaded artwork images into a fully AI-generated, walkable 3D gallery (first-person WASD + mouse), exportable as a self-contained static site the artist hosts themselves. BYOK (bring-your-own-API-key); IBM watsonx.ai is the primary AI provider. See docs/PRODUCT_PLAN.md for full context, docs/ROADMAP.md for schedule.
 
 ## Tech stack
 
@@ -69,12 +69,12 @@ docs/            bob-sessions/  ← commit BobShell logs here
 Follow .gitignore strictly. Rules of thumb:
 
 - **Never commit:** API keys or anything key-like (.env, tokens, IAM credentials), node_modules, build output (dist/), user-uploaded images, exported gallery zips, OS/editor noise.
-- **Always commit:** source, `src/demo/` sample assets, prompt templates, planning docs (PRODUCT_PLAN.md, ROADMAP.md, AGENTS.md), Bob prompts in `docs/bob-prompts/`, BobShell session logs in `docs/bob-sessions/` and Claude session logs in `docs/claude-sessions/` (submission evidence), `.env.example` with placeholder values only.
+- **Always commit:** source, `src/demo/` sample assets, prompt templates, planning docs (docs/PRODUCT_PLAN.md, docs/ROADMAP.md, AGENTS.md), Bob prompts in `docs/bob-prompts/`, BobShell session logs in `docs/bob-sessions/` and Claude session logs in `docs/claude-sessions/` (submission evidence), `.env.example` with placeholder values only.
 - If a file might contain a real credential, stop and ask before committing.
 
 ## MVP scope guard
 
-In scope: features F1–F10 in PRODUCT_PLAN.md §5. Out of scope (do not build, even if asked casually): accounts, hosted persistence, multiplayer, VR, video artworks, payments. If a request conflicts with the ROADMAP.md cut list, flag it instead of building.
+In scope: features F1–F10 in docs/PRODUCT_PLAN.md §5. Out of scope (do not build, even if asked casually): accounts, hosted persistence, multiplayer, VR, video artworks, payments. If a request conflicts with the docs/ROADMAP.md cut list, flag it instead of building.
 
 ## Definition of done (MVP)
 
