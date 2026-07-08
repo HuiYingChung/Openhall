@@ -1105,8 +1105,8 @@ function renderUpload(
           <span><span style="color:#ddd;font-weight:600;">4</span> · Walk through it, then export your own website</span>
         </div>
         <p style="color:var(--oh-ink-muted);font-size:0.8rem;margin:0 0 1.5rem;">
-          Openhall runs on your own AI key (IBM watsonx or OpenAI-compatible) — that's why it's free.
-          Add yours in <span style="color:#ccc;">Settings</span> (top right), or
+          Openhall runs on your own AI key (IBM watsonx or OpenAI-compatible).
+          Add yours in <button id="oh-home-settings-link" class="oh-btn--link" style="font-size:0.8rem;">Settings</button>, or
           <button id="oh-home-demo" class="oh-btn--link" style="font-size:0.8rem;">view the demo gallery</button> first, no key needed.
         </p>
 
@@ -1184,6 +1184,7 @@ function renderUpload(
   const presetsEl = container.querySelector('#oh-presets') as HTMLElement;
 
   container.querySelector('#oh-to-settings')!.addEventListener('click', onSettings);
+  container.querySelector('#oh-home-settings-link')!.addEventListener('click', onSettings);
   container.querySelector('#oh-home-demo')!.addEventListener('click', onDemo);
 
   // Set by the two-step-confirm wiring below; lets input changes cancel a
