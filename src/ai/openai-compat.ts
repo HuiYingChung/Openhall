@@ -6,11 +6,9 @@
  */
 
 import { WorkAnalysisSchema, CurationPlanSchema } from '../schema/analysis.schema';
-import { GallerySchema } from '../schema/gallery.schema';
-import { generateValidated, extractJSON } from './provider';
+import { generateValidated, composeGalleryFromPlan } from './provider';
 import { buildAnalyzePrompt } from './prompts/analyze.prompt';
 import { buildCuratePrompt } from './prompts/curate.prompt';
-import { buildGalleryPrompt } from './prompts/gallery.prompt';
 import type { AIProvider, UploadedArtwork, StylePreset } from './provider';
 import type { WorkAnalysis, CurationPlan } from '../schema/analysis.schema';
 import type { Gallery } from '../schema/gallery.schema';
@@ -110,15 +108,16 @@ export class OpenAICompatProvider implements AIProvider {
     plan: CurationPlan,
     preset: StylePreset
   ): Promise<Gallery> {
-    const titlePrompt = `In 4 words or fewer, suggest an exhibition title based on: "${plan.curatorNote}". Reply with ONLY the title.`;
-    const rawTitle = await chat(this.settings, [{ role: 'user', content: titlePrompt }], 32);
-    const exhibitionTitle = extractJSON(rawTitle).replace(/^["']|["']$/g, '').trim() || 'New Exhibition';
-
-    const prompt = buildGalleryPrompt(artworks, analyses, plan, preset, exhibitionTitle);
-    return generateValidated(
-      async (extraContext) =>
-        chat(this.settings, [{ role: 'user', content: prompt + extraContext }], 3000),
-      GallerySchema
-    ) as Promise<Gallery>;
+    // Shared composition: LLM writes title + labels; geometry is assembled
+    // deterministically. The old freeform whole-gallery.json prompt produced
+    // spatially incoherent tours — see composeGalleryFromPlan in provider.ts.
+    return composeGalleryFromPlan(
+      (prompt, maxTokens) =>
+        chat(this.settings, [{ role: 'user', content: prompt }], maxTokens),
+      artworks,
+      analyses,
+      plan,
+      preset
+    );
   }
 }

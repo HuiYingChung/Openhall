@@ -12,12 +12,9 @@
  */
 
 import { WorkAnalysisSchema, CurationPlanSchema } from '../schema/analysis.schema';
-import { GallerySchema } from '../schema/gallery.schema';
-import { generateValidated } from './provider';
+import { generateValidated, composeGalleryFromPlan } from './provider';
 import { buildAnalyzePrompt } from './prompts/analyze.prompt';
 import { buildCuratePrompt } from './prompts/curate.prompt';
-import { buildLabelsPrompt } from './prompts/labels.prompt';
-import { assembleGallery, LabelsResponseSchema } from './gallery-assembler';
 import type { AIProvider, UploadedArtwork, StylePreset } from './provider';
 import type { WorkAnalysis, CurationPlan } from '../schema/analysis.schema';
 import type { Gallery } from '../schema/gallery.schema';
@@ -233,48 +230,15 @@ export class WatsonxProvider implements AIProvider {
     plan: CurationPlan,
     preset: StylePreset
   ): Promise<Gallery> {
-    // Step 1: derive an exhibition title (tiny output — 32 tokens)
-    const titlePrompt = `In 4 words or fewer, suggest an exhibition title based on this curator note: "${plan.curatorNote}". Reply with ONLY the title, no quotes.`;
-    const rawTitle = await chat(this.settings, WATSONX_TEXT_MODEL, [
-      { role: 'user', content: titlePrompt },
-    ], 32);
-    const exhibitionTitle = rawTitle.replace(/^["']|["']$/g, '').trim() || 'New Exhibition';
-
-    // Step 2: build all geometry deterministically (rooms, placements, doorways, tour)
-    const shell = assembleGallery(plan, preset, artworks, exhibitionTitle);
-
-    // Step 3: ask LLM for labels only, in batches of ≤4 works (~400 tokens each)
-    const BATCH_SIZE = 4;
-    const labelMap: Record<string, { label: string; artistStatement?: string }> = {};
-
-    for (let i = 0; i < artworks.length; i += BATCH_SIZE) {
-      const batch = artworks.slice(i, i + BATCH_SIZE);
-      const prompt = buildLabelsPrompt(batch, analyses, plan.curatorNote);
-      const entries = await generateValidated(
-        async (extraContext) =>
-          chat(this.settings, WATSONX_TEXT_MODEL, [
-            { role: 'user', content: prompt + extraContext },
-          ], 600),
-        LabelsResponseSchema
-      );
-      for (const entry of entries) {
-        labelMap[entry.artworkId] = {
-          label: entry.label,
-          artistStatement: entry.artistStatement,
-        };
-      }
-    }
-
-    // Step 4: merge labels into artwork records
-    const artworksWithLabels = shell.artworks.map((aw) => ({
-      ...aw,
-      label: labelMap[aw.id]?.label ?? 'No label available.',
-      ...(labelMap[aw.id]?.artistStatement
-        ? { artistStatement: labelMap[aw.id].artistStatement }
-        : {}),
-    }));
-
-    // Step 5: validate the assembled gallery
-    return GallerySchema.parse({ ...shell, artworks: artworksWithLabels });
+    // Shared composition: LLM writes title + labels; geometry is assembled
+    // deterministically (see composeGalleryFromPlan in provider.ts).
+    return composeGalleryFromPlan(
+      (prompt, maxTokens) =>
+        chat(this.settings, WATSONX_TEXT_MODEL, [{ role: 'user', content: prompt }], maxTokens),
+      artworks,
+      analyses,
+      plan,
+      preset
+    );
   }
 }

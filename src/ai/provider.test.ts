@@ -71,3 +71,106 @@ describe('generateValidated', () => {
     expect(llm.mock.calls[0][0]).toBe('');
   });
 });
+
+// ---------------------------------------------------------------------------
+// composeGalleryFromPlan — shared composition used by every provider
+// ---------------------------------------------------------------------------
+
+import { composeGalleryFromPlan } from './provider';
+import type { UploadedArtwork } from './provider';
+import type { CurationPlan, WorkAnalysis } from '../schema/analysis.schema';
+
+function makeUpload(id: string): UploadedArtwork {
+  return {
+    id, filename: `${id}.jpg`, analysisDataUrl: '', displayObjectUrl: '',
+    aspectRatio: 1, title: `Title ${id}`, medium: 'Oil',
+  };
+}
+
+const COMPOSE_ARTWORKS = [makeUpload('aw-01'), makeUpload('aw-02')];
+
+const COMPOSE_ANALYSES: WorkAnalysis[] = COMPOSE_ARTWORKS.map((a) => ({
+  artworkId: a.id, style: 'abstract', palette: ['#112233'],
+  subject: 'forms', mood: 'calm', description: 'A work.',
+}));
+
+const COMPOSE_PLAN: CurationPlan = {
+  roomCount: 1,
+  rooms: [{ roomId: 'room-1', theme: 'Quiet forms', artworkIds: ['aw-01', 'aw-02'] }],
+  placements: [
+    { artworkId: 'aw-01', roomId: 'room-1', wall: 'n', offsetFromCenter: -2 },
+    { artworkId: 'aw-02', roomId: 'room-1', wall: 's', offsetFromCenter: 2 },
+  ],
+  tourOrder: ['aw-01', 'aw-02'],
+  curatorNote: 'A meditation on quiet forms.',
+};
+
+describe('composeGalleryFromPlan', () => {
+  it('LLM writes only title + labels; geometry comes from the assembler', async () => {
+    const generate = vi.fn()
+      .mockResolvedValueOnce('"Quiet Forms"') // title call
+      .mockResolvedValueOnce(JSON.stringify([ // one label batch (2 works ≤ 4)
+        { artworkId: 'aw-01', label: 'Label one.' },
+        { artworkId: 'aw-02', label: 'Label two.', artistStatement: 'A note.' },
+      ]));
+
+    const gallery = await composeGalleryFromPlan(
+      generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube'
+    );
+
+    expect(generate).toHaveBeenCalledTimes(2); // no whole-gallery JSON call
+    expect(gallery.title).toBe('Quiet Forms');
+    expect(gallery.rooms.length).toBe(1);
+    expect(gallery.placements.length).toBe(2);
+    expect(gallery.tour.length).toBeGreaterThan(0);
+    const aw1 = gallery.artworks.find((a) => a.id === 'aw-01')!;
+    const aw2 = gallery.artworks.find((a) => a.id === 'aw-02')!;
+    expect(aw1.label).toBe('Label one.');
+    expect(aw2.artistStatement).toBe('A note.');
+  });
+
+  it('falls back to placeholder label + default title when the model is unhelpful', async () => {
+    const generate = vi.fn()
+      .mockResolvedValueOnce('   ') // empty title
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'Only one label.' },
+      ]));
+
+    const gallery = await composeGalleryFromPlan(
+      generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube'
+    );
+
+    expect(gallery.title).toBe('New Exhibition');
+    const aw2 = gallery.artworks.find((a) => a.id === 'aw-02')!;
+    expect(aw2.label).toBe('No label available.');
+  });
+
+  it('batches labels in groups of four', async () => {
+    const many = Array.from({ length: 6 }, (_, i) => makeUpload(`aw-0${i + 1}`));
+    const manyAnalyses = many.map((a) => ({
+      artworkId: a.id, style: 's', palette: ['#000000'],
+      subject: 'x', mood: 'm', description: 'd',
+    }));
+    const plan: CurationPlan = {
+      roomCount: 1,
+      rooms: [{ roomId: 'room-1', theme: 'All', artworkIds: many.map((a) => a.id) }],
+      placements: many.map((a, i) => ({
+        artworkId: a.id, roomId: 'room-1',
+        wall: (['n', 's', 'e', 'w'] as const)[i % 4], offsetFromCenter: 0,
+      })),
+      tourOrder: many.map((a) => a.id),
+      curatorNote: 'All together.',
+    };
+    const labelsFor = (ids: string[]) =>
+      JSON.stringify(ids.map((id) => ({ artworkId: id, label: `A wall label for ${id}.` })));
+    const generate = vi.fn()
+      .mockResolvedValueOnce('Six Works')
+      .mockResolvedValueOnce(labelsFor(many.slice(0, 4).map((a) => a.id)))
+      .mockResolvedValueOnce(labelsFor(many.slice(4).map((a) => a.id)));
+
+    const gallery = await composeGalleryFromPlan(generate, many, manyAnalyses, plan, 'white-cube');
+
+    expect(generate).toHaveBeenCalledTimes(3); // title + 2 label batches
+    expect(gallery.artworks.every((a) => a.label.startsWith('A wall label for aw-'))).toBe(true);
+  });
+});
