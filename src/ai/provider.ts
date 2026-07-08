@@ -7,6 +7,9 @@
 import type { WorkAnalysis } from '../schema/analysis.schema';
 import type { CurationPlan } from '../schema/analysis.schema';
 import type { Gallery } from '../schema/gallery.schema';
+import { GallerySchema } from '../schema/gallery.schema';
+import { assembleGallery, LabelsResponseSchema } from './gallery-assembler';
+import { buildLabelsPrompt } from './prompts/labels.prompt';
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
@@ -154,4 +157,68 @@ export function extractJSON(text: string): string {
 
   if (start === -1 || end === -1 || end < start) return text.trim();
   return text.slice(start, end + 1);
+}
+
+// ---------------------------------------------------------------------------
+// composeGalleryFromPlan — shared gallery composition (used by all providers)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the final Gallery from a curation plan the reliable way: the LLM
+ * writes only short text (exhibition title + wall labels); every piece of
+ * geometry — rooms, placements, doorways, tour path — comes from
+ * assembleGallery() deterministically.
+ *
+ * Extracted from WatsonxProvider so every provider shares one composition
+ * path. Letting a model emit gallery.json freeform produced walkable but
+ * spatially incoherent tours (waypoints through walls, backtracking flow);
+ * models narrate space, they don't reason about it.
+ *
+ * @param generate plain text completion: (prompt, maxTokens) → raw model text
+ */
+export async function composeGalleryFromPlan(
+  generate: (prompt: string, maxTokens: number) => Promise<string>,
+  artworks: UploadedArtwork[],
+  analyses: WorkAnalysis[],
+  plan: CurationPlan,
+  preset: StylePreset
+): Promise<Gallery> {
+  // Step 1: derive an exhibition title (tiny output — 32 tokens)
+  const titlePrompt = `In 4 words or fewer, suggest an exhibition title based on this curator note: "${plan.curatorNote}". Reply with ONLY the title, no quotes.`;
+  const rawTitle = await generate(titlePrompt, 32);
+  const exhibitionTitle = rawTitle.replace(/^["']|["']$/g, '').trim() || 'New Exhibition';
+
+  // Step 2: build all geometry deterministically (rooms, placements, doorways, tour)
+  const shell = assembleGallery(plan, preset, artworks, exhibitionTitle);
+
+  // Step 3: ask the LLM for labels only, in batches of ≤4 works (~400 tokens each)
+  const BATCH_SIZE = 4;
+  const labelMap: Record<string, { label: string; artistStatement?: string }> = {};
+
+  for (let i = 0; i < artworks.length; i += BATCH_SIZE) {
+    const batch = artworks.slice(i, i + BATCH_SIZE);
+    const prompt = buildLabelsPrompt(batch, analyses, plan.curatorNote);
+    const entries = await generateValidated(
+      async (extraContext) => generate(prompt + extraContext, 600),
+      LabelsResponseSchema
+    );
+    for (const entry of entries) {
+      labelMap[entry.artworkId] = {
+        label: entry.label,
+        artistStatement: entry.artistStatement,
+      };
+    }
+  }
+
+  // Step 4: merge labels into artwork records
+  const artworksWithLabels = shell.artworks.map((aw) => ({
+    ...aw,
+    label: labelMap[aw.id]?.label ?? 'No label available.',
+    ...(labelMap[aw.id]?.artistStatement
+      ? { artistStatement: labelMap[aw.id].artistStatement }
+      : {}),
+  }));
+
+  // Step 5: validate the assembled gallery
+  return GallerySchema.parse({ ...shell, artworks: artworksWithLabels });
 }

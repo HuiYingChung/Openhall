@@ -39,7 +39,7 @@ import type { Gallery } from '../schema/gallery.schema';
 
 type AppState = 'settings' | 'upload' | 'generating' | 'viewer' | 'labels';
 
-interface AppData {
+export interface AppData {
   artworks: UploadedArtwork[];
   userBrief: string;
   preset: StylePreset;
@@ -72,10 +72,17 @@ interface AppData {
   lastGenKey?: string;
 }
 
-/** Fingerprint of the inputs that require an AI call to (re)generate a gallery. */
-function aiInputKey(data: AppData): string {
+/**
+ * Fingerprint of the inputs that require an AI call to (re)generate a gallery.
+ * Provider identity (and the OpenAI model) is part of the fingerprint —
+ * switching the AI in Settings must invalidate the cache, otherwise the
+ * "Continue (no AI)" path silently reuses the old provider's gallery.
+ */
+export function aiInputKey(data: AppData): string {
   const ids = data.artworks.map((a) => a.id).sort().join(',');
-  return `${ids}|${data.userBrief.trim()}|${data.preset}`;
+  const provider = localStorage.getItem('openhall_provider') ?? '';
+  const model = provider === 'openai' ? (loadOpenAISettings()?.model ?? '') : '';
+  return `${ids}|${data.userBrief.trim()}|${data.preset}|${provider}:${model}`;
 }
 
 /**
@@ -916,7 +923,8 @@ function renderSettings(
           <label class="oh-label">Base URL</label>
           <input id="oh-oai-url" class="oh-field" type="text" placeholder="https://api.openai.com/v1" style="margin-bottom:0.75rem;" />
           <label class="oh-label">Model</label>
-          <input id="oh-oai-model" class="oh-field" type="text" placeholder="gpt-4o" style="margin-bottom:1rem;" />
+          <input id="oh-oai-model" class="oh-field" type="text" placeholder="gpt-4o" style="margin-bottom:0.35rem;" />
+          <p class="oh-help" style="margin:0 0 1rem;">Must support image input (vision) — gpt-4o is a safe default. Text-only models will fail at artwork analysis.</p>
         </div>
 
         <p id="oh-settings-error" class="oh-field-error" style="display:none;margin:0 0 0.75rem;" role="alert"></p>
@@ -1172,8 +1180,8 @@ function renderUpload(
       genHint.innerHTML = `${svgCheck()}Same artworks, description &amp; style — continues with no new AI call.`;
       genHint.className = 'oh-hint--ok';
     } else if (hadGallery) {
-      // They already had a gallery and changed the artworks/description/style.
-      genHint.innerHTML = `${svgWarn()}You changed the artworks, description, or style — this re-runs the AI and may use API credits.`;
+      // They already had a gallery and changed the artworks/description/style/provider.
+      genHint.innerHTML = `${svgWarn()}You changed the artworks, description, style, or AI provider — this re-runs the AI and may use API credits.`;
       genHint.className = 'oh-hint--warn';
     } else if (ready) {
       // First generation — also calls the AI, so warn just as clearly.
@@ -1579,7 +1587,7 @@ function renderLabels(
         </div>
         <p style="display:flex;gap:0.5rem;align-items:flex-start;font-size:0.75rem;color:var(--oh-warn);background:rgba(217,164,65,0.08);border:1px solid rgba(217,164,65,0.25);border-radius:8px;padding:0.6rem 0.75rem;margin:0.6rem 0 0;">
           <span aria-hidden="true" style="flex-shrink:0;margin-top:0.1rem;">${svgWarn()}</span>
-          <span>Going back keeps everything you've entered. Your gallery is only re-generated — re-calling the AI, which may cost API credits — if you change your <strong>artworks, description, or style</strong>. Editing names, labels, or branding is free.</span>
+          <span>Going back keeps everything you've entered. Your gallery is only re-generated — re-calling the AI, which may cost API credits — if you change your <strong>artworks, description, style, or AI provider</strong>. Editing names, labels, or branding is free.</span>
         </p>
       </div>
     </div>`;
