@@ -445,6 +445,7 @@ export function bootApp(): void {
             onProgress: (msg, pct) => { expBtn.innerHTML = `${msg} ${pct}%`; },
           });
           downloadZip(blob);
+          mountExportSuccess(blob.size);
         } catch (e) {
           showToast({
             message: `Export failed: ${String(e).slice(0, 140)}`,
@@ -782,6 +783,54 @@ export function bootApp(): void {
   const hasWatsonx = !!loadWatsonxSettings()?.apiKey;
   const hasOpenAI = !!loadOpenAISettings()?.apiKey;
   setState(hasWatsonx || hasOpenAI ? 'upload' : 'settings');
+}
+
+// ---------------------------------------------------------------------------
+// Export success panel — the "owned by artists" handoff
+// ---------------------------------------------------------------------------
+
+/**
+ * Shown right after the export zip download starts. Tells the artist what
+ * they just received and gives the fastest verified path to a live site
+ * (dragging the zip onto Netlify Drop). The zip itself carries PUBLISH.md
+ * with the full instructions. App chrome only — never part of the export.
+ */
+function mountExportSuccess(zipBytes: number): void {
+  document.getElementById('oh-export-success')?.remove();
+  const sizeMb = (zipBytes / 1048576).toFixed(1);
+  const wrap = document.createElement('div');
+  wrap.id = 'oh-export-success';
+  wrap.className = 'oh-screen oh-screen--center';
+  wrap.style.zIndex = '300';
+  wrap.innerHTML = `
+    <div class="oh-panel" role="dialog" aria-labelledby="oh-export-success-title" style="max-width:440px;">
+      <h2 id="oh-export-success-title" style="margin:0 0 0.35rem;font-size:1.25rem;">Your gallery is downloading</h2>
+      <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1rem;">
+        <strong style="color:var(--oh-ink);">openhall-export.zip</strong> (${sizeMb} MB) is a complete
+        website you own — no Openhall account, no subscription, no lock-in.
+      </p>
+      <div style="background:var(--oh-field);border:1px solid var(--oh-border);border-radius:8px;padding:0.8rem 0.95rem;margin:0 0 0.9rem;">
+        <p style="margin:0 0 0.35rem;font-size:0.88rem;font-weight:600;">Get it live in about a minute</p>
+        <p style="margin:0;font-size:0.82rem;color:var(--oh-ink-dim);line-height:1.55;">
+          Drag the zip file onto <strong>Netlify Drop</strong> — no unzipping,
+          no account needed to try it. You'll get a shareable URL right away.
+        </p>
+      </div>
+      <div style="display:flex;gap:0.6rem;margin:0 0 0.85rem;">
+        <a href="https://app.netlify.com/drop" target="_blank" rel="noopener"
+          class="oh-btn oh-btn--primary" style="flex:1;text-align:center;text-decoration:none;display:inline-block;box-sizing:border-box;">Open Netlify Drop</a>
+        <button id="oh-export-success-done" class="oh-btn oh-btn--ghost" style="flex:0 0 auto;">Done</button>
+      </div>
+      <p class="oh-help" style="margin:0;">
+        Prefer GitHub Pages or your own host? The zip includes
+        <strong style="color:var(--oh-ink-muted);">PUBLISH.md</strong> with step-by-step instructions.
+      </p>
+    </div>`;
+  document.body.appendChild(wrap);
+  const done = wrap.querySelector('#oh-export-success-done') as HTMLButtonElement;
+  done.addEventListener('click', () => wrap.remove());
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) wrap.remove(); });
+  done.focus();
 }
 
 // ---------------------------------------------------------------------------

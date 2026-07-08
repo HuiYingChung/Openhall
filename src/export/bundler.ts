@@ -6,6 +6,7 @@
  *   gallery.json     — validated gallery data (with aspectRatio per artwork)
  *   images/          — artwork images (blob: URLs fetched and stored)
  *   assets/          — viewer JS bundle fetched from /assets/viewer.js
+ *   PUBLISH.md       — "publish in minutes" guide (Netlify Drop / GitHub Pages)
  *
  * The unzipped folder runs on Netlify Drop and GitHub Pages with zero modification.
  * Bundle < 5 MB excluding artwork images.
@@ -162,6 +163,9 @@ export async function buildExportBundle(opts: BundleOptions): Promise<BundleResu
   });
   zip.file('index.html', html);
 
+  // --- 5b. Publish guide ---
+  zip.file('PUBLISH.md', buildPublishGuide(gallery.title));
+
   // --- 6. Generate zip ---
   progress('Compressing…', 70);
   const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
@@ -263,6 +267,52 @@ ${headHtml}
     <script type="module" src="./assets/viewer.js"></script>
   </body>
 </html>`;
+}
+
+/**
+ * The publish guide shipped inside every export zip. Plain markdown, readable
+ * on GitHub and in any text editor. The Netlify Drop zip-as-is path is the
+ * headline because it is the fastest verified route to a live URL.
+ */
+export function buildPublishGuide(galleryTitle: string): string {
+  return `# Publish "${galleryTitle}" — your gallery, your site
+
+This folder is a complete static website. It has no server code, no
+database, and no dependency on Openhall — host it anywhere, forever.
+
+## Fastest: Netlify Drop (about a minute, free)
+
+1. Open https://app.netlify.com/drop
+2. Drag this whole zip file (or this unzipped folder) onto the page.
+3. That's it — Netlify gives you a live URL to share.
+
+Create a free account when prompted to keep the site permanently and
+set a custom name (yourname.netlify.app) or your own domain.
+
+## Also free: GitHub Pages
+
+1. Create a new repository on https://github.com and upload the
+   contents of this folder (unzipped).
+2. In the repository: Settings → Pages → set Source to
+   "Deploy from a branch", pick your main branch, folder "/ (root)".
+3. Your gallery appears at https://<username>.github.io/<repo>/ after
+   a minute or two.
+
+## Test locally first (optional)
+
+Because browsers restrict file:// pages, open the folder with any
+static server instead of double-clicking index.html. If you have
+Node.js: run \`npx serve\` inside this folder and open the printed URL.
+
+## What's in here
+
+- index.html — entry page with your title, description, and share preview
+- gallery.json — your rooms, artwork placements, labels, and tour
+- images/ — your artworks
+- assets/viewer.js — the 3D viewer engine (self-contained)
+
+Made with Openhall. The gallery is yours — no subscription, no lock-in.
+`;
 }
 
 export { escapeHtml } from '../ui/escape-html';
