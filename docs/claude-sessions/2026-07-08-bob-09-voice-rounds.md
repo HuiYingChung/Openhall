@@ -99,9 +99,21 @@ Pause), Voice → "Audio guide" (museum metaphor, matches the opt-in design),
 shortening to "Audio" on <768 px viewports where five buttons share the bar; a
 shared refreshVoiceButton() re-syncs icon/label/aria on toggle and resize.
 Also assessed voice-tour portability on request: works on Windows/macOS/
-iOS/Android system voices (quality varies; Edge best); known gap is Linux
-desktops without a speech engine — API present, no sound; a no-voice guard is
-a candidate follow-up. Verified: 277/277 unit tests, lint, build, plus a
+iOS/Android system voices (quality varies; Edge best). Linux browsers speak
+through speech-dispatcher + espeak-ng when installed (Ubuntu usually ships
+them); without them the API exists but nothing sounds. Options weighed for
+guaranteeing Linux audio — espeak-ng WASM (~2–3 MB, robotic, breaks the
+zero-dep viewer), neural WASM TTS (20 MB+), cloud TTS (breaks offline/BYOK) —
+all rejected; Huiying approved detect-and-explain instead. Implemented the
+no-voices guard in the same branch: if an utterance never starts within 5 s
+AND getVoices() is empty, the narrator declares itself unavailable, the tour
+falls back to reading-time dwell, and the Audio-guide button disables with an
+actionable hint (install speech-dispatcher/espeak-ng). A slow engine that does
+have voices gets the benefit of the doubt. Verified: 282/282 unit tests
+(5 new guard tests with fake timers), lint, build, plus a real-Chromium run
+with speechSynthesis stubbed silent — button disables within the grace period
+with the hint text. Narration remains text-visible on every platform (the
+label card), so no information is audio-only. Verified: 277/277 unit tests, lint, build, plus a
 real-Chromium check of both labels, the Autoplay↔Pause toggle, and the live
 resize relabel. Two harness stumbles recorded honestly: toContain('Play')
 does not match 'Autoplay' (case), and clicking during the entry fade times

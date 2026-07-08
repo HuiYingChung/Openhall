@@ -291,6 +291,8 @@ export class GalleryTour {
 
   private narrator: TourNarrator;
   private voiceOn = false; // initialised after isSupported check in constructor
+  /** Set when the platform proves unable to speak (API present, no voices). */
+  private voiceUnavailable = false;
 
   private static isTouchDevice(): boolean {
     return typeof window !== 'undefined' &&
@@ -318,6 +320,7 @@ export class GalleryTour {
     // Set up narrator and decide whether to show the voice button.
     // Voice defaults OFF — unexpected audio is opt-in (like a museum audio guide).
     this.narrator = new TourNarrator();
+    this.narrator.onUnavailable = () => this.handleVoiceUnavailable();
     const voiceSupported = this.narrator.isSupported;
     this.voiceOn = false;
 
@@ -517,8 +520,29 @@ export class GalleryTour {
     return { labelText, spoken };
   }
 
+  /**
+   * The platform proved it cannot speak (utterance never started, zero voices —
+   * typical of Linux desktops without a speech engine). Silence the feature
+   * honestly: voice off, dwell back to reading time, button disabled with an
+   * explanation instead of a toggle that pretends to work.
+   */
+  private handleVoiceUnavailable(): void {
+    this.voiceUnavailable = true;
+    if (this.voiceOn) {
+      this.voiceOn = false;
+      if (this.phase === 'viewing') {
+        const { labelText } = this.currentStopTexts(false);
+        // Fall back from the speech-length dwell to reading time; keep the
+        // already-elapsed silent seconds so the visitor isn't stuck longer.
+        this.currentDwell = computeStopDwell(labelText, '');
+      }
+    }
+    this.refreshVoiceButton();
+  }
+
   /** Toggle voice narration on/off and update the button accordingly. */
   toggleVoice(): void {
+    if (this.voiceUnavailable) return; // disabled button; belt-and-braces
     this.voiceOn = !this.voiceOn;
 
     if (this.phase === 'viewing') {
@@ -553,6 +577,19 @@ export class GalleryTour {
   private refreshVoiceButton(): void {
     if (!this.voiceBtn) return;
     const label = GalleryTour.prefersTouchLayout() ? 'Audio' : 'Audio guide';
+    if (this.voiceUnavailable) {
+      const reason =
+        'Voice narration unavailable — no speech voices found. ' +
+        'On Linux, installing speech-dispatcher and espeak-ng enables them.';
+      this.voiceBtn.innerHTML = `${svgVoiceOff()}${label}`;
+      this.voiceBtn.disabled = true;
+      this.voiceBtn.style.opacity = '0.45';
+      this.voiceBtn.style.cursor = 'default';
+      this.voiceBtn.setAttribute('aria-pressed', 'false');
+      this.voiceBtn.setAttribute('aria-label', reason);
+      this.voiceBtn.title = reason;
+      return;
+    }
     this.voiceBtn.innerHTML = `${this.voiceOn ? svgVoiceOn() : svgVoiceOff()}${label}`;
     this.voiceBtn.setAttribute('aria-pressed', this.voiceOn ? 'true' : 'false');
     this.voiceBtn.setAttribute(

@@ -61,13 +61,37 @@ export function computeStopDwell(labelText: string, spokenText: string): number 
 // TourNarrator
 // ---------------------------------------------------------------------------
 
+/**
+ * Grace period for the speech engine to fire 'start' before we conclude the
+ * platform has no usable voices (e.g. Linux desktops without speech-dispatcher:
+ * the API exists, speak() silently does nothing). Generous on purpose — engines
+ * can be slow to spin up on first use.
+ */
+const SPEECH_START_TIMEOUT_MS = 5000;
+
 export class TourNarrator {
   /** Internal flag to track whether we issued a pause(). */
   private _paused = false;
 
+  /** Set once we conclude the platform cannot actually produce speech. */
+  private _unavailable = false;
+
+  private startTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Called once, the first time speech is detected as unavailable
+   * (API present but nothing ever starts speaking and no voices exist).
+   */
+  onUnavailable: (() => void) | null = null;
+
   /** True if speechSynthesis is present in window (voices may still be loading). */
   get isSupported(): boolean {
     return typeof window !== 'undefined' && 'speechSynthesis' in window;
+  }
+
+  /** True once the platform is known to have no working voices. */
+  get isUnavailable(): boolean {
+    return this._unavailable;
   }
 
   /**
@@ -77,17 +101,37 @@ export class TourNarrator {
    */
   speak(text: string, onEnd?: () => void): void {
     this._paused = false;
-    if (!this.isSupported || !text) {
+    if (!this.isSupported || this._unavailable || !text) {
       onEnd?.();
       return;
     }
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
+    utterance.onstart = () => this.clearStartTimer();
     if (onEnd) {
       utterance.onend = () => onEnd();
       utterance.onerror = () => onEnd();
     }
+    // No-voices guard: if nothing starts within the grace period AND the
+    // platform reports zero voices, declare speech unavailable. A busy or
+    // slow engine that does have voices gets the benefit of the doubt.
+    this.clearStartTimer();
+    this.startTimer = setTimeout(() => {
+      this.startTimer = null;
+      if (!window.speechSynthesis.speaking && window.speechSynthesis.getVoices().length === 0) {
+        this._unavailable = true;
+        window.speechSynthesis.cancel();
+        this.onUnavailable?.();
+      }
+    }, SPEECH_START_TIMEOUT_MS);
     window.speechSynthesis.speak(utterance);
+  }
+
+  private clearStartTimer(): void {
+    if (this.startTimer !== null) {
+      clearTimeout(this.startTimer);
+      this.startTimer = null;
+    }
   }
 
   /**
@@ -116,9 +160,10 @@ export class TourNarrator {
     }
   }
 
-  /** Cancel any in-progress utterance. Clears the paused flag. */
+  /** Cancel any in-progress utterance. Clears the paused flag and the guard timer. */
   cancel(): void {
     this._paused = false;
+    this.clearStartTimer();
     if (this.isSupported) {
       window.speechSynthesis.cancel();
     }
