@@ -14,7 +14,7 @@ import { ArtworkInteractions } from '../viewer/interactions';
 import { GalleryTour } from '../viewer/tour';
 import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay, fadeThroughBlack } from './overlay';
 import { showToast, buildErrorCard, showFieldError, translateError, type ErrorAction } from './feedback';
-import { createGenerationView } from './generation-view';
+import { createGenerationView, buildFloorPlanSvg } from './generation-view';
 import { escapeHtml } from './escape-html';
 import { sanitizePlacements } from './placement-sanity';
 import { resizeToDataUrl, createDisplayObjectUrl, generateFaviconDataUrl } from './image-utils';
@@ -70,6 +70,12 @@ export interface AppData {
    * when the user returns to a gallery whose AI inputs haven't changed.
    */
   lastGenKey?: string;
+  /**
+   * The AI curator's one-sentence intent from the last curation run. Session
+   * only (not in gallery.json) — surfaces on the review screen and seeds the
+   * gallery description when the artist hasn't written one.
+   */
+  curatorNote?: string;
 }
 
 /**
@@ -615,7 +621,7 @@ export function bootApp(): void {
                 // return to the menu (overlay already dismissed by mountHintOverlay).
                 controls!.pointerLock.removeEventListener('lock', onLock);
                 exitToMenu();
-              });
+              }, { title: gallery.title, artistName: gallery.artist?.name });
               onLock = () => {
                 controls!.pointerLock.removeEventListener('lock', onLock);
                 dismiss();
@@ -642,7 +648,7 @@ export function bootApp(): void {
                       mountTourStartOverlay(gallery);
                     },
                   });
-                });
+                }, { title: gallery.title, artistName: gallery.artist?.name });
               }
             }
           }).catch((e) => {
@@ -1474,6 +1480,7 @@ function renderGenerating(
         // Stage 2: curation — thumbnails regroup into the curator's rooms
         setProgress('Curating exhibition…', 50);
         const plan = await provider.curate(analyses, data.userBrief);
+        data.curatorNote = plan.curatorNote; // survives to the review screen
         view.showCuration(plan);
 
         // Stage 3: gallery generation
@@ -1538,6 +1545,11 @@ function renderLabels(
 
   // Branding fields are baked into the exported site (title/meta/OG/favicon).
   const branding = (data.gallery!.branding ??= {});
+  // The AI curator's note seeds the description when the artist left it
+  // blank — its words then flow into the exported site's meta/share preview.
+  // Fully editable below; a caption declares the provenance.
+  const descSeededByCurator = !branding.description?.trim() && !!data.curatorNote?.trim();
+  if (descSeededByCurator) branding.description = data.curatorNote!.trim();
   const artistObj = data.gallery!.artist;
   const bTitle = data.gallery!.title ?? '';
   const bDesc = branding.description ?? '';
@@ -1559,6 +1571,7 @@ function renderLabels(
           <input id="oh-brand-title" class="oh-field" type="text" value="${escapeHtml(bTitle)}" placeholder="Gallery title" aria-label="Gallery title"
             style="font-weight:600;">
           <textarea id="oh-brand-desc" class="oh-field" rows="2" placeholder="One-sentence description (shown in browser + when shared on social)" aria-label="Gallery description">${escapeHtml(bDesc)}</textarea>
+          ${descSeededByCurator ? `<p class="oh-help" style="margin:-0.25rem 0 0;">Written by your AI curator — keep it, edit it, or clear it.</p>` : ''}
           <div style="display:flex;gap:0.5rem;">
             <input id="oh-brand-author" class="oh-field" type="text" value="${escapeHtml(bAuthor)}" placeholder="Your name / studio" aria-label="Artist name"
               style="flex:1;">
@@ -1575,6 +1588,10 @@ function renderLabels(
               <p style="font-size:0.72rem;color:var(--oh-ink-faint);margin:0.35rem 0 0;">Browser-tab icon. Defaults to a square crop of your first artwork.</p>
             </div>
           </div>
+        </div>
+        <div style="background:var(--oh-panel);border:1px solid var(--oh-border);border-radius:10px;padding:0.9rem 1rem;margin:0 0 1.25rem;">
+          <p style="margin:0 0 0.6rem;font-size:0.8rem;color:var(--oh-ink-muted);">Floor plan — green marks are your works on the walls; the dashed line is the visitor tour.</p>
+          <div style="background:var(--oh-bg);border-radius:8px;padding:0.75rem;">${buildFloorPlanSvg(data.gallery!)}</div>
         </div>
         <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Review Wall Labels</h2>
         <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Edit any title, medium, or label text before entering the gallery. Changes are saved automatically.</p>
@@ -1712,6 +1729,9 @@ function renderLabels(
     }, () => {
       // × button: overlay already dismissed by mountHintOverlay — labels screen reappears
       c.pointerLock.removeEventListener('lock', onLock);
+    }, {
+      title: data.gallery!.title,
+      artistName: data.gallery!.artist?.name ?? data.gallery!.branding?.authorName,
     });
 
     onLock = () => {

@@ -4,7 +4,38 @@
  * mountHintOverlayTouchFallback: touch/no-pointer-lock variant with "Start Tour" CTA.
  * mountRelockOverlay: shown after Esc; clicking re-locks the pointer.
  * shouldShowRelockOverlay: pure decision function — unit-testable.
+ *
+ * Ships in the exported viewer bundle — inline styles only, no ui.css classes.
  */
+
+import { escapeHtml } from './escape-html';
+
+/**
+ * What the entry overlay leads with. The gallery's own identity comes first —
+ * an exported site is the artist's exhibition opening, not an Openhall ad —
+ * and Openhall stays as a small "Made with" credit.
+ */
+export interface OverlayBranding {
+  /** Exhibition title. Falls back to "Openhall" when absent/empty. */
+  title?: string;
+  /** Artist name shown under the title. Falls back to a generic subtitle. */
+  artistName?: string;
+}
+
+export function brandingLines(branding?: OverlayBranding): { title: string; subtitle: string } {
+  const title = branding?.title?.trim() || 'Openhall';
+  const subtitle = branding?.artistName?.trim() || 'AI-generated 3D Gallery';
+  return { title, subtitle };
+}
+
+/** Small bottom credit — arch glyph + wordmark, self-contained inline SVG. */
+function creditHtml(): string {
+  return `
+    <p style="display:flex;align-items:center;gap:0.4rem;margin:2rem 0 0;font-size:0.75rem;color:#666;">
+      <svg width="14" height="14" viewBox="0 0 32 32" fill="none" stroke="currentColor" aria-hidden="true"><path d="M10 24 V14 a6 6 0 0 1 12 0 V24" stroke-width="2.8" stroke-linecap="round"/><line x1="8" y1="24" x2="24" y2="24" stroke-width="2.8" stroke-linecap="round"/></svg>
+      Made with Openhall
+    </p>`;
+}
 
 // ---------------------------------------------------------------------------
 // Pure decision function for onUnlock handlers
@@ -57,7 +88,8 @@ export function fadeThroughBlack(apply: () => void): void {
   });
 }
 
-function buildHintHtml(showClose: boolean): string {
+function buildHintHtml(showClose: boolean, branding?: OverlayBranding): string {
+  const { title, subtitle } = brandingLines(branding);
   const closeBtn = showClose ? `
     <button id="oh-overlay-close" style="
       position:absolute;top:-2.75rem;right:-2.75rem;
@@ -81,8 +113,8 @@ function buildHintHtml(showClose: boolean): string {
   ">
     <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
     ${closeBtn}
-    <h1 style="font-size:2rem;font-weight:700;margin:0 0 0.25em">Openhall</h1>
-    <p style="font-size:1rem;color:#aaa;margin:0 0 2rem">AI-generated 3D Gallery</p>
+    <h1 style="font-size:2rem;font-weight:700;margin:0 0 0.25em;max-width:min(560px,86vw);text-align:center;">${escapeHtml(title)}</h1>
+    <p style="font-size:1rem;color:#aaa;margin:0 0 2rem">${escapeHtml(subtitle)}</p>
 
     <div style="
       display:grid;
@@ -119,6 +151,7 @@ function buildHintHtml(showClose: boolean): string {
       cursor:pointer;
       font-weight:600;
     ">Click to Enter</button>
+    ${creditHtml()}
     </div>
   </div>
 `;
@@ -165,10 +198,11 @@ function buildRelockHtml(showExitBtn: boolean): string {
 
 export function mountHintOverlay(
   onEnter: () => void,
-  onClose?: () => void
+  onClose?: () => void,
+  branding?: OverlayBranding
 ): { dismiss: () => void } {
   const container = document.createElement('div');
-  container.innerHTML = buildHintHtml(!!onClose);
+  container.innerHTML = buildHintHtml(!!onClose, branding);
   document.body.appendChild(container);
 
   const btn = container.querySelector('#oh-enter-btn') as HTMLButtonElement;
@@ -197,7 +231,11 @@ export function mountHintOverlay(
  * The CTA becomes "Start Tour" since free-walk requires pointer lock.
  * Calling onEnter() starts the tour and the caller should call dismiss().
  */
-export function mountHintOverlayTouchFallback(onEnter: () => void): { dismiss: () => void } {
+export function mountHintOverlayTouchFallback(
+  onEnter: () => void,
+  branding?: OverlayBranding
+): { dismiss: () => void } {
+  const { title, subtitle } = brandingLines(branding);
   const container = document.createElement('div');
   container.innerHTML = `
     <div id="oh-overlay" style="
@@ -210,8 +248,8 @@ export function mountHintOverlayTouchFallback(onEnter: () => void): { dismiss: (
       user-select:none;
       z-index:100;
     ">
-      <h1 style="font-size:2rem;font-weight:700;margin:0 0 0.25em">Openhall</h1>
-      <p style="font-size:1rem;color:#aaa;margin:0 0 2rem">AI-generated 3D Gallery</p>
+      <h1 style="font-size:2rem;font-weight:700;margin:0 0 0.25em;max-width:86vw;text-align:center;">${escapeHtml(title)}</h1>
+      <p style="font-size:1rem;color:#aaa;margin:0 0 2rem">${escapeHtml(subtitle)}</p>
       <p style="margin:0 0 2rem;font-size:0.95rem;text-align:center;max-width:260px;">
         Tap to take a guided tour of the gallery
       </p>
@@ -225,6 +263,7 @@ export function mountHintOverlayTouchFallback(onEnter: () => void): { dismiss: (
         cursor:pointer;
         font-weight:600;
       ">Start Tour</button>
+      ${creditHtml()}
     </div>
   `;
   document.body.appendChild(container);

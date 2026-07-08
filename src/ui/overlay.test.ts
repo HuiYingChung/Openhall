@@ -43,3 +43,28 @@ describe('shouldShowRelockOverlay', () => {
       .toBe('clear-suppress');
   });
 });
+
+// ---------------------------------------------------------------------------
+// brandingLines — entry overlay leads with the exhibition, not the tool
+// ---------------------------------------------------------------------------
+
+import { brandingLines } from './overlay';
+
+describe('brandingLines', () => {
+  it('leads with the gallery title and artist name when present', () => {
+    expect(brandingLines({ title: 'Quiet Forms', artistName: 'Jane Doe' }))
+      .toEqual({ title: 'Quiet Forms', subtitle: 'Jane Doe' });
+  });
+
+  it('falls back to Openhall branding when absent or blank', () => {
+    expect(brandingLines(undefined))
+      .toEqual({ title: 'Openhall', subtitle: 'AI-generated 3D Gallery' });
+    expect(brandingLines({ title: '   ', artistName: '' }))
+      .toEqual({ title: 'Openhall', subtitle: 'AI-generated 3D Gallery' });
+  });
+
+  it('mixes fallbacks per field', () => {
+    expect(brandingLines({ title: 'Quiet Forms' }).subtitle).toBe('AI-generated 3D Gallery');
+    expect(brandingLines({ artistName: 'Jane' }).title).toBe('Openhall');
+  });
+});
