@@ -191,9 +191,9 @@ export async function composeGalleryFromPlan(
   // Step 2: build all geometry deterministically (rooms, placements, doorways, tour)
   const shell = assembleGallery(plan, preset, artworks, exhibitionTitle);
 
-  // Step 3: ask the LLM for labels only, in batches of ≤4 works (~400 tokens each)
-  const BATCH_SIZE = 4;
-  const labelMap: Record<string, { label: string; artistStatement?: string }> = {};
+  // Step 3: ask the LLM for labels + narration, in batches of ≤3 works (~800 tokens each)
+  const BATCH_SIZE = 3;
+  const labelMap: Record<string, { label: string; narration?: string; artistStatement?: string }> = {};
 
   for (let i = 0; i < artworks.length; i += BATCH_SIZE) {
     const batch = artworks.slice(i, i + BATCH_SIZE);
@@ -205,15 +205,19 @@ export async function composeGalleryFromPlan(
     for (const entry of entries) {
       labelMap[entry.artworkId] = {
         label: entry.label,
+        narration: entry.narration,
         artistStatement: entry.artistStatement,
       };
     }
   }
 
-  // Step 4: merge labels into artwork records
+  // Step 4: merge labels, narration, and artistStatement into artwork records
   const artworksWithLabels = shell.artworks.map((aw) => ({
     ...aw,
     label: labelMap[aw.id]?.label ?? 'No label available.',
+    ...(labelMap[aw.id]?.narration
+      ? { narration: labelMap[aw.id].narration }
+      : {}),
     ...(labelMap[aw.id]?.artistStatement
       ? { artistStatement: labelMap[aw.id].artistStatement }
       : {}),
