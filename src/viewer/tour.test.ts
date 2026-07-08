@@ -226,6 +226,50 @@ describe('GalleryTour autoplay', () => {
     tour.update(13); // dwell on last waypoint elapses → autoplay stops
     expect(tour.isAutoplaying).toBe(false);
     expect(camera.position.x).toBeCloseTo(5, 0); // still at the last waypoint
+    // Autoplay self-stopping should NOT replay — camera stays at last stop.
+    expect(camera.position.x).toBeCloseTo(5, 0);
+    tour.dispose();
+  });
+
+  it('user pressing Play at the last waypoint replays from stop 0', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    settle(tour); // viewing waypoint 0
+
+    // Run to last waypoint (index 2, x=10)
+    tour.setAutoplay(true);
+    tour.update(13); tour.update(10); // → waypoint 1
+    tour.update(1);                   // pause → viewing
+    tour.update(13); tour.update(10); // → waypoint 2 (last)
+    tour.update(1);                   // pause → viewing last
+    tour.update(13);                  // dwell elapses → autoplay off
+    expect(tour.isAutoplaying).toBe(false);
+    expect(camera.position.x).toBeCloseTo(10, 0); // at last stop
+
+    // User presses Play → must restart from stop 0.
+    tour.setAutoplay(true);
+    expect(tour.isAutoplaying).toBe(true);
+    tour.update(10); // complete travel
+    expect(camera.position.x).toBeCloseTo(0, 0); // back at first stop
+    tour.dispose();
+  });
+
+  it('setAutoplay(false) from internal auto-stop does not replay', () => {
+    // This test guards against the replay path triggering during the auto-stop.
+    // When autoplay turns itself off in update() the tour must stay at the last stop.
+    const gallery = makeGallery(2);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    settle(tour);
+    tour.setAutoplay(true);
+
+    // Drive to last waypoint and let autoplay turn itself off internally.
+    tour.update(13); tour.update(10); // travel to last
+    tour.update(1);                   // pause → viewing last
+    tour.update(13);                  // dwell elapses → auto-stop
+
+    expect(tour.isAutoplaying).toBe(false);
+    // Camera must still be at the last waypoint (x ≈ 5), not at 0.
+    expect(camera.position.x).toBeCloseTo(5, 0);
     tour.dispose();
   });
 
