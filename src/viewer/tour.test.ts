@@ -256,3 +256,66 @@ describe('GalleryTour autoplay', () => {
 // Restore
 document.addEventListener = origAddEventListener;
 document.removeEventListener = origRemoveEventListener;
+
+// ---------------------------------------------------------------------------
+// Keyboard navigation
+// ---------------------------------------------------------------------------
+
+describe('GalleryTour arrow keys', () => {
+  let camera: THREE.PerspectiveCamera;
+
+  beforeEach(() => {
+    camera = makeCamera();
+  });
+
+  afterEach(() => {
+    document.querySelectorAll('#oh-tour-hud, #oh-tour-label').forEach((el) => el.remove());
+  });
+
+  function press(key: string, target?: HTMLElement): void {
+    const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    (target ?? document).dispatchEvent(ev);
+  }
+
+  it('ArrowRight advances, ArrowLeft goes back', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    press('ArrowRight');
+    tour.update(10);
+    expect(camera.position.x).toBeCloseTo(5, 0); // waypoint 1
+    press('ArrowLeft');
+    tour.update(10);
+    expect(camera.position.x).toBeCloseTo(0, 0); // back to waypoint 0
+    tour.dispose();
+  });
+
+  it('arrow keys pause autoplay like the buttons do', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    tour.setAutoplay(true);
+    press('ArrowRight');
+    expect(tour.isAutoplaying).toBe(false);
+    tour.dispose();
+  });
+
+  it('ignores keys typed into form fields', () => {
+    const gallery = makeGallery(2);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    tour.update(10);
+    const startX = camera.position.x;
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    press('ArrowRight', input);
+    tour.update(10);
+    expect(camera.position.x).toBeCloseTo(startX, 1);
+    input.remove();
+    tour.dispose();
+  });
+
+  it('stops listening after dispose', () => {
+    const gallery = makeGallery(2);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    tour.dispose();
+    expect(() => press('ArrowRight')).not.toThrow();
+  });
+});

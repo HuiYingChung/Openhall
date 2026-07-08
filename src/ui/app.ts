@@ -12,7 +12,7 @@ import { buildScene, disposeScene } from '../viewer/room-builder';
 import { FirstPersonControls } from '../viewer/controls';
 import { ArtworkInteractions } from '../viewer/interactions';
 import { GalleryTour } from '../viewer/tour';
-import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay, fadeThroughBlack } from './overlay';
+import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay, fadeThroughBlack, fadeInFromBlack } from './overlay';
 import { showToast, buildErrorCard, showFieldError, translateError, type ErrorAction } from './feedback';
 import { createGenerationView, buildFloorPlanSvg } from './generation-view';
 import { escapeHtml } from './escape-html';
@@ -401,7 +401,7 @@ export function bootApp(): void {
             }
           }
 
-          const { buildExportBundle, downloadZip } = await import('../export/bundler');
+          const { buildExportBundle, downloadZip, slugifyTitle } = await import('../export/bundler');
           const artworkUrls = new Map(data.artworks.map((a) => [a.id, a.displayObjectUrl]));
           const aspectRatios = new Map(data.artworks.map((a) => [a.id, a.aspectRatio]));
 
@@ -458,8 +458,9 @@ export function bootApp(): void {
             portraitUrl,
             onProgress: (msg, pct) => { expBtn.innerHTML = `${msg} ${pct}%`; },
           });
-          downloadZip(blob);
-          mountExportSuccess(blob.size);
+          const zipName = `${slugifyTitle(data.gallery.title)}.zip`;
+          downloadZip(blob, zipName);
+          mountExportSuccess(blob.size, zipName);
         } catch (e) {
           showToast({
             message: `Export failed: ${String(e).slice(0, 140)}`,
@@ -556,7 +557,11 @@ export function bootApp(): void {
   /** Demo mode: load the sample gallery + build scene + enter viewer (no key needed).
    *  Reachable from both the Settings screen and the upload/home screen. */
   function startDemo(): void {
+          // Local loads are near-instant, but on a hosted instance the sample
+          // images travel the network — never leave a click unanswered.
+          const loading = showToast({ message: 'Loading demo gallery…', tone: 'info', duration: 0 });
           loadDemoGallery(data).then((gallery) => {
+            loading.dismiss();
             const { scene, roomLayouts, artworkMeshes } = buildScene(gallery);
             const allAABBs = roomLayouts.flatMap((r) => r.wallAABBs);
             controls?.dispose();
@@ -625,6 +630,7 @@ export function bootApp(): void {
               onLock = () => {
                 controls!.pointerLock.removeEventListener('lock', onLock);
                 dismiss();
+                fadeInFromBlack();
                 setState('viewer');
               };
               controls!.pointerLock.addEventListener('lock', onLock);
@@ -634,6 +640,7 @@ export function bootApp(): void {
               if (gallery.tour.length) {
                 const { dismiss } = mountHintOverlayTouchFallback(() => {
                   dismiss();
+                  fadeInFromBlack();
                   tour = new GalleryTour({
                     camera,
                     gallery,
@@ -652,6 +659,7 @@ export function bootApp(): void {
               }
             }
           }).catch((e) => {
+            loading.dismiss();
             showToast({
               message: `Demo mode failed to load: ${String(e).slice(0, 120)}`,
               tone: 'error',
@@ -817,7 +825,7 @@ export function bootApp(): void {
  * (dragging the zip onto Netlify Drop). The zip itself carries PUBLISH.md
  * with the full instructions. App chrome only — never part of the export.
  */
-function mountExportSuccess(zipBytes: number): void {
+function mountExportSuccess(zipBytes: number, zipName = 'openhall-export.zip'): void {
   document.getElementById('oh-export-success')?.remove();
   const sizeMb = (zipBytes / 1048576).toFixed(1);
   const wrap = document.createElement('div');
@@ -828,7 +836,7 @@ function mountExportSuccess(zipBytes: number): void {
     <div class="oh-panel" role="dialog" aria-labelledby="oh-export-success-title" style="max-width:440px;">
       <h2 id="oh-export-success-title" style="margin:0 0 0.35rem;font-size:1.25rem;">Your gallery is downloading</h2>
       <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1rem;">
-        <strong style="color:var(--oh-ink);">openhall-export.zip</strong> (${sizeMb} MB) is a complete
+        <strong style="color:var(--oh-ink);">${escapeHtml(zipName)}</strong> (${sizeMb} MB) is a complete
         website you own — no Openhall account, no subscription, no lock-in.
       </p>
       <div style="background:var(--oh-field);border:1px solid var(--oh-border);border-radius:8px;padding:0.8rem 0.95rem;margin:0 0 0.9rem;">
@@ -1737,6 +1745,7 @@ function renderLabels(
     onLock = () => {
       c.pointerLock.removeEventListener('lock', onLock);
       dismiss();
+      fadeInFromBlack();
       onEnterViewer();
     };
     c.pointerLock.addEventListener('lock', onLock);

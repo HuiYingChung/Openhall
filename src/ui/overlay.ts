@@ -63,8 +63,15 @@ export function shouldShowRelockOverlay(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Fade-through-black transition
+// Fade transitions
 // ---------------------------------------------------------------------------
+
+/** Decorative motion is skipped for visitors who ask for reduced motion. */
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
 /**
  * Hide an abrupt camera change (e.g. tour exit teleport) behind a quick
@@ -72,6 +79,7 @@ export function shouldShowRelockOverlay(opts: {
  * Shared by the in-app viewer and the exported viewer — inline styles only.
  */
 export function fadeThroughBlack(apply: () => void): void {
+  if (prefersReducedMotion()) { apply(); return; }
   const el = document.createElement('div');
   el.style.cssText =
     'position:fixed;inset:0;background:#000;opacity:0;' +
@@ -85,6 +93,25 @@ export function fadeThroughBlack(apply: () => void): void {
       el.style.opacity = '0';
       setTimeout(() => el.remove(), 320);
     }, 170);
+  });
+}
+
+/**
+ * Gallery entry: the scene appears under a black cover that lifts over half
+ * a second — the "lights up" beat that pairs with the exit fade above.
+ */
+export function fadeInFromBlack(): void {
+  if (prefersReducedMotion()) return;
+  const el = document.createElement('div');
+  el.style.cssText =
+    'position:fixed;inset:0;background:#000;opacity:1;' +
+    'transition:opacity 500ms ease;z-index:250;pointer-events:none;';
+  document.body.appendChild(el);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 520);
+    });
   });
 }
 
