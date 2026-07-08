@@ -225,6 +225,7 @@ export function createGenerationView(
   let writingSnippets = new Map<string, HTMLElement>();
   let writingStage: HTMLElement | null = null;
   let retryNotice: HTMLElement | null = null;
+  let validatedLine: HTMLElement | null = null;
 
   function ensureWritingStage(): void {
     if (writingStage) return;
@@ -309,6 +310,16 @@ export function createGenerationView(
         return;
       }
 
+      if (evt.type === 'title-done') {
+        ensureWritingStage();
+        // The naming moment — the real title the model chose (or the fallback).
+        const line = document.createElement('p');
+        line.className = 'oh-gen-writing-line';
+        line.innerHTML = `The AI named your exhibition: <em class="oh-gen-title-reveal">${escapeHtml(evt.title)}</em>`;
+        writingStage!.appendChild(line);
+        return;
+      }
+
       if (evt.type === 'assembling') {
         ensureWritingStage();
         // Surface a clear, honest line: geometry is deterministic, not AI-generated.
@@ -319,6 +330,19 @@ export function createGenerationView(
         // Remove any lingering retry notice
         retryNotice?.remove();
         retryNotice = null;
+        return;
+      }
+
+      if (evt.type === 'assembled') {
+        ensureWritingStage();
+        // Success is information: the real numbers the assembler produced.
+        const line = document.createElement('p');
+        line.className = 'oh-gen-writing-line oh-gen-assembled';
+        const roomWord = evt.rooms === 1 ? 'room' : 'rooms';
+        line.textContent =
+          `Composed ${evt.rooms} ${roomWord} (${evt.roomDims.join(', ')}) · ` +
+          `${evt.placements} placements · ${evt.tourStops} tour stops`;
+        writingStage!.appendChild(line);
         return;
       }
 
@@ -354,7 +378,11 @@ export function createGenerationView(
 
       if (evt.type === 'labels-batch-done') {
         ensureWritingStage();
+        // A finished batch replaces any retry notice with the honest outcome.
+        retryNotice?.remove();
+        retryNotice = null;
         // Mark this batch's thumbnails as done, reveal real text snippets
+        const SNIP = 120;
         for (const entry of evt.entries) {
           const t = writingThumbEls.find((el) => el.dataset.awId === entry.artworkId);
           if (t) {
@@ -363,9 +391,9 @@ export function createGenerationView(
           }
           const snippetEl = writingSnippets.get(entry.artworkId);
           if (snippetEl) {
-            const labelSnip = entry.label.slice(0, 60) + (entry.label.length > 60 ? '…' : '');
+            const labelSnip = entry.label.slice(0, SNIP) + (entry.label.length > SNIP ? '…' : '');
             const narSnip = entry.narration
-              ? (entry.narration.slice(0, 60) + (entry.narration.length > 60 ? '…' : ''))
+              ? (entry.narration.slice(0, SNIP) + (entry.narration.length > SNIP ? '…' : ''))
               : null;
             snippetEl.innerHTML =
               `<span class="oh-gen-snippet-row">${svgPlaque()}<span class="oh-gen-snippet-text">${escapeHtml(labelSnip)}</span></span>` +
@@ -378,6 +406,16 @@ export function createGenerationView(
             snippetEl.style.display = '';
           }
         }
+        // Validation outcome as a visible beat — quiet success is still news.
+        if (!validatedLine) {
+          validatedLine = document.createElement('p');
+          validatedLine.className = 'oh-gen-validated';
+          writingStage!.appendChild(validatedLine);
+        }
+        const prefix = evt.totalBatches > 1 ? `Batch ${evt.batch}/${evt.totalBatches}: ` : '';
+        validatedLine.textContent = evt.retried
+          ? `${prefix}validated after one retry.`
+          : `${prefix}validated on first try.`;
         return;
       }
     },

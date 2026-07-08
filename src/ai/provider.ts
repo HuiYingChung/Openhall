@@ -65,9 +65,14 @@ export const STYLE_PRESETS: Record<StylePreset, { label: string; description: st
 
 export type ComposeProgressEvent =
   | { type: 'title' }
+  /** The real exhibition title the model chose (or the fallback). */
+  | { type: 'title-done'; title: string }
   | { type: 'labels-batch-start'; batch: number; totalBatches: number; artworkIds: string[] }
-  | { type: 'labels-batch-done'; batch: number; totalBatches: number; entries: LabelsResponse }
+  /** `retried` reports honestly whether this batch needed the one retry. */
+  | { type: 'labels-batch-done'; batch: number; totalBatches: number; entries: LabelsResponse; retried: boolean }
   | { type: 'assembling' }
+  /** Real numbers from the deterministic assembly — success is information too. */
+  | { type: 'assembled'; rooms: number; roomDims: string[]; placements: number; tourStops: number }
   // Only the labels step retries: it is the one structured-JSON output here.
   // The title is plain text with a fallback — it never enters the retry path.
   | { type: 'retry'; step: 'labels' };
@@ -216,10 +221,18 @@ export async function composeGalleryFromPlan(
     rawTitle = '';
   }
   const exhibitionTitle = rawTitle.replace(/^["']|["']$/g, '').trim() || 'New Exhibition';
+  onProgress?.({ type: 'title-done', title: exhibitionTitle });
 
   // Step 2: build all geometry deterministically (rooms, placements, doorways, tour)
   onProgress?.({ type: 'assembling' });
   const shell = assembleGallery(plan, preset, artworks, exhibitionTitle);
+  onProgress?.({
+    type: 'assembled',
+    rooms: shell.rooms.length,
+    roomDims: shell.rooms.map((r) => `${r.width}×${r.depth} m`),
+    placements: shell.placements.length,
+    tourStops: shell.tour.length,
+  });
 
   // Step 3: ask the LLM for labels + narration, in batches of ≤3 works (~800 tokens each)
   const BATCH_SIZE = 3;
@@ -236,13 +249,17 @@ export async function composeGalleryFromPlan(
       artworkIds: batch.map((a) => a.id),
     });
     const prompt = buildLabelsPrompt(batch, analyses, plan.curatorNote);
+    let retried = false;
     const entries = await generateValidated(
       async (extraContext) => generate(prompt + extraContext, 600),
       LabelsResponseSchema,
       1, // AGENTS.md rule 4: retry once, then fail loudly
-      () => onProgress?.({ type: 'retry', step: 'labels' })
+      () => {
+        retried = true;
+        onProgress?.({ type: 'retry', step: 'labels' });
+      }
     );
-    onProgress?.({ type: 'labels-batch-done', batch: batchNum, totalBatches, entries });
+    onProgress?.({ type: 'labels-batch-done', batch: batchNum, totalBatches, entries, retried });
     for (const entry of entries) {
       labelMap[entry.artworkId] = {
         label: entry.label,

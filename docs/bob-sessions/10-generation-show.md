@@ -61,6 +61,19 @@ dist-viewer/viewer.js  742.28 kB │ gzip: 167.53 kB
 ✓ built in 2.42s
 ```
 
+## Follow-up: the happy path was too quiet (Huiying's real-key run)
+
+Huiying watched a real generation and reported: nothing failed, so the show
+felt thin — the design had put all its beats on the failure path. Claude added
+four honest happy-path beats (all existing pipeline data, no theatre):
+`title-done` reveals the actual chosen title ("The AI named your exhibition:
+…"); every `labels-batch-done` now reports its validation outcome ("validated
+on first try" / "after one retry") — quiet success is information too; a new
+`assembled` event surfaces the real deterministic-assembly numbers (rooms,
+dimensions, placements, tour stops); text snippets widened 60 → 120 chars.
+311/311 after (7 new provider-event tests + 4 new view tests, XSS pattern
+extended to the title reveal).
+
 ## Honest gaps
 
 - The prompt's manual check — a real-key generation run watching the writing

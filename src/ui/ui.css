@@ -506,6 +506,26 @@ textarea.oh-field { resize: vertical; }
   text-align: center;
 }
 
+/* The title-reveal moment — the one emphasized beat of the writing act */
+.oh-gen-title-reveal {
+  font-style: italic;
+  color: var(--oh-ink);
+}
+
+/* Deterministic-assembly numbers — plain facts, no italics */
+.oh-gen-assembled {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Per-batch validation outcome — quiet success is still news */
+.oh-gen-validated {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--oh-ink-faint);
+  text-align: center;
+}
+
 /* Model attribution caption (e.g. "watsonx · ibm/granite-3-8b-instruct") */
 .oh-gen-caption {
   margin: 0;

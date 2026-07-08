@@ -190,6 +190,7 @@ describe('createGenerationView', () => {
         { artworkId: 'aw-01', label: '<script>alert(1)</script>A real label.', narration: 'Spoken narration here.' },
         { artworkId: 'aw-02', label: 'Clean label text.' },
       ],
+      retried: false,
     });
 
     const snippets = host.querySelectorAll('.oh-gen-snippet');
@@ -209,23 +210,100 @@ describe('createGenerationView', () => {
     expect(s2.textContent).toContain('Clean label text.');
   });
 
-  it('showWritingProgress(labels-batch-done) truncates long text to ~60 chars + ellipsis', () => {
+  it('showWritingProgress(labels-batch-done) truncates long text to ~120 chars + ellipsis', () => {
     const host = document.createElement('div');
     const artworks = makeArtworks(1);
     const view = createGenerationView(host, artworks);
     view.showWritingProgress({ type: 'title' });
 
-    const longLabel = 'A'.repeat(80);
+    const longLabel = 'A'.repeat(150);
     view.showWritingProgress({
       type: 'labels-batch-done',
       batch: 1,
       totalBatches: 1,
       entries: [{ artworkId: 'aw-01', label: longLabel }],
+      retried: false,
     });
 
     const snippetText = host.querySelector('.oh-gen-snippet-text')!.textContent ?? '';
-    expect(snippetText.length).toBeLessThanOrEqual(62); // 60 chars + ellipsis char
+    expect(snippetText.length).toBeLessThanOrEqual(122); // 120 chars + ellipsis char
     expect(snippetText).toContain('…');
+  });
+
+  it('title-done reveals the real chosen title, escaped', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+    view.showWritingProgress({ type: 'title' });
+    view.showWritingProgress({ type: 'title-done', title: '<b>Quiet</b> Forms' });
+
+    const reveal = host.querySelector('.oh-gen-title-reveal')!;
+    expect(reveal).not.toBeNull();
+    expect(reveal.textContent).toBe('<b>Quiet</b> Forms');
+    expect(reveal.innerHTML).not.toContain('<b>');
+  });
+
+  it('assembled shows the real deterministic-assembly numbers', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+    view.showWritingProgress({ type: 'title' });
+    view.showWritingProgress({
+      type: 'assembled',
+      rooms: 2,
+      roomDims: ['12×10 m', '10×14 m'],
+      placements: 8,
+      tourStops: 9,
+    });
+
+    const line = host.querySelector('.oh-gen-assembled')!;
+    expect(line).not.toBeNull();
+    expect(line.textContent).toContain('2 rooms');
+    expect(line.textContent).toContain('12×10 m, 10×14 m');
+    expect(line.textContent).toContain('8 placements');
+    expect(line.textContent).toContain('9 tour stops');
+  });
+
+  it('labels-batch-done reports the validation outcome — success is news too', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+    view.showWritingProgress({ type: 'title' });
+
+    view.showWritingProgress({
+      type: 'labels-batch-done',
+      batch: 1,
+      totalBatches: 2,
+      entries: [{ artworkId: 'aw-01', label: 'A label for work one.' }],
+      retried: false,
+    });
+    let validated = host.querySelector('.oh-gen-validated')!;
+    expect(validated.textContent).toBe('Batch 1/2: validated on first try.');
+
+    view.showWritingProgress({
+      type: 'labels-batch-done',
+      batch: 2,
+      totalBatches: 2,
+      entries: [{ artworkId: 'aw-01', label: 'Another label here.' }],
+      retried: true,
+    });
+    validated = host.querySelector('.oh-gen-validated')!;
+    expect(validated.textContent).toBe('Batch 2/2: validated after one retry.');
+  });
+
+  it('a finished batch clears the retry notice in favour of the outcome line', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+    view.showWritingProgress({ type: 'title' });
+    view.showWritingProgress({ type: 'retry', step: 'labels' });
+    expect(host.querySelector('.oh-gen-retry-notice')).not.toBeNull();
+
+    view.showWritingProgress({
+      type: 'labels-batch-done',
+      batch: 1,
+      totalBatches: 1,
+      entries: [{ artworkId: 'aw-01', label: 'A label for work one.' }],
+      retried: true,
+    });
+    expect(host.querySelector('.oh-gen-retry-notice')).toBeNull();
+    expect(host.querySelector('.oh-gen-validated')!.textContent).toBe('validated after one retry.');
   });
 
   it('showWritingProgress(assembling) appends the deterministic composing line', () => {

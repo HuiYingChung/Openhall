@@ -221,10 +221,62 @@ describe('composeGalleryFromPlan — progress events', () => {
       (evt) => events.push(evt.type)
     );
 
-    expect(events[0]).toBe('title');
-    expect(events[1]).toBe('assembling');
-    expect(events[2]).toBe('labels-batch-start');
-    expect(events[3]).toBe('labels-batch-done');
+    expect(events).toEqual([
+      'title',
+      'title-done',
+      'assembling',
+      'assembled',
+      'labels-batch-start',
+      'labels-batch-done',
+    ]);
+  });
+
+  it('title-done carries the real chosen title, or the fallback', async () => {
+    const good = vi.fn()
+      .mockResolvedValueOnce('Quiet Forms')
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'A label for work one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.' },
+      ]));
+    const titles: string[] = [];
+    await composeGalleryFromPlan(
+      good, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => { if (evt.type === 'title-done') titles.push(evt.title); }
+    );
+    expect(titles).toEqual(['Quiet Forms']);
+
+    const unhelpful = vi.fn()
+      .mockResolvedValueOnce('   ')
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'A label for work one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.' },
+      ]));
+    const fallbackTitles: string[] = [];
+    await composeGalleryFromPlan(
+      unhelpful, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => { if (evt.type === 'title-done') fallbackTitles.push(evt.title); }
+    );
+    expect(fallbackTitles).toEqual(['New Exhibition']);
+  });
+
+  it('assembled carries the real deterministic-assembly numbers', async () => {
+    const generate = vi.fn()
+      .mockResolvedValueOnce('Forms')
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'A label for work one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.' },
+      ]));
+    let assembled: { rooms: number; roomDims: string[]; placements: number; tourStops: number } | null = null;
+    const gallery = await composeGalleryFromPlan(
+      generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => { if (evt.type === 'assembled') assembled = evt; }
+    );
+    expect(assembled).not.toBeNull();
+    expect(assembled!.rooms).toBe(gallery.rooms.length);
+    expect(assembled!.placements).toBe(gallery.placements.length);
+    expect(assembled!.tourStops).toBe(gallery.tour.length);
+    expect(assembled!.roomDims).toHaveLength(gallery.rooms.length);
+    expect(assembled!.roomDims[0]).toMatch(/^\d+(\.\d+)?×\d+(\.\d+)? m$/);
   });
 
   it('labels-batch-start carries the artwork IDs for that batch', async () => {
@@ -279,12 +331,33 @@ describe('composeGalleryFromPlan — progress events', () => {
       .mockResolvedValueOnce(JSON.stringify(goodEntries)); // retry succeeds
 
     const retryEvents: string[] = [];
+    const retriedFlags: boolean[] = [];
     await composeGalleryFromPlan(
       generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
-      (evt) => { if (evt.type === 'retry') retryEvents.push(evt.step); }
+      (evt) => {
+        if (evt.type === 'retry') retryEvents.push(evt.step);
+        if (evt.type === 'labels-batch-done') retriedFlags.push(evt.retried);
+      }
     );
 
     expect(retryEvents).toHaveLength(1);
     expect(retryEvents[0]).toBe('labels');
+    // The batch-done event reports the retry honestly
+    expect(retriedFlags).toEqual([true]);
+  });
+
+  it('labels-batch-done reports retried=false on a clean first try', async () => {
+    const generate = vi.fn()
+      .mockResolvedValueOnce('Forms')
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'A label for work one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.' },
+      ]));
+    const retriedFlags: boolean[] = [];
+    await composeGalleryFromPlan(
+      generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => { if (evt.type === 'labels-batch-done') retriedFlags.push(evt.retried); }
+    );
+    expect(retriedFlags).toEqual([false]);
   });
 });
