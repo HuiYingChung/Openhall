@@ -104,4 +104,52 @@ describe('GallerySchema', () => {
     const result = GallerySchema.safeParse(bad);
     expect(result.success).toBe(false);
   });
+
+  it('accepts artwork with optional narration field', () => {
+    // Use a copy with narration explicitly set on the first artwork and stripped from the rest.
+    const strippedArtworks = sampleGallery.artworks.map(({ narration: _n, ...rest }) => rest);
+    const withNarration = {
+      ...sampleGallery,
+      artworks: strippedArtworks.map((aw, i) =>
+        i === 0 ? { ...aw, narration: 'A spoken docent voice for this work.' } : aw
+      ),
+    };
+    const result = GallerySchema.safeParse(withNarration);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.artworks[0].narration).toBe('A spoken docent voice for this work.');
+      expect(result.data.artworks[1].narration).toBeUndefined();
+    }
+  });
+
+  it('treats artwork narration as optional (absent is valid)', () => {
+    // Verify a copy with all narration fields removed still passes validation.
+    const withoutNarration = {
+      ...sampleGallery,
+      artworks: sampleGallery.artworks.map(({ narration: _n, ...rest }) => rest),
+    };
+    const result = GallerySchema.safeParse(withoutNarration);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects narration exceeding 600 characters', () => {
+    const tooLong = {
+      ...sampleGallery,
+      artworks: [{ ...sampleGallery.artworks[0], narration: 'x'.repeat(601) }],
+    };
+    const result = GallerySchema.safeParse(tooLong);
+    expect(result.success).toBe(false);
+  });
+
+  it('sample-gallery.json narration fields all pass the 600-char limit', () => {
+    const result = GallerySchema.safeParse(sampleGallery);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      for (const aw of result.data.artworks) {
+        if (aw.narration !== undefined) {
+          expect(aw.narration.length).toBeLessThanOrEqual(600);
+        }
+      }
+    }
+  });
 });
