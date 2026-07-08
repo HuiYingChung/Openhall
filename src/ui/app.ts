@@ -76,6 +76,12 @@ export interface AppData {
    * gallery description when the artist hasn't written one.
    */
   curatorNote?: string;
+  /**
+   * True while the loaded gallery is the bundled demo. Drives the in-viewer
+   * "Demo gallery" chip so visitors know the works are sample classics, not
+   * the user's uploads. App chrome only — never part of an export.
+   */
+  isDemo?: boolean;
 }
 
 /**
@@ -296,6 +302,7 @@ export function bootApp(): void {
     if (tourBtn) { tourBtn.remove(); tourBtn = null; }
     document.getElementById('oh-touch-tour-btn')?.remove();
     document.getElementById('oh-crosshair')?.remove();
+    document.getElementById('oh-demo-chip')?.remove();
     // Reset suppressNextRelock so the next session starts clean
     suppressNextRelock = false;
     // Navigate: go to upload if there is a stored key, settings otherwise
@@ -336,6 +343,21 @@ export function bootApp(): void {
     // Reflect the gallery title in the browser tab live (matches the exported
     // site's <title>), so it's visible without exporting.
     document.title = gallery.title?.trim() ? gallery.title : 'Openhall — AI 3D Gallery';
+
+    // Demo chip — passive label so nobody mistakes the sample classics for
+    // user uploads. The Paused overlay carries the "create your own" CTA.
+    if (data.isDemo && !document.getElementById('oh-demo-chip')) {
+      const chip = document.createElement('div');
+      chip.id = 'oh-demo-chip';
+      chip.style.cssText =
+        'position:fixed;top:1rem;left:50%;transform:translateX(-50%);z-index:200;' +
+        'background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.2);' +
+        'color:#aaa;padding:0.35rem 0.85rem;border-radius:999px;' +
+        "font-size:0.75rem;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;" +
+        'pointer-events:none;white-space:nowrap;';
+      chip.textContent = 'Demo gallery · sample works by public-domain masters';
+      document.body.appendChild(chip);
+    }
 
     // ← Menu button — always shown
     if (!document.getElementById('oh-menu-btn')) {
@@ -1039,6 +1061,7 @@ async function loadDemoGallery(data: AppData): Promise<Gallery> {
 
   data.gallery = gallery;
   data.artworks = [];
+  data.isDemo = true;
   return gallery;
 }
 
@@ -1470,6 +1493,8 @@ function renderGenerating(
       const key = aiInputKey(data);
       let gallery: Gallery;
       let showedPlan = false;
+      // Any generated (or cached user) gallery is the artist's own — not demo.
+      data.isDemo = false;
 
       if (data.gallery && data.lastGenKey === key) {
         // Cache hit — artworks/brief/style are unchanged since the last
