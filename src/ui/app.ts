@@ -14,7 +14,7 @@ import { ArtworkInteractions } from '../viewer/interactions';
 import { GalleryTour } from '../viewer/tour';
 import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay, fadeThroughBlack } from './overlay';
 import { showToast, buildErrorCard, showFieldError, translateError, type ErrorAction } from './feedback';
-import { createGenerationView } from './generation-view';
+import { createGenerationView, buildFloorPlanSvg } from './generation-view';
 import { escapeHtml } from './escape-html';
 import { sanitizePlacements } from './placement-sanity';
 import { resizeToDataUrl, createDisplayObjectUrl, generateFaviconDataUrl } from './image-utils';
@@ -1588,6 +1588,10 @@ function renderLabels(
               <p style="font-size:0.72rem;color:var(--oh-ink-faint);margin:0.35rem 0 0;">Browser-tab icon. Defaults to a square crop of your first artwork.</p>
             </div>
           </div>
+        </div>
+        <div style="background:var(--oh-panel);border:1px solid var(--oh-border);border-radius:10px;padding:0.9rem 1rem;margin:0 0 1.25rem;">
+          <p style="margin:0 0 0.6rem;font-size:0.8rem;color:var(--oh-ink-muted);">Floor plan — green marks are your works on the walls; the dashed line is the visitor tour.</p>
+          <div style="background:var(--oh-bg);border-radius:8px;padding:0.75rem;">${buildFloorPlanSvg(data.gallery!)}</div>
         </div>
         <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Review Wall Labels</h2>
         <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Edit any title, medium, or label text before entering the gallery. Changes are saved automatically.</p>
