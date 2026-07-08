@@ -909,7 +909,7 @@ function svgWarn(): string {
 /** Openhall wordmark — arch glyph + text. App chrome only (not the export bundle). */
 function wordmark(sizeRem = 1.6): string {
   const px = Math.round(sizeRem * 16);
-  return `<span class="oh-wordmark"><svg width="${px}" height="${px}" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.45"/><path d="M10 24 V14 a6 6 0 0 1 12 0 V24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><line x1="8" y1="24" x2="24" y2="24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span style="font-size:${sizeRem}rem;font-weight:700;letter-spacing:0.01em;">Openhall</span></span>`;
+  return `<span class="oh-wordmark"><svg width="${px}" height="${px}" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.45"/><path d="M10 24 V14 a6 6 0 0 1 12 0 V24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><line x1="8" y1="24" x2="24" y2="24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span style="font-size:${sizeRem}rem;font-weight:600;letter-spacing:0.01em;">Openhall</span></span>`;
 }
 
 // ---------------------------------------------------------------------------

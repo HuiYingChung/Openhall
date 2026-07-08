@@ -142,7 +142,7 @@ function buildHintHtml(closeLabel: string | null, branding?: OverlayBranding): s
     z-index:100;
   ">
     <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
-    <h1 style="font-size:2rem;font-weight:700;margin:0 0 0.25em;max-width:min(560px,86vw);text-align:center;">${escapeHtml(title)}</h1>
+    <h1 style="font-family:'Fraunces',Georgia,'Times New Roman',serif;font-size:2rem;font-weight:600;margin:0 0 0.25em;max-width:min(560px,86vw);text-align:center;">${escapeHtml(title)}</h1>
     <p style="font-size:1rem;color:#aaa;margin:0 0 2rem">${escapeHtml(subtitle)}</p>
 
     <div style="
@@ -279,7 +279,7 @@ export function mountHintOverlayTouchFallback(
       user-select:none;
       z-index:100;
     ">
-      <h1 style="font-size:2rem;font-weight:700;margin:0 0 0.25em;max-width:86vw;text-align:center;">${escapeHtml(title)}</h1>
+      <h1 style="font-family:'Fraunces',Georgia,'Times New Roman',serif;font-size:2rem;font-weight:600;margin:0 0 0.25em;max-width:86vw;text-align:center;">${escapeHtml(title)}</h1>
       <p style="font-size:1rem;color:#aaa;margin:0 0 2rem">${escapeHtml(subtitle)}</p>
       <p style="margin:0 0 2rem;font-size:0.95rem;text-align:center;max-width:260px;">
         Tap to take a guided tour of the gallery
