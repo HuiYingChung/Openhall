@@ -191,12 +191,12 @@ describe('GalleryTour autoplay', () => {
     tour.update(1);  // completes pausing → viewing
   }
 
-  it('starts paused and renders a Play control', () => {
+  it('starts paused and renders an Autoplay control', () => {
     const gallery = makeGallery(3);
     const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
     expect(tour.isAutoplaying).toBe(false);
     const playBtn = document.getElementById('oh-tour-play')!;
-    expect(playBtn.textContent).toContain('Play');
+    expect(playBtn.textContent).toContain('Autoplay');
     tour.dispose();
   });
 
@@ -283,7 +283,7 @@ describe('GalleryTour autoplay', () => {
     tour.dispose();
   });
 
-  it('play button toggles the label between Play and Pause', () => {
+  it('play button toggles the label between Autoplay and Pause', () => {
     const gallery = makeGallery(3);
     const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
     const playBtn = document.getElementById('oh-tour-play') as HTMLButtonElement;
@@ -292,7 +292,7 @@ describe('GalleryTour autoplay', () => {
     expect(playBtn.textContent).toContain('Pause');
     playBtn.click();
     expect(tour.isAutoplaying).toBe(false);
-    expect(playBtn.textContent).toContain('Play');
+    expect(playBtn.textContent).toContain('Autoplay');
     tour.dispose();
   });
 });
@@ -373,6 +373,28 @@ describe('GalleryTour voice UX', () => {
     }
     tour.dispose();
   });
+
+  it('Audio-guide button label adapts to viewport width (Audio guide / Audio)', () => {
+    const gallery = makeGallery(2);
+
+    // Wide viewport (jsdom default 1024): full label.
+    let tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    let voiceBtn = document.getElementById('oh-tour-voice') as HTMLButtonElement | null;
+    if (voiceBtn) expect(voiceBtn.textContent).toContain('Audio guide');
+    tour.dispose();
+
+    // Narrow viewport (<768): five buttons share the bottom bar — short label.
+    const origWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true, writable: true });
+    tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    voiceBtn = document.getElementById('oh-tour-voice') as HTMLButtonElement | null;
+    if (voiceBtn) {
+      expect(voiceBtn.textContent).toContain('Audio');
+      expect(voiceBtn.textContent).not.toContain('Audio guide');
+    }
+    tour.dispose();
+    Object.defineProperty(window, 'innerWidth', { value: origWidth, configurable: true, writable: true });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -435,5 +457,272 @@ describe('GalleryTour arrow keys', () => {
     const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
     tour.dispose();
     expect(() => press('ArrowRight')).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Autoplay progress bar
+// ---------------------------------------------------------------------------
+
+describe('GalleryTour autoplay progress bar', () => {
+  let camera: THREE.PerspectiveCamera;
+
+  beforeEach(() => {
+    camera = makeCamera();
+  });
+
+  afterEach(() => {
+    document.querySelectorAll('#oh-tour-hud, #oh-tour-label').forEach((el) => el.remove());
+  });
+
+  /** Drive the tour into the 'viewing' phase (travel 1.4 s + pause 0.8 s). */
+  function toViewing(tour: GalleryTour): void {
+    tour.update(2); // finish travelling
+    tour.update(1); // finish pausing → viewing, label rendered
+  }
+
+  it('track hidden while autoplay is off, shown while on, hidden after pause', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    toViewing(tour);
+    const track = document.getElementById('oh-tour-progress-track')!;
+    expect(track.style.display).toBe('none');
+    tour.setAutoplay(true);
+    expect(track.style.display).toBe('block');
+    tour.setAutoplay(false);
+    expect(track.style.display).toBe('none');
+    tour.dispose();
+  });
+
+  it('fill grows with elapsed viewing time during autoplay', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    toViewing(tour);
+    tour.setAutoplay(true);
+    tour.update(1);
+    const fill = document.getElementById('oh-tour-progress')!;
+    const w1 = parseFloat(fill.style.width);
+    expect(w1).toBeGreaterThan(0);
+    tour.update(1);
+    expect(parseFloat(fill.style.width)).toBeGreaterThan(w1);
+    tour.dispose();
+  });
+
+  it('Pause freezes the dwell clock; Play continues from the frozen point', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    toViewing(tour); // 'Waypoint 1' label → 5 s dwell
+    tour.setAutoplay(true);
+    tour.update(2); // 2 s into the 5 s dwell → 40%
+    tour.setAutoplay(false); // Pause — freeze at 2 s
+    tour.update(5); // paused wall time must NOT count toward the dwell
+    tour.setAutoplay(true); // Play — continue from 2 s, not 0, not 7
+    tour.update(0.5);
+    const fill = document.getElementById('oh-tour-progress')!;
+    const pct = parseFloat(fill.style.width);
+    expect(pct).toBeGreaterThan(45); // (2 + 0.5) / 5 = 50%
+    expect(pct).toBeLessThan(55); // reset-to-zero bug would give 10%
+    expect(camera.position.x).toBeCloseTo(0, 0); // unfrozen 7.5 s would have advanced
+    tour.dispose();
+  });
+
+  it('enabling autoplay fresh at a stop still restarts the dwell clock', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    toViewing(tour);
+    tour.update(3); // long manual look, autoplay never on at this stop
+    tour.setAutoplay(true); // fresh enable → full reading time
+    tour.update(0.5);
+    const fill = document.getElementById('oh-tour-progress')!;
+    expect(parseFloat(fill.style.width)).toBeLessThan(20); // 0.5 / 5 = 10%
+    expect(camera.position.x).toBeCloseTo(0, 0); // no instant jump
+    tour.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audio-guide memory: per-stop reset in manual mode, remembered in autoplay
+// ---------------------------------------------------------------------------
+
+describe('GalleryTour audio-guide memory', () => {
+  let camera: THREE.PerspectiveCamera;
+
+  beforeEach(() => {
+    camera = makeCamera();
+    // Minimal working speechSynthesis so the Audio-guide button renders.
+    // Voices are non-empty so the no-voices guard never trips.
+    vi.stubGlobal('speechSynthesis', {
+      speak() {},
+      cancel() {},
+      pause() {},
+      resume() {},
+      getVoices: () => [{ name: 'stub' }],
+      speaking: false,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.querySelectorAll('#oh-tour-hud, #oh-tour-label').forEach((el) => el.remove());
+  });
+
+  function toViewing(tour: GalleryTour): void {
+    tour.update(2);
+    tour.update(1);
+  }
+
+  function pressed(): string | null {
+    return document.getElementById('oh-tour-voice')!.getAttribute('aria-pressed');
+  }
+
+  it('manual mode: voice resets to off at every stop', () => {
+    const tour = new GalleryTour({ camera, gallery: makeGallery(3), onExit: vi.fn() });
+    toViewing(tour);
+    tour.toggleVoice();
+    expect(pressed()).toBe('true');
+    tour.next(); // manual navigation
+    toViewing(tour);
+    expect(pressed()).toBe('false'); // arrived silent
+    tour.dispose();
+  });
+
+  it('autoplay restores the last explicit choice, even after manual resets', () => {
+    const tour = new GalleryTour({ camera, gallery: makeGallery(3), onExit: vi.fn() });
+    toViewing(tour);
+    tour.toggleVoice(); // explicit ON — remembered
+    tour.next(); // manual → reset off
+    toViewing(tour);
+    expect(pressed()).toBe('false');
+    tour.setAutoplay(true); // autoplay brings the remembered choice back
+    expect(pressed()).toBe('true');
+    tour.dispose();
+  });
+
+  it('autoplay carries the preference from stop to stop', () => {
+    const tour = new GalleryTour({ camera, gallery: makeGallery(3), onExit: vi.fn() });
+    toViewing(tour);
+    tour.setAutoplay(true);
+    tour.toggleVoice(); // ON during autoplay
+    tour.update(31); // exceed even the speech-aware dwell → advance
+    toViewing(tour); // arrive at stop 1
+    expect(pressed()).toBe('true');
+    tour.dispose();
+  });
+
+  it('an explicit OFF during autoplay is remembered too', () => {
+    const tour = new GalleryTour({ camera, gallery: makeGallery(3), onExit: vi.fn() });
+    toViewing(tour);
+    tour.setAutoplay(true);
+    tour.toggleVoice(); // ON
+    tour.toggleVoice(); // explicit OFF — remembered
+    tour.update(13);
+    toViewing(tour);
+    expect(pressed()).toBe('false');
+    tour.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audio guide while frozen by Pause: press = resume, not toggle-off
+// ---------------------------------------------------------------------------
+
+describe('GalleryTour audio guide during Pause', () => {
+  let camera: THREE.PerspectiveCamera;
+
+  /** Gallery whose first waypoint has a speakable narration. */
+  function galleryWithNarration(): Gallery {
+    return GallerySchema.parse({
+      version: '1.0',
+      title: 'Frozen Voice Gallery',
+      rooms: [
+        {
+          id: 'room-a',
+          width: 20,
+          depth: 10,
+          height: 3.5,
+          surfaces: { wall: 'white-plaster', floor: 'light-wood', accentColor: '#c0a070' },
+          lighting: { ambientIntensity: 0.4, temperature: 'neutral', artworkSpotlights: false },
+          doorways: [],
+        },
+      ],
+      artworks: [
+        {
+          id: 'aw-01',
+          imagePath: 'images/aw-01.jpg',
+          title: 'Painting One',
+          medium: 'Oil',
+          label: 'A wall label.',
+          narration: 'A spoken narration for painting one.',
+        },
+      ],
+      placements: [],
+      tour: [
+        {
+          artworkId: 'aw-01',
+          position: { x: 0, y: 1.6, z: 0 },
+          lookAt: { x: 0, y: 1.6, z: -5 },
+        },
+      ],
+    });
+  }
+
+  beforeEach(() => {
+    camera = makeCamera();
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        text: string;
+        onstart: ((ev: Event) => void) | null = null;
+        onend: ((ev: Event) => void) | null = null;
+        onerror: ((ev: Event) => void) | null = null;
+        constructor(text: string) {
+          this.text = text;
+        }
+      }
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.querySelectorAll('#oh-tour-hud, #oh-tour-label').forEach((el) => el.remove());
+  });
+
+  it('press while frozen resumes the narration and stays ON; press while speaking turns off', () => {
+    const state = { speaking: false, resumed: 0, cancelled: 0 };
+    vi.stubGlobal('speechSynthesis', {
+      speak() {
+        state.speaking = true;
+      },
+      cancel() {
+        state.speaking = false;
+        state.cancelled++;
+      },
+      pause() {},
+      resume() {
+        state.resumed++;
+      },
+      getVoices: () => [{ name: 'stub' }],
+      get speaking() {
+        return state.speaking;
+      },
+    });
+
+    const tour = new GalleryTour({ camera, gallery: galleryWithNarration(), onExit: vi.fn() });
+    tour.update(2);
+    tour.update(1); // viewing
+    tour.setAutoplay(true);
+    tour.toggleVoice(); // ON → speaks
+    expect(state.speaking).toBe(true);
+
+    tour.setAutoplay(false); // Pause freezes the utterance
+    const voiceBtn = document.getElementById('oh-tour-voice')!;
+    voiceBtn.click(); // her exact press: must RESUME, not toggle off
+    expect(state.resumed).toBe(1);
+    expect(voiceBtn.getAttribute('aria-pressed')).toBe('true');
+
+    voiceBtn.click(); // now audibly speaking → normal toggle OFF
+    expect(voiceBtn.getAttribute('aria-pressed')).toBe('false');
+    expect(state.speaking).toBe(false);
+    tour.dispose();
   });
 });

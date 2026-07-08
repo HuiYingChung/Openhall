@@ -89,9 +89,74 @@ output.
   Rule adopted into AGENTS.md: never run git in this working tree while another
   agent's session is active.
 
+## Post-merge follow-up: button labels (branch tour-button-labels)
+
+Huiying questioned the button semantics after using the tour: "Play" doesn't
+say what it plays, and "Voice" hides the narration feature — costly now that
+voice defaults off. Decision (hers): rename rather than add a one-time hint —
+a good label is permanent self-documentation. Play → "Autoplay" (toggles with
+Pause), Voice → "Audio guide" (museum metaphor, matches the opt-in design),
+shortening to "Audio" on <768 px viewports where five buttons share the bar; a
+shared refreshVoiceButton() re-syncs icon/label/aria on toggle and resize.
+Also assessed voice-tour portability on request: works on Windows/macOS/
+iOS/Android system voices (quality varies; Edge best). Linux browsers speak
+through speech-dispatcher + espeak-ng when installed (Ubuntu usually ships
+them); without them the API exists but nothing sounds. Options weighed for
+guaranteeing Linux audio — espeak-ng WASM (~2–3 MB, robotic, breaks the
+zero-dep viewer), neural WASM TTS (20 MB+), cloud TTS (breaks offline/BYOK) —
+all rejected; Huiying approved detect-and-explain instead. Implemented the
+no-voices guard in the same branch: if an utterance never starts within 5 s
+AND getVoices() is empty, the narrator declares itself unavailable, the tour
+falls back to reading-time dwell, and the Audio-guide button disables with an
+actionable hint (install speech-dispatcher/espeak-ng). A slow engine that does
+have voices gets the benefit of the doubt. Verified: 282/282 unit tests
+(5 new guard tests with fake timers), lint, build, plus a real-Chromium run
+with speechSynthesis stubbed silent — button disables within the grace period
+with the hint text. Narration remains text-visible on every platform (the
+label card), so no information is audio-only. Verified: 277/277 unit tests, lint, build, plus a
+real-Chromium check of both labels, the Autoplay↔Pause toggle, and the live
+resize relabel. Two harness stumbles recorded honestly: toContain('Play')
+does not match 'Autoplay' (case), and clicking during the entry fade times
+out — wait for the viewing phase.
+
+Same branch, one more UX decision: Huiying proposed an on-screen countdown
+before auto-advancing; discussion landed on a quieter form of the same idea
+(system-status visibility without time pressure) — a 2 px Stories-style
+progress line at the top of the label card, visible only during autoplay,
+filling over the stop's dwell and sitting full while a long narration
+finishes. Ticking numerals were rejected as attention-grabbing and
+tonally wrong for a gallery. Skipped entirely for prefers-reduced-motion
+visitors (helper shared from overlay.ts). Verified: 284/284 unit tests
+(2 new), lint, build, real-Chromium check (hidden manual / fills during
+autoplay / hides on Pause). Her demo-mode testing then caught the follow-on
+bug: Pause froze the voice but not the dwell clock, so Play restarted the bar
+and silently granted the stop a fresh dwell. Fixed by freezing the clock
+reading on Pause and restoring it on Play (paused wall time never counts;
+fresh enables still restart; frozen reading dropped on waypoint change and
+voice toggle). 286/286 after the fix, plus a real-Chromium pause/resume check.
+
+Final UX rule of the day (hers): the Audio guide is per-artwork in manual mode
+— every stop arrives silent, press to hear this one (museum audio-guide
+model) — while autoplay restores the user's last EXPLICIT toggle choice, so
+"I said I want narration" survives quiet manual browsing. Implemented as a
+remembered preference updated only by real button presses; cleared when the
+no-voices guard trips. 290/290 after (4 new memory tests), plus a
+real-Chromium journey check (manual opt-in → silent next stop → autoplay
+restores the choice and speaks).
+
+One last seam she caught by hand: Autoplay → voice on → Pause → pressing
+Audio guide did nothing audible (it toggled the silent-but-ON switch OFF;
+a second press was needed). Not an implementation bug — a model gap: the
+button can't show "enabled but frozen by Pause", and users read the sound
+button as "give me sound". Rule adopted: when voice is ON but frozen, a
+press resumes the narration (walking stays paused); pressing while it
+audibly speaks still toggles off. 291/291 after, plus a real-Chromium
+replay of her exact press sequence.
+
 ## State at end of session
 
 Voice stack (voice-tour → voice-tour-fixes → voice-tour-ux) merged by Huiying
 as a single PR #7 from the stack tip — the cumulative stack let one PR carry
 all three rounds. 276/276 tests, lint, both builds re-verified green on the
-merged main. Remaining: README rewrite, hosted deploy, demo video.
+merged main; 277/277 after the button-label follow-up. Remaining: README
+rewrite, hosted deploy, demo video.

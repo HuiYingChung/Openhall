@@ -1,4 +1,5 @@
 import { escapeHtml } from '../ui/escape-html';
+import { prefersReducedMotion } from '../ui/overlay';
 import {
   TourNarrator,
   pickNarrationText,
@@ -171,15 +172,16 @@ function createButtons(
 
   const playBtn = makeBtn('', onTogglePlay);
   playBtn.id = 'oh-tour-play';
-  playBtn.innerHTML = `${svgPlay()}Play`;
+  playBtn.innerHTML = `${svgPlay()}Autoplay`;
   playBtn.setAttribute('aria-label', 'Play tour automatically');
 
   let voiceBtn: HTMLButtonElement | null = null;
   if (onToggleVoice !== null) {
     voiceBtn = makeBtn('', onToggleVoice);
     voiceBtn.id = 'oh-tour-voice';
-    // Initialise in OFF state — voice defaults off (opt-in).
-    voiceBtn.innerHTML = `${svgVoiceOff()}Voice`;
+    // Initialise in OFF state — voice defaults off (opt-in). The label text
+    // is width-dependent and set by refreshVoiceButton() via applyLayout().
+    voiceBtn.innerHTML = `${svgVoiceOff()}Audio guide`;
     voiceBtn.setAttribute('aria-label', 'Turn voice narration on');
     voiceBtn.setAttribute('aria-pressed', 'false');
   }
@@ -290,6 +292,14 @@ export class GalleryTour {
 
   private narrator: TourNarrator;
   private voiceOn = false; // initialised after isSupported check in constructor
+  /**
+   * The user's last EXPLICIT Audio-guide choice. Manual stops reset voiceOn
+   * to off (per-artwork, museum audio-guide model); autoplay restores this
+   * preference — "I said I want narration" survives quiet manual browsing.
+   */
+  private autoplayVoicePref = false;
+  /** Set when the platform proves unable to speak (API present, no voices). */
+  private voiceUnavailable = false;
 
   private static isTouchDevice(): boolean {
     return typeof window !== 'undefined' &&
@@ -317,6 +327,7 @@ export class GalleryTour {
     // Set up narrator and decide whether to show the voice button.
     // Voice defaults OFF — unexpected audio is opt-in (like a museum audio guide).
     this.narrator = new TourNarrator();
+    this.narrator.onUnavailable = () => this.handleVoiceUnavailable();
     const voiceSupported = this.narrator.isSupported;
     this.voiceOn = false;
 
@@ -410,6 +421,9 @@ export class GalleryTour {
       });
     }
 
+    // The Audio-guide label is width-dependent — re-sync it with the layout.
+    this.refreshVoiceButton();
+
     if (wasVisible && this.phase === 'viewing') this.showLabel();
   }
 
@@ -451,6 +465,12 @@ export class GalleryTour {
         if (spoken) this.narrator.speak(spoken);
       }
     } else if (this.phase === 'viewing') {
+      // Quiet progress line: fills over the dwell; sits full while a long
+      // narration finishes (honest — "waiting for the voice", not stuck).
+      if (this.autoplay && this.progressFill) {
+        const pct = Math.min(100, (this.elapsed / this.currentDwell) * 100);
+        this.progressFill.style.width = `${pct}%`;
+      }
       // Autoplay: advance when dwell has elapsed AND voice is not still speaking.
       // canAutoAdvance enforces the combined condition with a 2× safety fallback.
       if (this.autoplay && canAutoAdvance(this.elapsed, this.currentDwell, this.narrator.isSpeaking)) {
@@ -463,6 +483,13 @@ export class GalleryTour {
     }
     // manual 'viewing' — waiting for user interaction; touch drag via TouchLook
   }
+
+  /**
+   * Dwell-clock reading frozen by Pause, restored by Play — so pausing
+   * mid-stop continues from the same point (progress bar included) instead
+   * of granting the stop a fresh full dwell. Null = nothing frozen.
+   */
+  private pausedDwellElapsed: number | null = null;
 
   /** Turn autoplay on/off and reflect the state on the Play/Pause button. */
   setAutoplay(on: boolean): void {
@@ -477,19 +504,45 @@ export class GalleryTour {
           this.startWaypoint(0);
           return; // startWaypoint resets elapsed; button already updated above
         }
-        // Resume a paused utterance if one exists, then restart the dwell clock.
+        // Resume a paused utterance if one exists.
         if (this.narrator.isPaused) this.narrator.resume();
-        this.elapsed = 0;
+        // Resuming from Pause continues the dwell clock where it froze;
+        // enabling autoplay fresh at a stop restarts it (so a long manual
+        // look never turns Play into an instant jump to the next artwork).
+        this.elapsed = this.pausedDwellElapsed ?? 0;
+        this.pausedDwellElapsed = null;
+        // Starting autoplay restores the user's last explicit voice choice,
+        // even after manual per-stop resets silenced the toggle — speak this
+        // stop right away and re-time it for the narration.
+        if (this.autoplayVoicePref && !this.voiceUnavailable && !this.voiceOn) {
+          this.voiceOn = true;
+          const { labelText, spoken } = this.currentStopTexts(true);
+          if (spoken) this.narrator.speak(spoken);
+          this.currentDwell = computeStopDwell(labelText, spoken);
+          this.elapsed = 0;
+          this.refreshVoiceButton();
+        }
+      } else {
+        // Travelling/pausing: apply the remembered preference; arrival at the
+        // stop speaks (or not) through the normal viewing-phase flow.
+        const wantVoice = this.autoplayVoicePref && !this.voiceUnavailable;
+        if (wantVoice !== this.voiceOn) {
+          this.voiceOn = wantVoice;
+          this.refreshVoiceButton();
+        }
       }
     } else {
-      // Pause freezes EVERYTHING: movement (autoplay) AND voice mid-sentence.
+      // Pause freezes EVERYTHING: movement (autoplay), voice mid-sentence,
+      // and the dwell clock (progress bar resumes where it stopped).
+      if (this.phase === 'viewing') this.pausedDwellElapsed = this.elapsed;
       if (this.narrator.isSpeaking) this.narrator.pause();
     }
-    this.playBtn.innerHTML = on ? `${svgPause()}Pause` : `${svgPlay()}Play`;
+    this.playBtn.innerHTML = on ? `${svgPause()}Pause` : `${svgPlay()}Autoplay`;
     this.playBtn.setAttribute(
       'aria-label',
       on ? 'Pause automatic tour' : 'Play tour automatically'
     );
+    this.syncProgressTrack();
   }
 
   get isAutoplaying(): boolean {
@@ -513,9 +566,44 @@ export class GalleryTour {
     return { labelText, spoken };
   }
 
+  /**
+   * The platform proved it cannot speak (utterance never started, zero voices —
+   * typical of Linux desktops without a speech engine). Silence the feature
+   * honestly: voice off, dwell back to reading time, button disabled with an
+   * explanation instead of a toggle that pretends to work.
+   */
+  private handleVoiceUnavailable(): void {
+    this.voiceUnavailable = true;
+    this.autoplayVoicePref = false;
+    if (this.voiceOn) {
+      this.voiceOn = false;
+      if (this.phase === 'viewing') {
+        const { labelText } = this.currentStopTexts(false);
+        // Fall back from the speech-length dwell to reading time; keep the
+        // already-elapsed silent seconds so the visitor isn't stuck longer.
+        this.currentDwell = computeStopDwell(labelText, '');
+      }
+    }
+    this.refreshVoiceButton();
+  }
+
   /** Toggle voice narration on/off and update the button accordingly. */
   toggleVoice(): void {
+    if (this.voiceUnavailable) return; // disabled button; belt-and-braces
+    // The sound button always produces sound from silence: when voice is ON
+    // but the utterance is frozen by Pause, a press resumes the narration
+    // (walking stays paused) instead of switching the silent toggle off —
+    // pressing again while it speaks still turns it off as usual.
+    if (this.voiceOn && this.narrator.isPaused) {
+      this.narrator.resume();
+      return;
+    }
     this.voiceOn = !this.voiceOn;
+    // Every explicit toggle is the choice autoplay will remember.
+    this.autoplayVoicePref = this.voiceOn;
+    // Voice change re-times the current stop — a frozen dwell reading from
+    // before the toggle would restore a clock that no longer applies.
+    this.pausedDwellElapsed = null;
 
     if (this.phase === 'viewing') {
       const { labelText, spoken } = this.currentStopTexts(this.voiceOn);
@@ -538,22 +626,52 @@ export class GalleryTour {
       if (!this.voiceOn) this.narrator.cancel();
     }
 
-    if (this.voiceBtn) {
-      this.voiceBtn.innerHTML = this.voiceOn
-        ? `${svgVoiceOn()}Voice`
-        : `${svgVoiceOff()}Voice`;
-      this.voiceBtn.setAttribute('aria-pressed', this.voiceOn ? 'true' : 'false');
-      this.voiceBtn.setAttribute(
-        'aria-label',
-        this.voiceOn ? 'Turn voice narration off' : 'Turn voice narration on'
-      );
+    this.refreshVoiceButton();
+  }
+
+  /**
+   * Sync the Audio-guide button with the current voice state and viewport:
+   * icon by on/off, label text by width ("Audio guide" on desktop, "Audio"
+   * in the narrow bottom-bar layout where five buttons share the row).
+   */
+  private refreshVoiceButton(): void {
+    if (!this.voiceBtn) return;
+    const label = GalleryTour.prefersTouchLayout() ? 'Audio' : 'Audio guide';
+    if (this.voiceUnavailable) {
+      const reason =
+        'Voice narration unavailable — no speech voices found. ' +
+        'On Linux, installing speech-dispatcher and espeak-ng enables them.';
+      this.voiceBtn.innerHTML = `${svgVoiceOff()}${label}`;
+      this.voiceBtn.disabled = true;
+      this.voiceBtn.style.opacity = '0.45';
+      this.voiceBtn.style.cursor = 'default';
+      this.voiceBtn.setAttribute('aria-pressed', 'false');
+      this.voiceBtn.setAttribute('aria-label', reason);
+      this.voiceBtn.title = reason;
+      return;
     }
+    this.voiceBtn.innerHTML = `${this.voiceOn ? svgVoiceOn() : svgVoiceOff()}${label}`;
+    this.voiceBtn.setAttribute('aria-pressed', this.voiceOn ? 'true' : 'false');
+    this.voiceBtn.setAttribute(
+      'aria-label',
+      this.voiceOn ? 'Turn voice narration off' : 'Turn voice narration on'
+    );
   }
 
   private startWaypoint(index: number): void {
     if (!this.waypoints.length) return;
+    // A new stop gets a fresh dwell clock — drop any frozen reading.
+    this.pausedDwellElapsed = null;
     // Cancel any in-progress narration when leaving a stop.
     this.narrator.cancel();
+    // Per-stop voice rule: manual browsing arrives silent at every artwork
+    // (audio-guide model — press to hear this one); autoplay carries the
+    // user's remembered preference from stop to stop.
+    const nextVoice = this.autoplay && this.autoplayVoicePref && !this.voiceUnavailable;
+    if (nextVoice !== this.voiceOn) {
+      this.voiceOn = nextVoice;
+      this.refreshVoiceButton();
+    }
     // Leaving the previous waypoint — restore its artwork material
     this.restoreMat?.();
     this.restoreMat = null;
@@ -576,6 +694,31 @@ export class GalleryTour {
   }
 
   private sheetCollapsed = false;
+
+  /** Fill element of the autoplay progress bar; re-queried on each render. */
+  private progressFill: HTMLElement | null = null;
+
+  /**
+   * Quiet autoplay progress: a 2px line that fills over the stop's dwell —
+   * the Stories idiom for "auto-advancing, and this is roughly when".
+   * Hidden while autoplay is off; skipped entirely for reduced-motion visitors.
+   */
+  private progressTrackHtml(): string {
+    if (prefersReducedMotion()) return '';
+    return `
+      <div id="oh-tour-progress-track" aria-hidden="true" style="
+        height:2px;border-radius:1px;overflow:hidden;
+        background:rgba(255,255,255,0.14);margin:0 0 0.6rem;display:none;">
+        <div id="oh-tour-progress" style="height:100%;width:0%;background:rgba(240,236,230,0.55);"></div>
+      </div>
+    `;
+  }
+
+  /** Show/hide the progress track to match the autoplay state. */
+  private syncProgressTrack(): void {
+    const track = this.labelBox?.querySelector('#oh-tour-progress-track') as HTMLElement | null;
+    if (track) track.style.display = this.autoplay ? 'block' : 'none';
+  }
 
   private showLabel(): void {
     const wp = this.waypoints[this.index];
@@ -609,6 +752,7 @@ export class GalleryTour {
         ? '0.25rem 1.25rem'
         : '0.9rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px))';
       this.labelBox.innerHTML = `
+        ${this.progressTrackHtml()}
         <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;">
           <p style="font-size:${this.sheetCollapsed ? '0.82rem' : '1rem'};font-weight:700;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(title || 'Untitled')}</p>
           <button id="oh-tour-collapse" aria-label="${this.sheetCollapsed ? 'Expand label' : 'Collapse label'}" style="
@@ -624,20 +768,26 @@ export class GalleryTour {
         this.showLabel(); // re-render in the new state
       });
       this.labelBox.style.display = 'block';
+      this.progressFill = this.labelBox.querySelector('#oh-tour-progress');
+      this.syncProgressTrack();
       return;
     }
 
     this.labelBox.innerHTML = `
+      ${this.progressTrackHtml()}
       <div aria-hidden="true" style="width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,0.28);margin:0 auto 0.65rem;"></div>
       ${title ? `<p style="font-size:1rem;font-weight:700;margin:0 0 0.1rem;">${escapeHtml(title)}</p>` : ''}
       ${bodyHtml}
       <p style="font-size:0.7rem;color:#555;margin:0.45rem 0 0;">Drag this card to move it</p>
     `;
     this.labelBox.style.display = 'block';
+    this.progressFill = this.labelBox.querySelector('#oh-tour-progress');
+    this.syncProgressTrack();
   }
 
   private hideLabel(): void {
     this.labelBox.style.display = 'none';
+    this.progressFill = null;
   }
 
   next(): void {

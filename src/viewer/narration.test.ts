@@ -3,7 +3,7 @@
  * narration.test.ts — Unit tests for pickNarrationText and canAutoAdvance.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TourNarrator, pickNarrationText, canAutoAdvance, estimateSpeechSeconds, computeStopDwell, computeDwellSeconds } from './narration';
 import type { Gallery, TourWaypoint } from '../schema/gallery.schema';
 import { GallerySchema } from '../schema/gallery.schema';
@@ -264,5 +264,111 @@ describe('TourNarrator isPaused lifecycle', () => {
     narrator.pause();
     narrator.speak('hello');
     expect(narrator.isPaused).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TourNarrator — no-voices guard (API present, platform cannot speak)
+// ---------------------------------------------------------------------------
+
+describe('TourNarrator no-voices guard', () => {
+  /** Minimal utterance double — jsdom has no Web Speech API at all. */
+  class FakeUtterance {
+    text: string;
+    onstart: ((ev: Event) => void) | null = null;
+    onend: ((ev: Event) => void) | null = null;
+    onerror: ((ev: Event) => void) | null = null;
+    constructor(text: string) {
+      this.text = text;
+    }
+  }
+
+  /** Install controllable speechSynthesis globals; returns the state handle. */
+  function stubSpeech(opts: { voices: unknown[]; firesStart: boolean }) {
+    const state = { speaking: false, utterances: [] as FakeUtterance[] };
+    vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance);
+    vi.stubGlobal('speechSynthesis', {
+      speak(u: FakeUtterance) {
+        state.utterances.push(u);
+        if (opts.firesStart) {
+          state.speaking = true;
+          u.onstart?.(new Event('start'));
+        }
+      },
+      cancel() {
+        state.speaking = false;
+      },
+      pause() {},
+      resume() {},
+      getVoices: () => opts.voices,
+      get speaking() {
+        return state.speaking;
+      },
+    });
+    return state;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('declares unavailable when nothing starts and no voices exist', () => {
+    stubSpeech({ voices: [], firesStart: false });
+    const narrator = new TourNarrator();
+    const onUnavailable = vi.fn();
+    narrator.onUnavailable = onUnavailable;
+
+    narrator.speak('hello');
+    expect(narrator.isUnavailable).toBe(false);
+    vi.advanceTimersByTime(5001);
+    expect(narrator.isUnavailable).toBe(true);
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
+  });
+
+  it('once unavailable, speak() no-ops and calls onEnd immediately', () => {
+    stubSpeech({ voices: [], firesStart: false });
+    const narrator = new TourNarrator();
+    narrator.speak('hello');
+    vi.advanceTimersByTime(5001);
+
+    const state = stubSpeech({ voices: [], firesStart: false });
+    const onEnd = vi.fn();
+    narrator.speak('again', onEnd);
+    expect(onEnd).toHaveBeenCalledTimes(1);
+    expect(state.utterances).toEqual([]); // never reached the engine
+  });
+
+  it('an utterance that starts in time keeps voice available', () => {
+    stubSpeech({ voices: [], firesStart: true });
+    const narrator = new TourNarrator();
+    const onUnavailable = vi.fn();
+    narrator.onUnavailable = onUnavailable;
+
+    narrator.speak('hello');
+    vi.advanceTimersByTime(6000);
+    expect(narrator.isUnavailable).toBe(false);
+    expect(onUnavailable).not.toHaveBeenCalled();
+  });
+
+  it('a slow engine that does have voices gets the benefit of the doubt', () => {
+    stubSpeech({ voices: [{ name: 'espeak' }], firesStart: false });
+    const narrator = new TourNarrator();
+    narrator.speak('hello');
+    vi.advanceTimersByTime(6000);
+    expect(narrator.isUnavailable).toBe(false);
+  });
+
+  it('cancel() before the grace period clears the guard timer', () => {
+    stubSpeech({ voices: [], firesStart: false });
+    const narrator = new TourNarrator();
+    narrator.speak('hello');
+    narrator.cancel();
+    vi.advanceTimersByTime(6000);
+    expect(narrator.isUnavailable).toBe(false);
   });
 });
