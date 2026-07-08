@@ -109,8 +109,8 @@ describe('composeGalleryFromPlan', () => {
   it('LLM writes only title + labels; geometry comes from the assembler', async () => {
     const generate = vi.fn()
       .mockResolvedValueOnce('"Quiet Forms"') // title call
-      .mockResolvedValueOnce(JSON.stringify([ // one label batch (2 works ≤ 4)
-        { artworkId: 'aw-01', label: 'Label one.' },
+      .mockResolvedValueOnce(JSON.stringify([ // one label batch (2 works ≤ 3)
+        { artworkId: 'aw-01', label: 'Label one.', narration: 'Narration one.' },
         { artworkId: 'aw-02', label: 'Label two.', artistStatement: 'A note.' },
       ]));
 
@@ -126,7 +126,9 @@ describe('composeGalleryFromPlan', () => {
     const aw1 = gallery.artworks.find((a) => a.id === 'aw-01')!;
     const aw2 = gallery.artworks.find((a) => a.id === 'aw-02')!;
     expect(aw1.label).toBe('Label one.');
+    expect(aw1.narration).toBe('Narration one.');
     expect(aw2.artistStatement).toBe('A note.');
+    expect(aw2.narration).toBeUndefined(); // model omitted it — graceful degradation
   });
 
   it('falls back to placeholder label + default title when the model is unhelpful', async () => {
@@ -145,7 +147,7 @@ describe('composeGalleryFromPlan', () => {
     expect(aw2.label).toBe('No label available.');
   });
 
-  it('batches labels in groups of four', async () => {
+  it('batches labels in groups of three (narration doubles token budget)', async () => {
     const many = Array.from({ length: 6 }, (_, i) => makeUpload(`aw-0${i + 1}`));
     const manyAnalyses = many.map((a) => ({
       artworkId: a.id, style: 's', palette: ['#000000'],
@@ -162,15 +164,15 @@ describe('composeGalleryFromPlan', () => {
       curatorNote: 'All together.',
     };
     const labelsFor = (ids: string[]) =>
-      JSON.stringify(ids.map((id) => ({ artworkId: id, label: `A wall label for ${id}.` })));
+      JSON.stringify(ids.map((id) => ({ artworkId: id, label: `A wall label for ${id}.`, narration: `Narration for ${id}.` })));
     const generate = vi.fn()
       .mockResolvedValueOnce('Six Works')
-      .mockResolvedValueOnce(labelsFor(many.slice(0, 4).map((a) => a.id)))
-      .mockResolvedValueOnce(labelsFor(many.slice(4).map((a) => a.id)));
+      .mockResolvedValueOnce(labelsFor(many.slice(0, 3).map((a) => a.id)))
+      .mockResolvedValueOnce(labelsFor(many.slice(3, 6).map((a) => a.id)));
 
     const gallery = await composeGalleryFromPlan(generate, many, manyAnalyses, plan, 'white-cube');
 
-    expect(generate).toHaveBeenCalledTimes(3); // title + 2 label batches
+    expect(generate).toHaveBeenCalledTimes(3); // title + 2 label batches of 3
     expect(gallery.artworks.every((a) => a.label.startsWith('A wall label for aw-'))).toBe(true);
   });
 });

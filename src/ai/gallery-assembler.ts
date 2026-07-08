@@ -93,6 +93,7 @@ export const PRESET_PARAMS: Record<
 export const LabelEntrySchema = z.object({
   artworkId: z.string(),
   label: z.string().min(10),
+  narration: z.string().optional(),
   artistStatement: z.string().optional(),
 });
 export type LabelEntry = z.infer<typeof LabelEntrySchema>;

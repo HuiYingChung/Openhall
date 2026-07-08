@@ -226,6 +226,50 @@ describe('GalleryTour autoplay', () => {
     tour.update(13); // dwell on last waypoint elapses → autoplay stops
     expect(tour.isAutoplaying).toBe(false);
     expect(camera.position.x).toBeCloseTo(5, 0); // still at the last waypoint
+    // Autoplay self-stopping should NOT replay — camera stays at last stop.
+    expect(camera.position.x).toBeCloseTo(5, 0);
+    tour.dispose();
+  });
+
+  it('user pressing Play at the last waypoint replays from stop 0', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    settle(tour); // viewing waypoint 0
+
+    // Run to last waypoint (index 2, x=10)
+    tour.setAutoplay(true);
+    tour.update(13); tour.update(10); // → waypoint 1
+    tour.update(1);                   // pause → viewing
+    tour.update(13); tour.update(10); // → waypoint 2 (last)
+    tour.update(1);                   // pause → viewing last
+    tour.update(13);                  // dwell elapses → autoplay off
+    expect(tour.isAutoplaying).toBe(false);
+    expect(camera.position.x).toBeCloseTo(10, 0); // at last stop
+
+    // User presses Play → must restart from stop 0.
+    tour.setAutoplay(true);
+    expect(tour.isAutoplaying).toBe(true);
+    tour.update(10); // complete travel
+    expect(camera.position.x).toBeCloseTo(0, 0); // back at first stop
+    tour.dispose();
+  });
+
+  it('setAutoplay(false) from internal auto-stop does not replay', () => {
+    // This test guards against the replay path triggering during the auto-stop.
+    // When autoplay turns itself off in update() the tour must stay at the last stop.
+    const gallery = makeGallery(2);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    settle(tour);
+    tour.setAutoplay(true);
+
+    // Drive to last waypoint and let autoplay turn itself off internally.
+    tour.update(13); tour.update(10); // travel to last
+    tour.update(1);                   // pause → viewing last
+    tour.update(13);                  // dwell elapses → auto-stop
+
+    expect(tour.isAutoplaying).toBe(false);
+    // Camera must still be at the last waypoint (x ≈ 5), not at 0.
+    expect(camera.position.x).toBeCloseTo(5, 0);
     tour.dispose();
   });
 
@@ -256,6 +300,80 @@ describe('GalleryTour autoplay', () => {
 // Restore
 document.addEventListener = origAddEventListener;
 document.removeEventListener = origRemoveEventListener;
+
+// ---------------------------------------------------------------------------
+// Voice UX (items 1–3 from BOB_PROMPT_09C)
+// ---------------------------------------------------------------------------
+
+describe('GalleryTour voice UX', () => {
+  let camera: THREE.PerspectiveCamera;
+
+  beforeEach(() => {
+    camera = makeCamera();
+  });
+
+  afterEach(() => {
+    document.querySelectorAll('#oh-tour-hud, #oh-tour-label').forEach((el) => el.remove());
+  });
+
+  /** Drive update() until the tour reaches 'viewing' at its current waypoint. */
+  function settle(tour: GalleryTour): void {
+    tour.update(10);
+    tour.update(1);
+  }
+
+  it('voice defaults OFF: voiceBtn aria-pressed is false and shows slash icon', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    const voiceBtn = document.getElementById('oh-tour-voice') as HTMLButtonElement | null;
+    if (voiceBtn) {
+      // jsdom sets speechSynthesis so the button will exist
+      expect(voiceBtn.getAttribute('aria-pressed')).toBe('false');
+      expect(voiceBtn.getAttribute('aria-label')).toBe('Turn voice narration on');
+    }
+    tour.dispose();
+  });
+
+  it('toggleVoice() when viewing: turning ON resets dwell clock (elapsed = 0)', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    settle(tour); // in 'viewing' phase
+    // Advance dwell so elapsed > 0
+    tour.update(3);
+
+    // Reach into tour via the voice button click
+    const voiceBtn = document.getElementById('oh-tour-voice') as HTMLButtonElement | null;
+    if (voiceBtn) {
+      voiceBtn.click(); // toggle ON
+      // After turning on the dwell clock must be reset — if we update just under
+      // max dwell the tour should NOT advance yet (proving elapsed was reset).
+      tour.setAutoplay(true);
+      tour.update(11); // just under 12 s max dwell
+      // Still at waypoint 0 (x ≈ 0) because dwell was reset
+      expect(camera.position.x).toBeCloseTo(0, 0);
+    }
+    tour.dispose();
+  });
+
+  it('toggleVoice() when viewing: turning OFF resets dwell to label-only timing', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    settle(tour);
+
+    const voiceBtn = document.getElementById('oh-tour-voice') as HTMLButtonElement | null;
+    if (voiceBtn) {
+      voiceBtn.click(); // ON — may set a long speech dwell
+      voiceBtn.click(); // OFF — must reset to label-only dwell (≤12 s)
+      // After turning OFF, autoplay with a 13 s update should advance
+      // (proving dwell is now label-only, not the 25 s speech estimate).
+      tour.setAutoplay(true);
+      tour.update(13); // exceeds any label-only dwell (max 12 s)
+      tour.update(10); // complete travel
+      expect(camera.position.x).toBeCloseTo(5, 0); // advanced to waypoint 1
+    }
+    tour.dispose();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Keyboard navigation

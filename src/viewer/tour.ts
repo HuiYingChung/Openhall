@@ -1,4 +1,12 @@
 import { escapeHtml } from '../ui/escape-html';
+import {
+  TourNarrator,
+  pickNarrationText,
+  canAutoAdvance,
+  computeStopDwell,
+} from './narration';
+// Re-export so existing external imports (tour.test.ts etc.) keep working.
+export { computeDwellSeconds } from './narration';
 
 /**
  * tour.ts — Guided gallery tour mode.
@@ -43,19 +51,6 @@ export interface TourOptions {
 const TRAVEL_DURATION = 1.4; // seconds per waypoint travel
 const PAUSE_DURATION = 0.8; // seconds to wait after arrival before showing label
 const EYE_HEIGHT = 1.6;
-
-// Autoplay dwell: how long a waypoint stays on screen before auto-advancing.
-const AUTOPLAY_DWELL_MIN = 5; // seconds — even a bare title deserves a beat
-const AUTOPLAY_DWELL_MAX = 12; // seconds — never park on one work forever
-
-/**
- * Reading time for a wall label, tuned for autoplay: 5 s base plus one second
- * per 80 characters of label text, capped at 12 s. Pure — unit-tested.
- */
-export function computeDwellSeconds(labelText: string): number {
-  const readSeconds = 5 + labelText.length / 80;
-  return Math.min(AUTOPLAY_DWELL_MAX, Math.max(AUTOPLAY_DWELL_MIN, readSeconds));
-}
 
 // ---------------------------------------------------------------------------
 // HUD creation helpers
@@ -138,13 +133,22 @@ function svgPlay(): string {
 function svgPause(): string {
   return `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-1px;margin-right:5px;" aria-hidden="true"><rect x="3.5" y="2.5" width="3.2" height="11" rx="0.8"/><rect x="9.3" y="2.5" width="3.2" height="11" rx="0.8"/></svg>`;
 }
+/** Speaker icon (voice on) */
+function svgVoiceOn(): string {
+  return `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><path d="M1 5.5h3l4-3v11l-4-3H1z"/><path d="M11 5a4.5 4.5 0 0 1 0 6"/><path d="M12.5 3a7 7 0 0 1 0 10"/></svg>`;
+}
+/** Speaker with slash (voice off) */
+function svgVoiceOff(): string {
+  return `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><path d="M1 5.5h3l4-3v11l-4-3H1z"/><line x1="12" y1="4" x2="4" y2="12"/></svg>`;
+}
 
 function createButtons(
   onTogglePlay: () => void,
   onPrev: () => void,
   onNext: () => void,
-  onExit: () => void
-): { row: HTMLElement; playBtn: HTMLButtonElement } {
+  onExit: () => void,
+  onToggleVoice: (() => void) | null
+): { row: HTMLElement; playBtn: HTMLButtonElement; voiceBtn: HTMLButtonElement | null } {
   const row = document.createElement('div');
   row.style.cssText = `
     display:flex;gap:0.6rem;pointer-events:all;
@@ -170,11 +174,22 @@ function createButtons(
   playBtn.innerHTML = `${svgPlay()}Play`;
   playBtn.setAttribute('aria-label', 'Play tour automatically');
 
+  let voiceBtn: HTMLButtonElement | null = null;
+  if (onToggleVoice !== null) {
+    voiceBtn = makeBtn('', onToggleVoice);
+    voiceBtn.id = 'oh-tour-voice';
+    // Initialise in OFF state — voice defaults off (opt-in).
+    voiceBtn.innerHTML = `${svgVoiceOff()}Voice`;
+    voiceBtn.setAttribute('aria-label', 'Turn voice narration on');
+    voiceBtn.setAttribute('aria-pressed', 'false');
+  }
+
   row.appendChild(playBtn);
+  if (voiceBtn) row.appendChild(voiceBtn);
   row.appendChild(makeBtn('← Prev', onPrev));
   row.appendChild(makeBtn('Next →', onNext));
   row.appendChild(makeBtn('Exit Tour', onExit));
-  return { row, playBtn };
+  return { row, playBtn, voiceBtn };
 }
 
 // ---------------------------------------------------------------------------
@@ -261,8 +276,9 @@ export class GalleryTour {
   private labelBox!: HTMLElement;
   private btns: HTMLElement;
   private playBtn: HTMLButtonElement;
+  private voiceBtn: HTMLButtonElement | null = null;
   private autoplay = false;
-  private currentDwell = AUTOPLAY_DWELL_MIN;
+  private currentDwell = 5; // AUTOPLAY_DWELL_MIN — constant lives in narration.ts now
   private isTouch = false;
   private touchLook: TouchLook | null = null;
   private boundKeydown!: (e: KeyboardEvent) => void;
@@ -271,6 +287,9 @@ export class GalleryTour {
   private onExitCb: (position: THREE.Vector3) => void;
   private getArtworkMesh?: (id: string) => THREE.Mesh | undefined;
   private restoreMat: (() => void) | null = null;
+
+  private narrator: TourNarrator;
+  private voiceOn = false; // initialised after isSupported check in constructor
 
   private static isTouchDevice(): boolean {
     return typeof window !== 'undefined' &&
@@ -295,16 +314,24 @@ export class GalleryTour {
     this.onExitCb = opts.onExit;
     this.getArtworkMesh = opts.getArtworkMesh;
 
+    // Set up narrator and decide whether to show the voice button.
+    // Voice defaults OFF — unexpected audio is opt-in (like a museum audio guide).
+    this.narrator = new TourNarrator();
+    const voiceSupported = this.narrator.isSupported;
+    this.voiceOn = false;
+
     this.hud = createTourHud();
-    const { row, playBtn } = createButtons(
+    const { row, playBtn, voiceBtn } = createButtons(
       () => this.setAutoplay(!this.autoplay),
       () => this.prev(),
       () => this.next(),
-      () => this.exit()
+      () => this.exit(),
+      voiceSupported ? () => this.toggleVoice() : null
     );
     this.hud.appendChild(row);
     this.btns = row;
     this.playBtn = playBtn;
+    this.voiceBtn = voiceBtn;
 
     // Layout (floating card vs bottom sheet) responds to live resizes and
     // device rotation — re-applied whenever the 768 px threshold is crossed.
@@ -413,17 +440,20 @@ export class GalleryTour {
           const mesh = this.getArtworkMesh(wp.artworkId);
           if (mesh) this.restoreMat = swapToUnlitMaterial(mesh);
         }
-        // Dwell time scales with how much there is to read at this stop.
-        const artwork = wp.artworkId
-          ? this.gallery.artworks.find((a) => a.id === wp.artworkId)
-          : null;
-        this.currentDwell = computeDwellSeconds(artwork?.label ?? wp.label ?? '');
+        // Compute label + spoken text via the shared helper so the
+        // lookup logic isn't duplicated between here and toggleVoice().
+        const { labelText, spoken } = this.currentStopTexts(this.voiceOn);
+        // Speech-aware dwell: max(readingTime, estimatedSpeechDuration).
+        // When voice is off spoken is '', so it falls back to label-only timing.
+        this.currentDwell = computeStopDwell(labelText, spoken);
         this.showLabel();
+        // Speak narration at this stop (if voice is on and there is text).
+        if (spoken) this.narrator.speak(spoken);
       }
     } else if (this.phase === 'viewing') {
-      // Autoplay: advance after the dwell. Stops (instead of looping) after
-      // the final waypoint so visitors aren't trapped in an endless cycle.
-      if (this.autoplay && this.elapsed >= this.currentDwell) {
+      // Autoplay: advance when dwell has elapsed AND voice is not still speaking.
+      // canAutoAdvance enforces the combined condition with a 2× safety fallback.
+      if (this.autoplay && canAutoAdvance(this.elapsed, this.currentDwell, this.narrator.isSpeaking)) {
         if (this.index >= this.waypoints.length - 1) {
           this.setAutoplay(false);
         } else {
@@ -437,8 +467,24 @@ export class GalleryTour {
   /** Turn autoplay on/off and reflect the state on the Play/Pause button. */
   setAutoplay(on: boolean): void {
     this.autoplay = on;
-    // Restart the dwell clock so enabling mid-viewing gives full reading time.
-    if (on && this.phase === 'viewing') this.elapsed = 0;
+    if (on) {
+      if (this.phase === 'viewing') {
+        // User turned autoplay ON at the last waypoint → replay from the start.
+        // startWaypoint calls cancel(), which also clears the paused flag.
+        if (this.index >= this.waypoints.length - 1 && this.waypoints.length > 1) {
+          this.playBtn.innerHTML = `${svgPause()}Pause`;
+          this.playBtn.setAttribute('aria-label', 'Pause automatic tour');
+          this.startWaypoint(0);
+          return; // startWaypoint resets elapsed; button already updated above
+        }
+        // Resume a paused utterance if one exists, then restart the dwell clock.
+        if (this.narrator.isPaused) this.narrator.resume();
+        this.elapsed = 0;
+      }
+    } else {
+      // Pause freezes EVERYTHING: movement (autoplay) AND voice mid-sentence.
+      if (this.narrator.isSpeaking) this.narrator.pause();
+    }
     this.playBtn.innerHTML = on ? `${svgPause()}Pause` : `${svgPlay()}Play`;
     this.playBtn.setAttribute(
       'aria-label',
@@ -450,8 +496,64 @@ export class GalleryTour {
     return this.autoplay;
   }
 
+  /**
+   * Texts for the currently-viewed stop — shared between `update()` and
+   * `toggleVoice()` so the lookup logic is never duplicated.
+   * Returns `{ labelText, spoken }` where `spoken` reflects the *requested*
+   * voice state (pass the NEW voiceOn value before calling).
+   */
+  private currentStopTexts(voiceOn: boolean): { labelText: string; spoken: string } {
+    if (!this.waypoints.length) return { labelText: '', spoken: '' };
+    const wp = this.waypoints[this.index];
+    const artwork = wp.artworkId
+      ? this.gallery.artworks.find((a) => a.id === wp.artworkId)
+      : null;
+    const labelText = artwork?.label ?? wp.label ?? '';
+    const spoken = voiceOn ? pickNarrationText(wp, this.gallery) : '';
+    return { labelText, spoken };
+  }
+
+  /** Toggle voice narration on/off and update the button accordingly. */
+  toggleVoice(): void {
+    this.voiceOn = !this.voiceOn;
+
+    if (this.phase === 'viewing') {
+      const { labelText, spoken } = this.currentStopTexts(this.voiceOn);
+      if (this.voiceOn) {
+        // Turning ON mid-stop: speak the current narration from the beginning
+        // and recompute dwell so autoplay never cuts it short.
+        if (spoken) this.narrator.speak(spoken);
+        this.currentDwell = computeStopDwell(labelText, spoken);
+        this.elapsed = 0;
+      } else {
+        // Turning OFF mid-stop: cancel speech and fall back to reading-time dwell
+        // so autoplay doesn't sit out a 25 s speech estimate on a silent stop.
+        this.narrator.cancel();
+        this.currentDwell = computeStopDwell(labelText, '');
+        this.elapsed = 0;
+      }
+    } else {
+      // Travelling / pausing: only update state; startWaypoint's normal flow
+      // will speak (or not) when the stop enters 'viewing'.
+      if (!this.voiceOn) this.narrator.cancel();
+    }
+
+    if (this.voiceBtn) {
+      this.voiceBtn.innerHTML = this.voiceOn
+        ? `${svgVoiceOn()}Voice`
+        : `${svgVoiceOff()}Voice`;
+      this.voiceBtn.setAttribute('aria-pressed', this.voiceOn ? 'true' : 'false');
+      this.voiceBtn.setAttribute(
+        'aria-label',
+        this.voiceOn ? 'Turn voice narration off' : 'Turn voice narration on'
+      );
+    }
+  }
+
   private startWaypoint(index: number): void {
     if (!this.waypoints.length) return;
+    // Cancel any in-progress narration when leaving a stop.
+    this.narrator.cancel();
     // Leaving the previous waypoint — restore its artwork material
     this.restoreMat?.();
     this.restoreMat = null;
@@ -557,6 +659,7 @@ export class GalleryTour {
 
   /** Clean up HUD, label box, resize + keyboard + touch listeners. */
   dispose(): void {
+    this.narrator.cancel();
     this.restoreMat?.();
     this.restoreMat = null;
     document.removeEventListener('keydown', this.boundKeydown);

@@ -53,6 +53,7 @@
       "medium": "Oil on canvas",
       "year": 1889,
       "label": "Vincent van Gogh painted this exuberant landscape in June 1889 while a voluntary patient at the Saint-Paul-de-Mausole asylum near Saint-Rémy-de-Provence. The wheat field surges with movement beneath a sky of turbulent clouds, with the dark vertical accent of a cypress punctuating the composition. The Metropolitan Museum of Art acquired this canvas in 1993.",
+      "narration": "You're looking at one of Van Gogh's most charged landscapes, painted in the summer of 1889. Notice how everything here is in motion — the grain, the clouds, even the cypress seems to reach upward like a flame. He painted it during a voluntary stay near Saint-Rémy, finding both turbulence and beauty in the Provençal countryside.",
       "aspectRatio": 1.256
     },
     {
@@ -62,6 +63,7 @@
       "medium": "Oil on canvas",
       "year": 1887,
       "label": "Georges Seurat's nocturnal scene depicts the outdoor barker's performance staged outside the Cirque Corvi to entice a paying audience inside. Painted entirely in his pointillist technique of carefully placed dots of pure colour, the work is unusual for Seurat in its deliberately flattened figures and artificial gaslight atmosphere. It entered the Metropolitan Museum of Art's collection in 1929.",
+      "narration": "Seurat takes us outside the circus tent, to the free show meant to lure you in. Every mark here is a deliberate dot of pure colour — stand back mentally and the gaslit figures solidify into something almost dreamlike. The flattened shapes and artificial light give it a stillness quite unlike the energy you'd expect at a sideshow.",
       "aspectRatio": 1.496
     },
     {
@@ -71,6 +73,7 @@
       "medium": "Oil on canvas",
       "year": 1891,
       "label": "Camille Pissarro painted this intimate double portrait of two young women at rest in a field near his home in Éragny-sur-Epte during 1891–92. The dappled light and loose, mosaic-like brushwork reflect his brief but influential adoption of the Divisionist technique he learned from Seurat. The work is part of the Metropolitan Museum of Art's permanent collection.",
+      "narration": "Pissarro painted these two women resting in a field near his home in Normandy. There's a quietness to it — no drama, just two figures caught in a moment of stillness. The mosaic-like brushwork is Pissarro experimenting with the Divisionist ideas he'd picked up from Seurat, applied here with a warmer, more personal touch.",
       "aspectRatio": 1.294
     },
     {
@@ -80,6 +83,7 @@
       "medium": "Oil on canvas",
       "year": 1874,
       "label": "Édouard Manet painted this boldly cropped scene on the Seine at Argenteuil in the summer of 1874, the same season he worked alongside Monet and Renoir. The flat, high horizon line and the compressed pictorial space—tilted toward the viewer—owe a debt to Japanese woodblock prints. It was purchased by the Metropolitan Museum of Art in 1929.",
+      "narration": "Manet tips the whole picture plane toward you — that high waterline, that tipped-up deck — borrowing a trick from Japanese woodblock prints. He painted this on the Seine at Argenteuil in the summer he spent alongside Monet and Renoir. The cropping feels almost photographic, as if you've just stepped onto the boat yourself.",
       "aspectRatio": 1.311
     },
     {
@@ -89,6 +93,7 @@
       "medium": "Oil on canvas",
       "year": 1874,
       "label": "Edgar Degas completed this meticulous record of a ballet rehearsal at the Paris Opéra in 1874, supervised by the maître de ballet Jules Perrot, who stands at centre with his staff. The diagonal recession of the studio floor and the unconventional arrangement of figures—some waiting, some adjusting ribbons—give the scene an air of unstudied candour. The Metropolitan Museum of Art acquired it in 1987.",
+      "narration": "Degas gives us the rehearsal, not the performance — the waiting, the stretching, the boredom between corrections. The old ballet master Jules Perrot holds court at the centre, but your eye wanders to the students adjusting their ribbons or simply standing about. It's a painting about the unglamorous labour behind the glamour.",
       "aspectRatio": 0.928
     },
     {
@@ -98,6 +103,7 @@
       "medium": "Oil on canvas",
       "year": 1890,
       "label": "Paul Cézanne arranged this domestic still life around 1890, balancing the familiar apples with the unexpected presence of a flowering primrose plant. Each object is treated with equal deliberateness, the paint built up in faceted strokes that anticipate his late analytical method. The Metropolitan Museum of Art received it as a bequest in 1952.",
+      "narration": "Cézanne brings together apples and a pot of primroses with the same serious attention he'd give a mountain. Look at how every object is built up in faceted strokes — he's not describing what things look like so much as constructing their underlying form. This quiet domestic arrangement is a rehearsal for everything that Cubism would do next.",
       "aspectRatio": 1.261
     },
     {
@@ -107,6 +113,7 @@
       "medium": "Oil on canvas",
       "year": 1881,
       "label": "Auguste Renoir painted this luminous still life in 1881, capturing the bloom and weight of summer peaches with the warm, freely applied brushwork characteristic of his Impressionist period. The arrangement is simple and intimate, foregrounding his pleasure in colour and surface. The work is held in the Metropolitan Museum of Art's collection.",
+      "narration": "Renoir painted these peaches in 1881, and you can feel the pleasure he took in it — the velvety skin, the soft weight of the fruit. Nothing complicated here; just a painter who loved colour and surface, giving full attention to something small and seasonal. It's Impressionism at its most simply joyful.",
       "aspectRatio": 1.205
     },
     {
@@ -116,6 +123,7 @@
       "medium": "Oil on canvas",
       "year": 1889,
       "label": "Van Gogh wrote to his brother Theo from Saint-Rémy in 1889 that the cypresses were constantly on his mind, yet no painter had given them their due. This large canvas, in which a single tree fills nearly the entire height of the picture, is painted with dense, flame-like strokes that animate both the tree and the swirling sky behind it. It entered the Metropolitan Museum of Art's collection in 1949.",
+      "narration": "Van Gogh told his brother Theo that the cypress was always on his mind — beautiful as an Egyptian obelisk, he wrote, yet painters kept ignoring it. Here he gives it the whole canvas. The dense, twisting strokes make the tree feel alive, almost restless, against that agitated sky. It's one of the most intensely felt images in the room.",
       "aspectRatio": 0.793
     }
   ],

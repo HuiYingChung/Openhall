@@ -55,6 +55,8 @@ export const ArtworkSchema = z.object({
   label: z.string(),
   /** Optional short artist statement */
   artistStatement: z.string().optional(),
+  /** Spoken-style narration for tour mode (distinct from placard label, ~60 words max) */
+  narration: z.string().max(600).optional(),
   /**
    * Image aspect ratio (width / height). Written by the bundler so the
    * export viewer can size artwork planes correctly without re-reading the image.
