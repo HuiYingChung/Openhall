@@ -539,3 +539,85 @@ describe('GalleryTour autoplay progress bar', () => {
     tour.dispose();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Audio-guide memory: per-stop reset in manual mode, remembered in autoplay
+// ---------------------------------------------------------------------------
+
+describe('GalleryTour audio-guide memory', () => {
+  let camera: THREE.PerspectiveCamera;
+
+  beforeEach(() => {
+    camera = makeCamera();
+    // Minimal working speechSynthesis so the Audio-guide button renders.
+    // Voices are non-empty so the no-voices guard never trips.
+    vi.stubGlobal('speechSynthesis', {
+      speak() {},
+      cancel() {},
+      pause() {},
+      resume() {},
+      getVoices: () => [{ name: 'stub' }],
+      speaking: false,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.querySelectorAll('#oh-tour-hud, #oh-tour-label').forEach((el) => el.remove());
+  });
+
+  function toViewing(tour: GalleryTour): void {
+    tour.update(2);
+    tour.update(1);
+  }
+
+  function pressed(): string | null {
+    return document.getElementById('oh-tour-voice')!.getAttribute('aria-pressed');
+  }
+
+  it('manual mode: voice resets to off at every stop', () => {
+    const tour = new GalleryTour({ camera, gallery: makeGallery(3), onExit: vi.fn() });
+    toViewing(tour);
+    tour.toggleVoice();
+    expect(pressed()).toBe('true');
+    tour.next(); // manual navigation
+    toViewing(tour);
+    expect(pressed()).toBe('false'); // arrived silent
+    tour.dispose();
+  });
+
+  it('autoplay restores the last explicit choice, even after manual resets', () => {
+    const tour = new GalleryTour({ camera, gallery: makeGallery(3), onExit: vi.fn() });
+    toViewing(tour);
+    tour.toggleVoice(); // explicit ON — remembered
+    tour.next(); // manual → reset off
+    toViewing(tour);
+    expect(pressed()).toBe('false');
+    tour.setAutoplay(true); // autoplay brings the remembered choice back
+    expect(pressed()).toBe('true');
+    tour.dispose();
+  });
+
+  it('autoplay carries the preference from stop to stop', () => {
+    const tour = new GalleryTour({ camera, gallery: makeGallery(3), onExit: vi.fn() });
+    toViewing(tour);
+    tour.setAutoplay(true);
+    tour.toggleVoice(); // ON during autoplay
+    tour.update(31); // exceed even the speech-aware dwell → advance
+    toViewing(tour); // arrive at stop 1
+    expect(pressed()).toBe('true');
+    tour.dispose();
+  });
+
+  it('an explicit OFF during autoplay is remembered too', () => {
+    const tour = new GalleryTour({ camera, gallery: makeGallery(3), onExit: vi.fn() });
+    toViewing(tour);
+    tour.setAutoplay(true);
+    tour.toggleVoice(); // ON
+    tour.toggleVoice(); // explicit OFF — remembered
+    tour.update(13);
+    toViewing(tour);
+    expect(pressed()).toBe('false');
+    tour.dispose();
+  });
+});

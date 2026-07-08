@@ -292,6 +292,12 @@ export class GalleryTour {
 
   private narrator: TourNarrator;
   private voiceOn = false; // initialised after isSupported check in constructor
+  /**
+   * The user's last EXPLICIT Audio-guide choice. Manual stops reset voiceOn
+   * to off (per-artwork, museum audio-guide model); autoplay restores this
+   * preference — "I said I want narration" survives quiet manual browsing.
+   */
+  private autoplayVoicePref = false;
   /** Set when the platform proves unable to speak (API present, no voices). */
   private voiceUnavailable = false;
 
@@ -505,6 +511,25 @@ export class GalleryTour {
         // look never turns Play into an instant jump to the next artwork).
         this.elapsed = this.pausedDwellElapsed ?? 0;
         this.pausedDwellElapsed = null;
+        // Starting autoplay restores the user's last explicit voice choice,
+        // even after manual per-stop resets silenced the toggle — speak this
+        // stop right away and re-time it for the narration.
+        if (this.autoplayVoicePref && !this.voiceUnavailable && !this.voiceOn) {
+          this.voiceOn = true;
+          const { labelText, spoken } = this.currentStopTexts(true);
+          if (spoken) this.narrator.speak(spoken);
+          this.currentDwell = computeStopDwell(labelText, spoken);
+          this.elapsed = 0;
+          this.refreshVoiceButton();
+        }
+      } else {
+        // Travelling/pausing: apply the remembered preference; arrival at the
+        // stop speaks (or not) through the normal viewing-phase flow.
+        const wantVoice = this.autoplayVoicePref && !this.voiceUnavailable;
+        if (wantVoice !== this.voiceOn) {
+          this.voiceOn = wantVoice;
+          this.refreshVoiceButton();
+        }
       }
     } else {
       // Pause freezes EVERYTHING: movement (autoplay), voice mid-sentence,
@@ -549,6 +574,7 @@ export class GalleryTour {
    */
   private handleVoiceUnavailable(): void {
     this.voiceUnavailable = true;
+    this.autoplayVoicePref = false;
     if (this.voiceOn) {
       this.voiceOn = false;
       if (this.phase === 'viewing') {
@@ -565,6 +591,8 @@ export class GalleryTour {
   toggleVoice(): void {
     if (this.voiceUnavailable) return; // disabled button; belt-and-braces
     this.voiceOn = !this.voiceOn;
+    // Every explicit toggle is the choice autoplay will remember.
+    this.autoplayVoicePref = this.voiceOn;
     // Voice change re-times the current stop — a frozen dwell reading from
     // before the toggle would restore a clock that no longer applies.
     this.pausedDwellElapsed = null;
@@ -628,6 +656,14 @@ export class GalleryTour {
     this.pausedDwellElapsed = null;
     // Cancel any in-progress narration when leaving a stop.
     this.narrator.cancel();
+    // Per-stop voice rule: manual browsing arrives silent at every artwork
+    // (audio-guide model — press to hear this one); autoplay carries the
+    // user's remembered preference from stop to stop.
+    const nextVoice = this.autoplay && this.autoplayVoicePref && !this.voiceUnavailable;
+    if (nextVoice !== this.voiceOn) {
+      this.voiceOn = nextVoice;
+      this.refreshVoiceButton();
+    }
     // Leaving the previous waypoint — restore its artwork material
     this.restoreMat?.();
     this.restoreMat = null;

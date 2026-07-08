@@ -135,6 +135,15 @@ reading on Pause and restoring it on Play (paused wall time never counts;
 fresh enables still restart; frozen reading dropped on waypoint change and
 voice toggle). 286/286 after the fix, plus a real-Chromium pause/resume check.
 
+Final UX rule of the day (hers): the Audio guide is per-artwork in manual mode
+— every stop arrives silent, press to hear this one (museum audio-guide
+model) — while autoplay restores the user's last EXPLICIT toggle choice, so
+"I said I want narration" survives quiet manual browsing. Implemented as a
+remembered preference updated only by real button presses; cleared when the
+no-voices guard trips. 290/290 after (4 new memory tests), plus a
+real-Chromium journey check (manual opt-in → silent next stop → autoplay
+restores the choice and speaks).
+
 ## State at end of session
 
 Voice stack (voice-tour → voice-tour-fixes → voice-tour-ux) merged by Huiying
