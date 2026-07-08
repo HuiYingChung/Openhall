@@ -1,5 +1,12 @@
 import { escapeHtml } from '../ui/escape-html';
-import { TourNarrator, pickNarrationText, canAutoAdvance } from './narration';
+import {
+  TourNarrator,
+  pickNarrationText,
+  canAutoAdvance,
+  computeStopDwell,
+} from './narration';
+// Re-export so existing external imports (tour.test.ts etc.) keep working.
+export { computeDwellSeconds } from './narration';
 
 /**
  * tour.ts — Guided gallery tour mode.
@@ -44,19 +51,6 @@ export interface TourOptions {
 const TRAVEL_DURATION = 1.4; // seconds per waypoint travel
 const PAUSE_DURATION = 0.8; // seconds to wait after arrival before showing label
 const EYE_HEIGHT = 1.6;
-
-// Autoplay dwell: how long a waypoint stays on screen before auto-advancing.
-const AUTOPLAY_DWELL_MIN = 5; // seconds — even a bare title deserves a beat
-const AUTOPLAY_DWELL_MAX = 12; // seconds — never park on one work forever
-
-/**
- * Reading time for a wall label, tuned for autoplay: 5 s base plus one second
- * per 80 characters of label text, capped at 12 s. Pure — unit-tested.
- */
-export function computeDwellSeconds(labelText: string): number {
-  const readSeconds = 5 + labelText.length / 80;
-  return Math.min(AUTOPLAY_DWELL_MAX, Math.max(AUTOPLAY_DWELL_MIN, readSeconds));
-}
 
 // ---------------------------------------------------------------------------
 // HUD creation helpers
@@ -283,7 +277,7 @@ export class GalleryTour {
   private playBtn: HTMLButtonElement;
   private voiceBtn: HTMLButtonElement | null = null;
   private autoplay = false;
-  private currentDwell = AUTOPLAY_DWELL_MIN;
+  private currentDwell = 5; // AUTOPLAY_DWELL_MIN — constant lives in narration.ts now
   private isTouch = false;
   private touchLook: TouchLook | null = null;
   private boundKeydown!: (e: KeyboardEvent) => void;
@@ -444,17 +438,18 @@ export class GalleryTour {
           const mesh = this.getArtworkMesh(wp.artworkId);
           if (mesh) this.restoreMat = swapToUnlitMaterial(mesh);
         }
-        // Dwell time scales with how much there is to read at this stop.
+        // Compute label text and spoken text once so dwell can account for both.
         const artwork = wp.artworkId
           ? this.gallery.artworks.find((a) => a.id === wp.artworkId)
           : null;
-        this.currentDwell = computeDwellSeconds(artwork?.label ?? wp.label ?? '');
+        const labelText = artwork?.label ?? wp.label ?? '';
+        const spoken = this.voiceOn ? pickNarrationText(wp, this.gallery) : '';
+        // Speech-aware dwell: max(readingTime, estimatedSpeechDuration).
+        // When voice is off spoken is '', so it falls back to label-only timing.
+        this.currentDwell = computeStopDwell(labelText, spoken);
         this.showLabel();
         // Speak narration at this stop (if voice is on and there is text).
-        if (this.voiceOn) {
-          const text = pickNarrationText(wp, this.gallery);
-          if (text) this.narrator.speak(text);
-        }
+        if (spoken) this.narrator.speak(spoken);
       }
     } else if (this.phase === 'viewing') {
       // Autoplay: advance when dwell has elapsed AND voice is not still speaking.
@@ -473,8 +468,17 @@ export class GalleryTour {
   /** Turn autoplay on/off and reflect the state on the Play/Pause button. */
   setAutoplay(on: boolean): void {
     this.autoplay = on;
-    // Restart the dwell clock so enabling mid-viewing gives full reading time.
-    if (on && this.phase === 'viewing') this.elapsed = 0;
+    if (on && this.phase === 'viewing') {
+      // User turned autoplay ON at the last waypoint → replay from the start.
+      if (this.index >= this.waypoints.length - 1 && this.waypoints.length > 1) {
+        this.playBtn.innerHTML = `${svgPause()}Pause`;
+        this.playBtn.setAttribute('aria-label', 'Pause automatic tour');
+        this.startWaypoint(0);
+        return; // startWaypoint resets elapsed; button is already updated above
+      }
+      // Anywhere else: restart the dwell clock so the user gets full reading time.
+      this.elapsed = 0;
+    }
     this.playBtn.innerHTML = on ? `${svgPause()}Pause` : `${svgPlay()}Play`;
     this.playBtn.setAttribute(
       'aria-label',

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { pickNarrationText, canAutoAdvance } from './narration';
+import { pickNarrationText, canAutoAdvance, estimateSpeechSeconds, computeStopDwell, computeDwellSeconds } from './narration';
 import type { Gallery, TourWaypoint } from '../schema/gallery.schema';
 import { GallerySchema } from '../schema/gallery.schema';
 
@@ -151,5 +151,69 @@ describe('canAutoAdvance', () => {
 
   it('true immediately when dwell is 0 and not speaking', () => {
     expect(canAutoAdvance(0, 0, false)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// estimateSpeechSeconds
+// ---------------------------------------------------------------------------
+
+describe('estimateSpeechSeconds', () => {
+  it('clamps to 5 s floor for empty and very short text', () => {
+    expect(estimateSpeechSeconds('')).toBe(5);
+    expect(estimateSpeechSeconds('Hello')).toBe(5); // 5 / 12 ≈ 0.4 → floor
+  });
+
+  it('is monotonically increasing for longer text (before ceiling)', () => {
+    const short = estimateSpeechSeconds('x'.repeat(60));
+    const medium = estimateSpeechSeconds('x'.repeat(120));
+    const longer = estimateSpeechSeconds('x'.repeat(240));
+    expect(short).toBeLessThan(medium);
+    expect(medium).toBeLessThan(longer);
+  });
+
+  it('clamps to 30 s ceiling for very long text', () => {
+    expect(estimateSpeechSeconds('x'.repeat(5000))).toBe(30);
+  });
+
+  it('60-word narration (~360 chars) is estimated between 20 and 30 s', () => {
+    const sixtyWords = 'word '.repeat(60); // ~300 chars
+    const result = estimateSpeechSeconds(sixtyWords);
+    expect(result).toBeGreaterThanOrEqual(20);
+    expect(result).toBeLessThan(30);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeStopDwell
+// ---------------------------------------------------------------------------
+
+describe('computeStopDwell', () => {
+  it('returns label dwell when spokenText is empty (voice off)', () => {
+    const label = 'A wall label.';
+    expect(computeStopDwell(label, '')).toBe(computeDwellSeconds(label));
+  });
+
+  it('returns speech estimate when narration is longer than label reading time', () => {
+    // Short label (→5 s) but long narration (→20+ s): speech wins
+    const shortLabel = 'Short.';
+    const longNarration = 'x'.repeat(300); // 300/12 = 25 s
+    const result = computeStopDwell(shortLabel, longNarration);
+    expect(result).toBeGreaterThan(computeDwellSeconds(shortLabel));
+    expect(result).toBe(estimateSpeechSeconds(longNarration));
+  });
+
+  it('returns label dwell when label reading time exceeds speech estimate', () => {
+    // Very long label (→12 s cap) but very short narration text (→5 s floor): label wins
+    const longLabel = 'x'.repeat(600);
+    const shortNarration = 'Hi.';
+    const result = computeStopDwell(longLabel, shortNarration);
+    expect(result).toBe(computeDwellSeconds(longLabel)); // 12 s cap
+  });
+
+  it('returns the max of both when they are comparable', () => {
+    const label = 'x'.repeat(80);  // computeDwellSeconds → 6 s
+    const narration = 'x'.repeat(96); // estimateSpeechSeconds → 8 s
+    expect(computeStopDwell(label, narration)).toBe(estimateSpeechSeconds(narration));
   });
 });
