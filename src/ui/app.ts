@@ -819,10 +819,11 @@ function mountExportSuccess(zipBytes: number): void {
         website you own — no Openhall account, no subscription, no lock-in.
       </p>
       <div style="background:var(--oh-field);border:1px solid var(--oh-border);border-radius:8px;padding:0.8rem 0.95rem;margin:0 0 0.9rem;">
-        <p style="margin:0 0 0.35rem;font-size:0.88rem;font-weight:600;">Get it live in about a minute</p>
+        <p style="margin:0 0 0.35rem;font-size:0.88rem;font-weight:600;">Get it live in minutes</p>
         <p style="margin:0;font-size:0.82rem;color:var(--oh-ink-dim);line-height:1.55;">
-          Drag the zip file onto <strong>Netlify Drop</strong> — no unzipping,
-          no account needed to try it. You'll get a shareable URL right away.
+          Sign in to <strong>Netlify Drop</strong> (free account), then drag the
+          zip file onto the page — no unzipping needed. You'll get a shareable
+          URL right away.
         </p>
       </div>
       <div style="display:flex;gap:0.6rem;margin:0 0 0.85rem;">

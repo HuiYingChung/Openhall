@@ -280,14 +280,15 @@ export function buildPublishGuide(galleryTitle: string): string {
 This folder is a complete static website. It has no server code, no
 database, and no dependency on Openhall — host it anywhere, forever.
 
-## Fastest: Netlify Drop (about a minute, free)
+## Fastest: Netlify Drop (minutes, free)
 
-1. Open https://app.netlify.com/drop
+1. Open https://app.netlify.com/drop and sign in — creating a free
+   Netlify account takes a moment if you don't have one.
 2. Drag this whole zip file (or this unzipped folder) onto the page.
 3. That's it — Netlify gives you a live URL to share.
 
-Create a free account when prompted to keep the site permanently and
-set a custom name (yourname.netlify.app) or your own domain.
+From your Netlify dashboard you can set a custom name
+(yourname.netlify.app) or connect your own domain.
 
 ## Also free: GitHub Pages
 
