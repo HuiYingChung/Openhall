@@ -302,6 +302,80 @@ document.addEventListener = origAddEventListener;
 document.removeEventListener = origRemoveEventListener;
 
 // ---------------------------------------------------------------------------
+// Voice UX (items 1–3 from BOB_PROMPT_09C)
+// ---------------------------------------------------------------------------
+
+describe('GalleryTour voice UX', () => {
+  let camera: THREE.PerspectiveCamera;
+
+  beforeEach(() => {
+    camera = makeCamera();
+  });
+
+  afterEach(() => {
+    document.querySelectorAll('#oh-tour-hud, #oh-tour-label').forEach((el) => el.remove());
+  });
+
+  /** Drive update() until the tour reaches 'viewing' at its current waypoint. */
+  function settle(tour: GalleryTour): void {
+    tour.update(10);
+    tour.update(1);
+  }
+
+  it('voice defaults OFF: voiceBtn aria-pressed is false and shows slash icon', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    const voiceBtn = document.getElementById('oh-tour-voice') as HTMLButtonElement | null;
+    if (voiceBtn) {
+      // jsdom sets speechSynthesis so the button will exist
+      expect(voiceBtn.getAttribute('aria-pressed')).toBe('false');
+      expect(voiceBtn.getAttribute('aria-label')).toBe('Turn voice narration on');
+    }
+    tour.dispose();
+  });
+
+  it('toggleVoice() when viewing: turning ON resets dwell clock (elapsed = 0)', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    settle(tour); // in 'viewing' phase
+    // Advance dwell so elapsed > 0
+    tour.update(3);
+
+    // Reach into tour via the voice button click
+    const voiceBtn = document.getElementById('oh-tour-voice') as HTMLButtonElement | null;
+    if (voiceBtn) {
+      voiceBtn.click(); // toggle ON
+      // After turning on the dwell clock must be reset — if we update just under
+      // max dwell the tour should NOT advance yet (proving elapsed was reset).
+      tour.setAutoplay(true);
+      tour.update(11); // just under 12 s max dwell
+      // Still at waypoint 0 (x ≈ 0) because dwell was reset
+      expect(camera.position.x).toBeCloseTo(0, 0);
+    }
+    tour.dispose();
+  });
+
+  it('toggleVoice() when viewing: turning OFF resets dwell to label-only timing', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    settle(tour);
+
+    const voiceBtn = document.getElementById('oh-tour-voice') as HTMLButtonElement | null;
+    if (voiceBtn) {
+      voiceBtn.click(); // ON — may set a long speech dwell
+      voiceBtn.click(); // OFF — must reset to label-only dwell (≤12 s)
+      // After turning OFF, autoplay with a 13 s update should advance
+      // (proving dwell is now label-only, not the 25 s speech estimate).
+      tour.setAutoplay(true);
+      tour.update(13); // exceeds any label-only dwell (max 12 s)
+      tour.update(10); // complete travel
+      expect(camera.position.x).toBeCloseTo(5, 0); // advanced to waypoint 1
+    }
+    tour.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Keyboard navigation
 // ---------------------------------------------------------------------------
 

@@ -178,9 +178,10 @@ function createButtons(
   if (onToggleVoice !== null) {
     voiceBtn = makeBtn('', onToggleVoice);
     voiceBtn.id = 'oh-tour-voice';
-    voiceBtn.innerHTML = `${svgVoiceOn()}Voice`;
-    voiceBtn.setAttribute('aria-label', 'Toggle voice narration');
-    voiceBtn.setAttribute('aria-pressed', 'true');
+    // Initialise in OFF state — voice defaults off (opt-in).
+    voiceBtn.innerHTML = `${svgVoiceOff()}Voice`;
+    voiceBtn.setAttribute('aria-label', 'Turn voice narration on');
+    voiceBtn.setAttribute('aria-pressed', 'false');
   }
 
   row.appendChild(playBtn);
@@ -314,9 +315,10 @@ export class GalleryTour {
     this.getArtworkMesh = opts.getArtworkMesh;
 
     // Set up narrator and decide whether to show the voice button.
+    // Voice defaults OFF — unexpected audio is opt-in (like a museum audio guide).
     this.narrator = new TourNarrator();
     const voiceSupported = this.narrator.isSupported;
-    this.voiceOn = voiceSupported; // default on when supported
+    this.voiceOn = false;
 
     this.hud = createTourHud();
     const { row, playBtn, voiceBtn } = createButtons(
@@ -438,12 +440,9 @@ export class GalleryTour {
           const mesh = this.getArtworkMesh(wp.artworkId);
           if (mesh) this.restoreMat = swapToUnlitMaterial(mesh);
         }
-        // Compute label text and spoken text once so dwell can account for both.
-        const artwork = wp.artworkId
-          ? this.gallery.artworks.find((a) => a.id === wp.artworkId)
-          : null;
-        const labelText = artwork?.label ?? wp.label ?? '';
-        const spoken = this.voiceOn ? pickNarrationText(wp, this.gallery) : '';
+        // Compute label + spoken text via the shared helper so the
+        // lookup logic isn't duplicated between here and toggleVoice().
+        const { labelText, spoken } = this.currentStopTexts(this.voiceOn);
         // Speech-aware dwell: max(readingTime, estimatedSpeechDuration).
         // When voice is off spoken is '', so it falls back to label-only timing.
         this.currentDwell = computeStopDwell(labelText, spoken);
@@ -468,16 +467,23 @@ export class GalleryTour {
   /** Turn autoplay on/off and reflect the state on the Play/Pause button. */
   setAutoplay(on: boolean): void {
     this.autoplay = on;
-    if (on && this.phase === 'viewing') {
-      // User turned autoplay ON at the last waypoint → replay from the start.
-      if (this.index >= this.waypoints.length - 1 && this.waypoints.length > 1) {
-        this.playBtn.innerHTML = `${svgPause()}Pause`;
-        this.playBtn.setAttribute('aria-label', 'Pause automatic tour');
-        this.startWaypoint(0);
-        return; // startWaypoint resets elapsed; button is already updated above
+    if (on) {
+      if (this.phase === 'viewing') {
+        // User turned autoplay ON at the last waypoint → replay from the start.
+        // startWaypoint calls cancel(), which also clears the paused flag.
+        if (this.index >= this.waypoints.length - 1 && this.waypoints.length > 1) {
+          this.playBtn.innerHTML = `${svgPause()}Pause`;
+          this.playBtn.setAttribute('aria-label', 'Pause automatic tour');
+          this.startWaypoint(0);
+          return; // startWaypoint resets elapsed; button already updated above
+        }
+        // Resume a paused utterance if one exists, then restart the dwell clock.
+        if (this.narrator.isPaused) this.narrator.resume();
+        this.elapsed = 0;
       }
-      // Anywhere else: restart the dwell clock so the user gets full reading time.
-      this.elapsed = 0;
+    } else {
+      // Pause freezes EVERYTHING: movement (autoplay) AND voice mid-sentence.
+      if (this.narrator.isSpeaking) this.narrator.pause();
     }
     this.playBtn.innerHTML = on ? `${svgPause()}Pause` : `${svgPlay()}Play`;
     this.playBtn.setAttribute(
@@ -490,10 +496,48 @@ export class GalleryTour {
     return this.autoplay;
   }
 
+  /**
+   * Texts for the currently-viewed stop — shared between `update()` and
+   * `toggleVoice()` so the lookup logic is never duplicated.
+   * Returns `{ labelText, spoken }` where `spoken` reflects the *requested*
+   * voice state (pass the NEW voiceOn value before calling).
+   */
+  private currentStopTexts(voiceOn: boolean): { labelText: string; spoken: string } {
+    if (!this.waypoints.length) return { labelText: '', spoken: '' };
+    const wp = this.waypoints[this.index];
+    const artwork = wp.artworkId
+      ? this.gallery.artworks.find((a) => a.id === wp.artworkId)
+      : null;
+    const labelText = artwork?.label ?? wp.label ?? '';
+    const spoken = voiceOn ? pickNarrationText(wp, this.gallery) : '';
+    return { labelText, spoken };
+  }
+
   /** Toggle voice narration on/off and update the button accordingly. */
   toggleVoice(): void {
     this.voiceOn = !this.voiceOn;
-    if (!this.voiceOn) this.narrator.cancel();
+
+    if (this.phase === 'viewing') {
+      const { labelText, spoken } = this.currentStopTexts(this.voiceOn);
+      if (this.voiceOn) {
+        // Turning ON mid-stop: speak the current narration from the beginning
+        // and recompute dwell so autoplay never cuts it short.
+        if (spoken) this.narrator.speak(spoken);
+        this.currentDwell = computeStopDwell(labelText, spoken);
+        this.elapsed = 0;
+      } else {
+        // Turning OFF mid-stop: cancel speech and fall back to reading-time dwell
+        // so autoplay doesn't sit out a 25 s speech estimate on a silent stop.
+        this.narrator.cancel();
+        this.currentDwell = computeStopDwell(labelText, '');
+        this.elapsed = 0;
+      }
+    } else {
+      // Travelling / pausing: only update state; startWaypoint's normal flow
+      // will speak (or not) when the stop enters 'viewing'.
+      if (!this.voiceOn) this.narrator.cancel();
+    }
+
     if (this.voiceBtn) {
       this.voiceBtn.innerHTML = this.voiceOn
         ? `${svgVoiceOn()}Voice`
