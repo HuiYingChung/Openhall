@@ -91,7 +91,7 @@ output.
 
 ## State at end of session
 
-Voice stack awaiting Huiying's push and stacked PRs: voice-tour (09 feature),
-voice-tour-fixes (09B), voice-tour-ux (09C). 276/276 tests, lint, both builds
-green on the stack tip. Remaining after the ear check + merges: README rewrite,
-hosted deploy, demo video.
+Voice stack (voice-tour → voice-tour-fixes → voice-tour-ux) merged by Huiying
+as a single PR #7 from the stack tip — the cumulative stack let one PR carry
+all three rounds. 276/276 tests, lint, both builds re-verified green on the
+merged main. Remaining: README rewrite, hosted deploy, demo video.
