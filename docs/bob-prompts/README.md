@@ -23,6 +23,7 @@ executed by IBM Bob in fresh sessions. Each prompt pairs with a session log in
 | BOB_PROMPT_08 | Polish — Esc hint, Settings cancel, labels back button (last session on the first trial account) |
 | BOB_PROMPT_09 | AI voice narration for tour mode (speechSynthesis, AI-written docent text) |
 | BOB_PROMPT_09B | Voice tour fixes — speech-aware autoplay dwell, replay via Play at tour end |
+| BOB_PROMPT_09C | Voice tour UX — default off, Pause freezes speech, instant Voice toggle, docent-framed artist intro |
 
 After the first Bob trial account's credits ran out (mid BOB_PROMPT_08 era),
 interim polish was implemented directly by Claude — see `docs/claude-sessions/`.
