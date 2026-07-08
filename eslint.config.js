@@ -24,6 +24,7 @@ const browserGlobals = {
   HTMLElement: 'readonly',
   HTMLButtonElement: 'readonly',
   HTMLCanvasElement: 'readonly',
+  HTMLImageElement: 'readonly',
   CanvasRenderingContext2D: 'readonly',
   HTMLInputElement: 'readonly',
   HTMLSelectElement: 'readonly',
@@ -83,6 +84,20 @@ export default [
       parser: tsParser,
       parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
       globals: cfWorkerGlobals,
+    },
+    plugins: { '@typescript-eslint': tsPlugin },
+    rules: {
+      ...tsPlugin.configs.recommended.rules,
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
+  },
+  // Integration/E2E tests (Node context + browser APIs via playwright)
+  {
+    files: ['tests/**/*.ts'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
+      globals: { ...browserGlobals, process: 'readonly', Buffer: 'readonly' },
     },
     plugins: { '@typescript-eslint': tsPlugin },
     rules: {
