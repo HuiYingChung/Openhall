@@ -1100,13 +1100,14 @@ function renderUpload(
         <p style="color:var(--oh-ink-dim);font-size:0.92rem;margin:0 0 0.8rem;">Turn up to 10 artworks into a walkable 3D gallery — fully AI-generated, exportable as a website you own.</p>
         <div style="display:flex;flex-wrap:wrap;gap:0.35rem 1.2rem;margin-bottom:0.6rem;color:var(--oh-ink-muted);font-size:0.8rem;">
           <span><span style="color:#ddd;font-weight:600;">1</span> · Upload your artworks</span>
-          <span><span style="color:#ddd;font-weight:600;">2</span> · Describe the show and pick a style</span>
-          <span><span style="color:#ddd;font-weight:600;">3</span> · AI designs the gallery</span>
-          <span><span style="color:#ddd;font-weight:600;">4</span> · Walk through it, then export</span>
+          <span><span style="color:#ddd;font-weight:600;">2</span> · Describe your exhibition and pick a style</span>
+          <span><span style="color:#ddd;font-weight:600;">3</span> · AI curates the rooms, layout, and labels</span>
+          <span><span style="color:#ddd;font-weight:600;">4</span> · Walk through it, then export your own website</span>
         </div>
         <p style="color:var(--oh-ink-muted);font-size:0.8rem;margin:0 0 1.5rem;">
-          First time here? Add your AI API key via the <span style="color:#ccc;">Settings</span> button (top right) —
-          or <button id="oh-home-demo" class="oh-btn--link" style="font-size:0.8rem;">view the demo gallery</button> first, no key needed.
+          Openhall runs on your own AI key (IBM watsonx or OpenAI-compatible) — that's why it's free.
+          Add yours in <span style="color:#ccc;">Settings</span> (top right), or
+          <button id="oh-home-demo" class="oh-btn--link" style="font-size:0.8rem;">view the demo gallery</button> first, no key needed.
         </p>
 
         <div id="oh-dropzone" class="oh-dropzone" style="margin-bottom:1rem;">
