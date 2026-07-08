@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { buildExportBundle, downloadZip, buildIndexHtml } from '../export/bundler';
+import { buildExportBundle, downloadZip, buildIndexHtml, buildPublishGuide } from '../export/bundler';
 import { escapeHtml } from '../ui/escape-html';
 import { GallerySchema } from '../schema/gallery.schema';
 import sampleGallery from '../demo/sample-gallery.json';
@@ -339,6 +339,40 @@ describe('buildExportBundle', () => {
     });
 
     expect(totalBytes).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Publish guide
+// ---------------------------------------------------------------------------
+
+describe('publish guide', () => {
+  it('includes PUBLISH.md in the zip with the gallery title and both hosting routes', async () => {
+    const gallery = makeGallery();
+    const artworkUrls = makeArtworkUrls(gallery);
+    vi.stubGlobal('fetch', makeFetch());
+
+    const { blob } = await buildExportBundle({
+      gallery,
+      artworkUrls,
+      viewerScriptUrl: 'https://example.com/assets/viewer.js',
+    });
+
+    const zip = await JSZip.loadAsync(blob);
+    const guide = zip.file('PUBLISH.md');
+    expect(guide).not.toBeNull();
+    const text = await guide!.async('string');
+    expect(text).toContain(gallery.title);
+    expect(text).toContain('netlify.com/drop');
+    expect(text).toContain('GitHub Pages');
+  });
+
+  it('buildPublishGuide names the zip contents and the ownership promise', () => {
+    const text = buildPublishGuide('My Show');
+    expect(text).toContain('# Publish "My Show"');
+    expect(text).toContain('gallery.json');
+    expect(text).toContain('assets/viewer.js');
+    expect(text).toContain('no lock-in');
   });
 });
 

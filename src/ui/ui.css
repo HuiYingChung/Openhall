@@ -1,0 +1,450 @@
+/**
+ * ui.css — Design tokens + component classes for the app chrome
+ * (settings / upload / generating / labels screens, stepper, viewer HUD).
+ *
+ * Scope boundary: everything here is ONLY for the in-app UI served by
+ * index.html. The exported viewer bundle (viewer-entry.ts + overlay.ts +
+ * interactions.ts + tour.ts) must stay self-contained and keeps its inline
+ * styles — do not add classes from this file to anything that ships in
+ * the export zip.
+ */
+
+:root {
+  /* Color tokens — the palette that was previously scattered as hex literals */
+  --oh-bg: #0d0d0d;          /* page background */
+  --oh-scrim: rgba(0, 0, 0, 0.88);
+  --oh-panel: #1a1a1a;       /* card / panel surface */
+  --oh-field: #111111;       /* input background */
+  --oh-border: #333333;      /* default hairline */
+  --oh-border-strong: #444444;
+  --oh-ink: #f0ece6;         /* primary text (warm cream) */
+  --oh-ink-dim: #aaaaaa;     /* secondary text */
+  --oh-ink-muted: #888888;   /* helper text */
+  --oh-ink-faint: #666666;   /* fine print */
+  --oh-ok: #6a9a6a;          /* success green */
+  --oh-warn: #d9a441;        /* cost-warning amber */
+  --oh-danger: #cf6f5a;      /* error tone (warm, matches palette) */
+
+  --oh-font: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --oh-radius: 8px;
+  --oh-radius-lg: 12px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Screens                                                             */
+/* ------------------------------------------------------------------ */
+
+.oh-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--oh-bg);
+  z-index: 50;
+  font-family: var(--oh-font);
+  color: var(--oh-ink);
+  overflow-y: auto;
+}
+
+.oh-screen--center {
+  align-items: center;
+  justify-content: center;
+  background: var(--oh-scrim);
+  overflow-y: visible;
+}
+
+.oh-panel {
+  background: var(--oh-panel);
+  border: 1px solid var(--oh-border);
+  border-radius: var(--oh-radius-lg);
+  padding: 2rem;
+  width: min(480px, 90vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons                                                             */
+/* ------------------------------------------------------------------ */
+
+.oh-btn {
+  font-family: var(--oh-font);
+  font-size: 0.9rem;
+  color: var(--oh-ink);
+  background: var(--oh-panel);
+  border: 1px solid var(--oh-border-strong);
+  border-radius: var(--oh-radius);
+  padding: 0.55rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+.oh-btn:hover { background: #242424; border-color: #555; }
+.oh-btn:active { background: #2c2c2c; }
+.oh-btn:disabled { opacity: 0.4; cursor: default; }
+.oh-btn:disabled:hover { background: var(--oh-panel); border-color: var(--oh-border-strong); }
+
+.oh-btn--primary {
+  background: #ffffff;
+  color: #111111;
+  border-color: #ffffff;
+  font-weight: 600;
+}
+.oh-btn--primary:hover { background: var(--oh-ink); border-color: var(--oh-ink); }
+.oh-btn--primary:active { background: #ddd8d0; }
+.oh-btn--primary:disabled:hover { background: #ffffff; border-color: #ffffff; }
+
+/* Two-step billable confirm state (toggled by JS on the generate button) */
+.oh-btn--armed,
+.oh-btn--armed:hover {
+  background: var(--oh-warn);
+  border-color: var(--oh-warn);
+  color: #1a1a1a;
+}
+
+.oh-btn--ghost {
+  background: none;
+  color: var(--oh-ink-dim);
+}
+.oh-btn--ghost:hover { background: rgba(255, 255, 255, 0.06); color: var(--oh-ink); }
+.oh-btn--ghost:disabled:hover { background: none; color: var(--oh-ink-dim); }
+
+/* Text that behaves like a link (demo mode, view the demo gallery) */
+.oh-btn--link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #cccccc;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+  border-radius: 2px;
+}
+.oh-btn--link:hover { color: #ffffff; }
+
+/* Viewer HUD (translucent over the 3D scene) */
+.oh-btn--hud {
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: var(--oh-ink);
+  padding: 0.45rem 0.9rem;
+  font-size: 0.88rem;
+  display: inline-flex;
+  align-items: center;
+}
+.oh-btn--hud:hover { background: rgba(20, 20, 20, 0.85); border-color: rgba(255, 255, 255, 0.45); }
+
+/* Keyboard focus — visible ring on every interactive element */
+.oh-btn:focus-visible,
+.oh-field:focus-visible,
+.oh-btn--link:focus-visible,
+summary:focus-visible {
+  outline: 2px solid rgba(240, 236, 230, 0.75);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Form fields                                                         */
+/* ------------------------------------------------------------------ */
+
+.oh-field {
+  width: 100%;
+  padding: 0.55rem;
+  background: var(--oh-field);
+  color: var(--oh-ink);
+  border: 1px solid var(--oh-border);
+  border-radius: var(--oh-radius);
+  font-size: 0.92rem;
+  font-family: var(--oh-font);
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.oh-field:hover { border-color: var(--oh-border-strong); }
+.oh-field:focus { border-color: #777; outline: none; }
+.oh-field::placeholder { color: #5a5a5a; }
+textarea.oh-field { resize: vertical; }
+
+/* Field-level validation error (replaces alert() for form problems) */
+.oh-field.is-invalid { border-color: var(--oh-warn); }
+.oh-field-error {
+  font-size: 0.78rem;
+  color: var(--oh-warn);
+  margin: 0.35rem 0 0;
+}
+
+.oh-label {
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.oh-help { font-size: 0.75rem; color: var(--oh-ink-faint); }
+
+/* ------------------------------------------------------------------ */
+/* Small shared bits                                                   */
+/* ------------------------------------------------------------------ */
+
+.oh-hint--ok { color: var(--oh-ok); }
+.oh-hint--warn { color: var(--oh-warn); }
+
+.oh-kbd {
+  background: var(--oh-border);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  font-family: inherit;
+}
+
+/* Upload/review toggle pills (favicon + portrait source) */
+.oh-toggle {
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  background: var(--oh-panel);
+  border: 1px solid var(--oh-border);
+  color: var(--oh-ink-muted);
+  font-weight: 400;
+  font-family: var(--oh-font);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.oh-toggle:hover { border-color: #555; color: var(--oh-ink-dim); }
+.oh-toggle.is-active {
+  background: #20361f;
+  border-color: var(--oh-ok);
+  color: #d7ecd7;
+  font-weight: 600;
+}
+
+/* Style-preset cards */
+.oh-preset {
+  padding: 0.6rem 0.75rem;
+  background: var(--oh-panel);
+  color: var(--oh-ink);
+  border: 1px solid var(--oh-border-strong);
+  border-radius: var(--oh-radius);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.85rem;
+  font-family: var(--oh-font);
+  transition: background 0.15s, border-color 0.15s;
+}
+.oh-preset:hover { border-color: #666; }
+.oh-preset.is-selected { background: #ffffff; color: #111111; }
+.oh-preset.is-selected .oh-preset-desc { color: #555; }
+.oh-preset-desc { color: var(--oh-ink-muted); font-size: 0.75rem; }
+.oh-preset:focus-visible { outline: 2px solid rgba(240, 236, 230, 0.75); outline-offset: 2px; }
+
+/* Dropzone */
+.oh-dropzone {
+  border: 2px dashed var(--oh-border-strong);
+  border-radius: var(--oh-radius-lg);
+  padding: 3rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.oh-dropzone:hover { border-color: #777; }
+.oh-dropzone.is-dragover { border-color: var(--oh-ink-dim); background: rgba(255, 255, 255, 0.03); }
+
+/* ------------------------------------------------------------------ */
+/* Feedback: toast + error card (see feedback.ts)                      */
+/* ------------------------------------------------------------------ */
+
+#oh-toast-root {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  z-index: 400;
+  display: flex;
+  justify-content: center;
+  width: max-content;
+  max-width: min(560px, 92vw);
+  font-family: var(--oh-font);
+}
+
+.oh-toast {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--oh-panel);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--oh-radius);
+  padding: 0.65rem 0.9rem;
+  color: var(--oh-ink);
+  font-size: 0.88rem;
+  max-width: 100%;
+}
+.oh-toast--error { border-color: rgba(207, 111, 90, 0.55); }
+.oh-toast--success { border-color: rgba(106, 154, 106, 0.55); }
+.oh-toast-msg { min-width: 0; }
+.oh-toast-action { padding: 0.35rem 0.8rem; font-size: 0.82rem; flex-shrink: 0; }
+.oh-toast-close {
+  background: none;
+  border: none;
+  color: var(--oh-ink-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.2rem 0.3rem;
+  flex-shrink: 0;
+}
+.oh-toast-close:hover { color: var(--oh-ink); }
+
+.oh-error-card {
+  background: var(--oh-panel);
+  border: 1px solid rgba(217, 164, 65, 0.4);
+  border-radius: var(--oh-radius);
+  padding: 1.1rem 1.35rem;
+  max-width: min(440px, 88vw);
+  text-align: left;
+  outline: none;
+  font-family: var(--oh-font);
+  color: var(--oh-ink);
+}
+.oh-error-title {
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--oh-ink);
+}
+.oh-error-hint {
+  margin: 0 0 0.9rem;
+  font-size: 0.83rem;
+  color: var(--oh-ink-muted);
+  line-height: 1.5;
+}
+.oh-error-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.oh-error-detail { margin-top: 0.8rem; }
+.oh-error-detail summary {
+  font-size: 0.72rem;
+  color: #555;
+  cursor: pointer;
+}
+.oh-error-detail p {
+  font-size: 0.72rem;
+  color: var(--oh-ink-faint);
+  margin: 0.35rem 0 0;
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------------------ */
+/* Generation stage (see generation-view.ts)                           */
+/* ------------------------------------------------------------------ */
+
+.oh-gen-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  opacity: 0.25;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  transition: opacity 0.35s;
+}
+.oh-gen-thumb.is-analysing {
+  opacity: 1;
+  animation: oh-gen-pulse 1.2s ease-in-out infinite;
+}
+.oh-gen-thumb.is-done { opacity: 1; }
+@keyframes oh-gen-pulse {
+  0%, 100% { outline-color: var(--oh-warn); }
+  50% { outline-color: rgba(217, 164, 65, 0.2); }
+}
+
+.oh-gen-readout {
+  min-height: 1.4rem;
+  font-size: 0.82rem;
+  color: var(--oh-ink);
+  background: var(--oh-panel);
+  border-radius: 6px;
+  padding: 0.45rem 0.7rem;
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+}
+.oh-gen-readout:empty { visibility: hidden; }
+.oh-gen-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.oh-gen-room {
+  background: var(--oh-panel);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  flex: 1;
+  min-width: 150px;
+  max-width: 260px;
+  animation: oh-gen-fadein 0.4s ease;
+}
+.oh-gen-room-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  color: var(--oh-ok);
+}
+.oh-gen-mini {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  display: inline-block;
+  background: var(--oh-field);
+}
+.oh-gen-mini img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.oh-gen-order {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--oh-ink);
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+.oh-gen-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--oh-ink-muted);
+  font-style: italic;
+  text-align: center;
+  max-width: 420px;
+}
+
+@keyframes oh-gen-fadein {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Floor plan: rooms draw themselves in; the tour path marches. */
+.oh-plan-room {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  animation: oh-plan-draw 1.1s ease forwards;
+}
+.oh-plan-art { animation: oh-gen-fadein 0.5s ease 0.7s backwards; }
+.oh-plan-tour {
+  stroke-dasharray: 6 5;
+  animation: oh-plan-march 1.6s linear infinite;
+}
+@keyframes oh-plan-draw { to { stroke-dashoffset: 0; } }
+@keyframes oh-plan-march { to { stroke-dashoffset: -22; } }
+
+/* Wordmark — glyph + text lockup used on the upload header and overlays */
+.oh-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--oh-ink);
+}
+.oh-wordmark svg { display: block; }
