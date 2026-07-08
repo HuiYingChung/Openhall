@@ -618,6 +618,11 @@ export function bootApp(): void {
 
             if (supportsPointerLock()) {
               wireRelockDemo();
+              // The demo scene is already rendering behind — clear the setup
+              // screen and stepper so the overlay's translucency previews the
+              // gallery instead of double-exposing a leftover form.
+              ui.innerHTML = '';
+              renderStepper('viewer'); // removes the stepper
               // Show hint overlay then enter viewer.
               // onLock declared before mountHintOverlay so the onClose closure can reference it.
               let onLock: () => void;
@@ -1728,6 +1733,13 @@ function renderLabels(
       return;
     }
 
+    // The generated scene is already rendering behind — clear the review
+    // screen and hide the stepper so the overlay's translucency previews the
+    // gallery instead of double-exposing the form. × restores the screen.
+    const stepper = document.getElementById('oh-stepper');
+    container.innerHTML = '';
+    if (stepper) stepper.style.display = 'none';
+
     // Show hint overlay; dismiss only once pointer lock actually succeeds.
     // Three.js EventDispatcher has no { once } option — we remove manually.
     // onLock declared before mountHintOverlay so the onClose closure can reference it.
@@ -1735,8 +1747,10 @@ function renderLabels(
     const { dismiss } = mountHintOverlay(() => {
       c.lock();
     }, () => {
-      // × button: overlay already dismissed by mountHintOverlay — labels screen reappears
+      // × button: re-render the review screen (it was cleared above)
       c.pointerLock.removeEventListener('lock', onLock);
+      if (stepper) stepper.style.display = '';
+      renderLabels(container, data, onEnterViewer, getControls, onBack);
     }, {
       title: data.gallery!.title,
       artistName: data.gallery!.artist?.name ?? data.gallery!.branding?.authorName,
