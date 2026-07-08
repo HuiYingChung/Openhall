@@ -1,4 +1,5 @@
 import { escapeHtml } from '../ui/escape-html';
+import { TourNarrator, pickNarrationText, canAutoAdvance } from './narration';
 
 /**
  * tour.ts — Guided gallery tour mode.
@@ -138,13 +139,22 @@ function svgPlay(): string {
 function svgPause(): string {
   return `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-1px;margin-right:5px;" aria-hidden="true"><rect x="3.5" y="2.5" width="3.2" height="11" rx="0.8"/><rect x="9.3" y="2.5" width="3.2" height="11" rx="0.8"/></svg>`;
 }
+/** Speaker icon (voice on) */
+function svgVoiceOn(): string {
+  return `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><path d="M1 5.5h3l4-3v11l-4-3H1z"/><path d="M11 5a4.5 4.5 0 0 1 0 6"/><path d="M12.5 3a7 7 0 0 1 0 10"/></svg>`;
+}
+/** Speaker with slash (voice off) */
+function svgVoiceOff(): string {
+  return `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" aria-hidden="true"><path d="M1 5.5h3l4-3v11l-4-3H1z"/><line x1="12" y1="4" x2="4" y2="12"/></svg>`;
+}
 
 function createButtons(
   onTogglePlay: () => void,
   onPrev: () => void,
   onNext: () => void,
-  onExit: () => void
-): { row: HTMLElement; playBtn: HTMLButtonElement } {
+  onExit: () => void,
+  onToggleVoice: (() => void) | null
+): { row: HTMLElement; playBtn: HTMLButtonElement; voiceBtn: HTMLButtonElement | null } {
   const row = document.createElement('div');
   row.style.cssText = `
     display:flex;gap:0.6rem;pointer-events:all;
@@ -170,11 +180,21 @@ function createButtons(
   playBtn.innerHTML = `${svgPlay()}Play`;
   playBtn.setAttribute('aria-label', 'Play tour automatically');
 
+  let voiceBtn: HTMLButtonElement | null = null;
+  if (onToggleVoice !== null) {
+    voiceBtn = makeBtn('', onToggleVoice);
+    voiceBtn.id = 'oh-tour-voice';
+    voiceBtn.innerHTML = `${svgVoiceOn()}Voice`;
+    voiceBtn.setAttribute('aria-label', 'Toggle voice narration');
+    voiceBtn.setAttribute('aria-pressed', 'true');
+  }
+
   row.appendChild(playBtn);
+  if (voiceBtn) row.appendChild(voiceBtn);
   row.appendChild(makeBtn('← Prev', onPrev));
   row.appendChild(makeBtn('Next →', onNext));
   row.appendChild(makeBtn('Exit Tour', onExit));
-  return { row, playBtn };
+  return { row, playBtn, voiceBtn };
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +281,7 @@ export class GalleryTour {
   private labelBox!: HTMLElement;
   private btns: HTMLElement;
   private playBtn: HTMLButtonElement;
+  private voiceBtn: HTMLButtonElement | null = null;
   private autoplay = false;
   private currentDwell = AUTOPLAY_DWELL_MIN;
   private isTouch = false;
@@ -271,6 +292,9 @@ export class GalleryTour {
   private onExitCb: (position: THREE.Vector3) => void;
   private getArtworkMesh?: (id: string) => THREE.Mesh | undefined;
   private restoreMat: (() => void) | null = null;
+
+  private narrator: TourNarrator;
+  private voiceOn = false; // initialised after isSupported check in constructor
 
   private static isTouchDevice(): boolean {
     return typeof window !== 'undefined' &&
@@ -295,16 +319,23 @@ export class GalleryTour {
     this.onExitCb = opts.onExit;
     this.getArtworkMesh = opts.getArtworkMesh;
 
+    // Set up narrator and decide whether to show the voice button.
+    this.narrator = new TourNarrator();
+    const voiceSupported = this.narrator.isSupported;
+    this.voiceOn = voiceSupported; // default on when supported
+
     this.hud = createTourHud();
-    const { row, playBtn } = createButtons(
+    const { row, playBtn, voiceBtn } = createButtons(
       () => this.setAutoplay(!this.autoplay),
       () => this.prev(),
       () => this.next(),
-      () => this.exit()
+      () => this.exit(),
+      voiceSupported ? () => this.toggleVoice() : null
     );
     this.hud.appendChild(row);
     this.btns = row;
     this.playBtn = playBtn;
+    this.voiceBtn = voiceBtn;
 
     // Layout (floating card vs bottom sheet) responds to live resizes and
     // device rotation — re-applied whenever the 768 px threshold is crossed.
@@ -419,11 +450,16 @@ export class GalleryTour {
           : null;
         this.currentDwell = computeDwellSeconds(artwork?.label ?? wp.label ?? '');
         this.showLabel();
+        // Speak narration at this stop (if voice is on and there is text).
+        if (this.voiceOn) {
+          const text = pickNarrationText(wp, this.gallery);
+          if (text) this.narrator.speak(text);
+        }
       }
     } else if (this.phase === 'viewing') {
-      // Autoplay: advance after the dwell. Stops (instead of looping) after
-      // the final waypoint so visitors aren't trapped in an endless cycle.
-      if (this.autoplay && this.elapsed >= this.currentDwell) {
+      // Autoplay: advance when dwell has elapsed AND voice is not still speaking.
+      // canAutoAdvance enforces the combined condition with a 2× safety fallback.
+      if (this.autoplay && canAutoAdvance(this.elapsed, this.currentDwell, this.narrator.isSpeaking)) {
         if (this.index >= this.waypoints.length - 1) {
           this.setAutoplay(false);
         } else {
@@ -450,8 +486,26 @@ export class GalleryTour {
     return this.autoplay;
   }
 
+  /** Toggle voice narration on/off and update the button accordingly. */
+  toggleVoice(): void {
+    this.voiceOn = !this.voiceOn;
+    if (!this.voiceOn) this.narrator.cancel();
+    if (this.voiceBtn) {
+      this.voiceBtn.innerHTML = this.voiceOn
+        ? `${svgVoiceOn()}Voice`
+        : `${svgVoiceOff()}Voice`;
+      this.voiceBtn.setAttribute('aria-pressed', this.voiceOn ? 'true' : 'false');
+      this.voiceBtn.setAttribute(
+        'aria-label',
+        this.voiceOn ? 'Turn voice narration off' : 'Turn voice narration on'
+      );
+    }
+  }
+
   private startWaypoint(index: number): void {
     if (!this.waypoints.length) return;
+    // Cancel any in-progress narration when leaving a stop.
+    this.narrator.cancel();
     // Leaving the previous waypoint — restore its artwork material
     this.restoreMat?.();
     this.restoreMat = null;
@@ -557,6 +611,7 @@ export class GalleryTour {
 
   /** Clean up HUD, label box, resize + keyboard + touch listeners. */
   dispose(): void {
+    this.narrator.cancel();
     this.restoreMat?.();
     this.restoreMat = null;
     document.removeEventListener('keydown', this.boundKeydown);
