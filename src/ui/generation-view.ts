@@ -13,9 +13,11 @@
  */
 
 import type { UploadedArtwork } from '../ai/provider';
+import type { ComposeProgressEvent } from '../ai/provider';
 import type { WorkAnalysis, CurationPlan } from '../schema/analysis.schema';
 import type { Gallery } from '../schema/gallery.schema';
 import { escapeHtml } from './escape-html';
+import { prefersReducedMotion } from './overlay';
 
 // ---------------------------------------------------------------------------
 // Floor plan SVG — pure and unit-testable
@@ -142,6 +144,15 @@ function wallSegment(
 // View controller
 // ---------------------------------------------------------------------------
 
+/** SVG plaque icon for wall labels (inline, no emoji). */
+function svgPlaque(): string {
+  return `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:3px;flex-shrink:0;"><rect x="1.5" y="3.5" width="13" height="9" rx="1.2"/><line x1="4" y1="6.5" x2="12" y2="6.5"/><line x1="4" y1="9.5" x2="9" y2="9.5"/></svg>`;
+}
+/** SVG speaker icon for spoken narration (matches tour.ts svgVoiceOn, no emoji). */
+function svgSpeaker(): string {
+  return `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:3px;flex-shrink:0;"><path d="M1 5.5h3l4-3v11l-4-3H1z"/><path d="M11 5a4.5 4.5 0 0 1 0 6"/></svg>`;
+}
+
 export interface GenerationView {
   setStatus(text: string, pct: number): void;
   /** Act 1: mark artwork `index` as being analysed. */
@@ -150,8 +161,16 @@ export interface GenerationView {
   finishArtwork(index: number, analysis: WorkAnalysis): void;
   /** Act 2: regroup thumbnails into curated rooms. */
   showCuration(plan: CurationPlan): void;
-  /** Act 3: draw the floor plan from the final gallery. */
+  /**
+   * Act 3 (writing): handle a compose pipeline progress event.
+   * Highlights batch thumbnails, reveals real label/narration snippets,
+   * shows the assembling line, and surfaces retries honestly.
+   */
+  showWritingProgress(evt: ComposeProgressEvent): void;
+  /** Act 4: draw the floor plan from the final gallery. */
   showFloorPlan(gallery: Gallery): void;
+  /** Show a small model attribution caption below the progress message. */
+  showModelCaption(caption: string): void;
 }
 
 /**
@@ -200,6 +219,57 @@ export function createGenerationView(
     stage.replaceChildren(row, readout);
   }
 
+  // --- Act 3 scaffold: writing act ---
+  // writingThumbEls mirrors artworks; writingSnippets maps artworkId → div
+  let writingThumbEls: HTMLElement[] = [];
+  let writingSnippets = new Map<string, HTMLElement>();
+  let writingStage: HTMLElement | null = null;
+  let retryNotice: HTMLElement | null = null;
+
+  function ensureWritingStage(): void {
+    if (writingStage) return;
+    writingStage = document.createElement('div');
+    writingStage.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:100%;';
+    // Row of tiny thumbnails (same set as Act 1, dimmed until highlighted)
+    const thumbRow = document.createElement('div');
+    thumbRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:center;';
+    for (const aw of artworks) {
+      const t = document.createElement('div');
+      t.className = 'oh-gen-thumb';
+      t.dataset.awId = aw.id;
+      t.innerHTML = `<img src="${escapeHtml(aw.displayObjectUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">`;
+      thumbRow.appendChild(t);
+      writingThumbEls.push(t);
+    }
+    // Snippet area — empty rows will be filled by labels-batch-done
+    const snippetArea = document.createElement('div');
+    snippetArea.className = 'oh-gen-snippet-area';
+    snippetArea.setAttribute('aria-live', 'polite');
+    // Pre-populate empty snippet slots so they can be revealed in place
+    for (const aw of artworks) {
+      const row = document.createElement('div');
+      row.className = 'oh-gen-snippet';
+      row.dataset.awId = aw.id;
+      row.style.display = 'none';
+      snippetArea.appendChild(row);
+      writingSnippets.set(aw.id, row);
+    }
+    writingStage.append(thumbRow, snippetArea);
+    stage.replaceChildren(writingStage);
+  }
+
+  // Model attribution caption (below progress bar)
+  let captionEl: HTMLElement | null = null;
+  function ensureCaptionEl(): HTMLElement {
+    if (!captionEl) {
+      captionEl = document.createElement('p');
+      captionEl.className = 'oh-gen-caption';
+      // Insert after the progress bar wrapper (last child of host's flex column)
+      host.querySelector('div')?.appendChild(captionEl);
+    }
+    return captionEl;
+  }
+
   return {
     setStatus(text, pct) {
       msg.textContent = text;
@@ -229,6 +299,91 @@ export function createGenerationView(
           .join(' · ');
         readout.innerHTML = `${dots}<span style="margin-left:6px;">${words}</span>`;
       }
+    },
+
+    showWritingProgress(evt: ComposeProgressEvent) {
+      if (evt.type === 'title') {
+        // Assembling is reported after title, so nothing to show yet for 'title'
+        // except the ensureWritingStage call which sets the scene.
+        ensureWritingStage();
+        return;
+      }
+
+      if (evt.type === 'assembling') {
+        ensureWritingStage();
+        // Surface a clear, honest line: geometry is deterministic, not AI-generated.
+        const line = document.createElement('p');
+        line.className = 'oh-gen-writing-line';
+        line.textContent = 'Composing rooms deterministically from the curator\'s plan…';
+        writingStage!.appendChild(line);
+        // Remove any lingering retry notice
+        retryNotice?.remove();
+        retryNotice = null;
+        return;
+      }
+
+      if (evt.type === 'retry') {
+        ensureWritingStage();
+        // Show a subdued, transient notice — honest about what happened
+        if (!retryNotice) {
+          retryNotice = document.createElement('p');
+          retryNotice.className = 'oh-gen-retry-notice';
+          writingStage!.appendChild(retryNotice);
+        }
+        retryNotice.textContent = 'The model\'s output didn\'t validate — retrying once.';
+        return;
+      }
+
+      if (evt.type === 'labels-batch-start') {
+        ensureWritingStage();
+        // Clear previous retry notice when a new batch starts
+        retryNotice?.remove();
+        retryNotice = null;
+        // Highlight this batch's thumbnails, dim the rest
+        for (const t of writingThumbEls) {
+          const id = t.dataset.awId ?? '';
+          if (evt.artworkIds.includes(id)) {
+            t.classList.add('is-analysing');
+            t.classList.remove('is-done');
+          } else {
+            t.classList.remove('is-analysing');
+          }
+        }
+        return;
+      }
+
+      if (evt.type === 'labels-batch-done') {
+        ensureWritingStage();
+        // Mark this batch's thumbnails as done, reveal real text snippets
+        for (const entry of evt.entries) {
+          const t = writingThumbEls.find((el) => el.dataset.awId === entry.artworkId);
+          if (t) {
+            t.classList.remove('is-analysing');
+            t.classList.add('is-done');
+          }
+          const snippetEl = writingSnippets.get(entry.artworkId);
+          if (snippetEl) {
+            const labelSnip = entry.label.slice(0, 60) + (entry.label.length > 60 ? '…' : '');
+            const narSnip = entry.narration
+              ? (entry.narration.slice(0, 60) + (entry.narration.length > 60 ? '…' : ''))
+              : null;
+            snippetEl.innerHTML =
+              `<span class="oh-gen-snippet-row">${svgPlaque()}<span class="oh-gen-snippet-text">${escapeHtml(labelSnip)}</span></span>` +
+              (narSnip
+                ? `<span class="oh-gen-snippet-row">${svgSpeaker()}<span class="oh-gen-snippet-text">${escapeHtml(narSnip)}</span></span>`
+                : '');
+            if (!prefersReducedMotion()) {
+              snippetEl.classList.add('oh-gen-snippet--reveal');
+            }
+            snippetEl.style.display = '';
+          }
+        }
+        return;
+      }
+    },
+
+    showModelCaption(caption: string) {
+      ensureCaptionEl().textContent = caption;
     },
 
     showCuration(plan) {

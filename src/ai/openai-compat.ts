@@ -106,7 +106,8 @@ export class OpenAICompatProvider implements AIProvider {
     artworks: UploadedArtwork[],
     analyses: WorkAnalysis[],
     plan: CurationPlan,
-    preset: StylePreset
+    preset: StylePreset,
+    onProgress?: (evt: import('./provider').ComposeProgressEvent) => void
   ): Promise<Gallery> {
     // Shared composition: LLM writes title + labels; geometry is assembled
     // deterministically. The old freeform whole-gallery.json prompt produced
@@ -117,7 +118,8 @@ export class OpenAICompatProvider implements AIProvider {
       artworks,
       analyses,
       plan,
-      preset
+      preset,
+      onProgress
     );
   }
 }

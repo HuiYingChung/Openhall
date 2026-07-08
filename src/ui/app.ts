@@ -22,13 +22,15 @@ import {
   WatsonxProvider,
   loadWatsonxSettings,
   saveWatsonxSettings,
+  WATSONX_VISION_MODEL,
+  WATSONX_TEXT_MODEL,
 } from '../ai/watsonx';
 import {
   OpenAICompatProvider,
   loadOpenAISettings,
   saveOpenAISettings,
 } from '../ai/openai-compat';
-import type { AIProvider, UploadedArtwork, StylePreset } from '../ai/provider';
+import type { AIProvider, UploadedArtwork, StylePreset, ComposeProgressEvent } from '../ai/provider';
 import { STYLE_PRESETS as PRESETS } from '../ai/provider';
 import type { WorkAnalysis } from '../schema/analysis.schema';
 import type { Gallery } from '../schema/gallery.schema';
@@ -1474,17 +1476,27 @@ function renderGenerating(
   // Build provider — honour the explicitly chosen provider first, then fall
   // back to whichever key exists (legacy behaviour for pre-existing settings).
   let provider: AIProvider;
+  let visionModelCaption = '';
+  let textModelCaption = '';
   const wxSettings = loadWatsonxSettings();
   const oaiSettings = loadOpenAISettings();
   const chosenProvider = localStorage.getItem('openhall_provider');
   if (chosenProvider === 'openai' && oaiSettings?.apiKey) {
     provider = new OpenAICompatProvider(oaiSettings);
+    visionModelCaption = `openai · ${oaiSettings.model}`;
+    textModelCaption = `openai · ${oaiSettings.model}`;
   } else if (chosenProvider === 'watsonx' && wxSettings?.apiKey) {
     provider = new WatsonxProvider(wxSettings);
+    visionModelCaption = `watsonx · ${WATSONX_VISION_MODEL}`;
+    textModelCaption = `watsonx · ${WATSONX_TEXT_MODEL}`;
   } else if (wxSettings?.apiKey) {
     provider = new WatsonxProvider(wxSettings);
+    visionModelCaption = `watsonx · ${WATSONX_VISION_MODEL}`;
+    textModelCaption = `watsonx · ${WATSONX_TEXT_MODEL}`;
   } else if (oaiSettings?.apiKey) {
     provider = new OpenAICompatProvider(oaiSettings);
+    visionModelCaption = `openai · ${oaiSettings.model}`;
+    textModelCaption = `openai · ${oaiSettings.model}`;
   } else {
     onError('No API key configured. Please go to Settings.');
     return;
@@ -1507,6 +1519,7 @@ function renderGenerating(
       } else {
         // Stage 1: vision analysis — each returned analysis feeds the stage
         // (thumbnail lights up, palette/style/mood readout appears).
+        view.showModelCaption(visionModelCaption);
         const analyses: WorkAnalysis[] = [];
         for (let i = 0; i < data.artworks.length; i++) {
           setProgress(`Analysing artwork ${i + 1} of ${data.artworks.length}…`, 5 + (i / data.artworks.length) * 40);
@@ -1519,13 +1532,28 @@ function renderGenerating(
 
         // Stage 2: curation — thumbnails regroup into the curator's rooms
         setProgress('Curating exhibition…', 50);
+        view.showModelCaption(textModelCaption);
         const plan = await provider.curate(analyses, data.userBrief);
         data.curatorNote = plan.curatorNote; // survives to the review screen
         view.showCuration(plan);
 
-        // Stage 3: gallery generation
-        setProgress('Designing gallery…', 65);
-        const rawGallery = await provider.generateGallery(data.artworks, analyses, plan, data.preset);
+        // Stage 3: gallery composition — progress events drive the writing act.
+        // Real pipeline order: title → deterministic room assembly → label/
+        // narration batches, so the percentages must climb in that order too.
+        setProgress('Naming the exhibition…', 58);
+        view.showModelCaption(textModelCaption);
+        const onProgress = (evt: ComposeProgressEvent) => {
+          view.showWritingProgress(evt);
+          if (evt.type === 'assembling') {
+            setProgress('Composing rooms deterministically from the curator\'s plan…', 62);
+          } else if (evt.type === 'labels-batch-start') {
+            const batchLabel = evt.totalBatches > 1
+              ? `Writing labels & narration (batch ${evt.batch} of ${evt.totalBatches})…`
+              : 'Writing labels & narration…';
+            setProgress(batchLabel, 65 + ((evt.batch - 1) / evt.totalBatches) * 17);
+          }
+        };
+        const rawGallery = await provider.generateGallery(data.artworks, analyses, plan, data.preset, onProgress);
 
         // Sanity pass — the finished layout draws itself as a floor plan
         setProgress('Verifying layout…', 85);
