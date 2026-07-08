@@ -621,3 +621,108 @@ describe('GalleryTour audio-guide memory', () => {
     tour.dispose();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Audio guide while frozen by Pause: press = resume, not toggle-off
+// ---------------------------------------------------------------------------
+
+describe('GalleryTour audio guide during Pause', () => {
+  let camera: THREE.PerspectiveCamera;
+
+  /** Gallery whose first waypoint has a speakable narration. */
+  function galleryWithNarration(): Gallery {
+    return GallerySchema.parse({
+      version: '1.0',
+      title: 'Frozen Voice Gallery',
+      rooms: [
+        {
+          id: 'room-a',
+          width: 20,
+          depth: 10,
+          height: 3.5,
+          surfaces: { wall: 'white-plaster', floor: 'light-wood', accentColor: '#c0a070' },
+          lighting: { ambientIntensity: 0.4, temperature: 'neutral', artworkSpotlights: false },
+          doorways: [],
+        },
+      ],
+      artworks: [
+        {
+          id: 'aw-01',
+          imagePath: 'images/aw-01.jpg',
+          title: 'Painting One',
+          medium: 'Oil',
+          label: 'A wall label.',
+          narration: 'A spoken narration for painting one.',
+        },
+      ],
+      placements: [],
+      tour: [
+        {
+          artworkId: 'aw-01',
+          position: { x: 0, y: 1.6, z: 0 },
+          lookAt: { x: 0, y: 1.6, z: -5 },
+        },
+      ],
+    });
+  }
+
+  beforeEach(() => {
+    camera = makeCamera();
+    vi.stubGlobal(
+      'SpeechSynthesisUtterance',
+      class {
+        text: string;
+        onstart: ((ev: Event) => void) | null = null;
+        onend: ((ev: Event) => void) | null = null;
+        onerror: ((ev: Event) => void) | null = null;
+        constructor(text: string) {
+          this.text = text;
+        }
+      }
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.querySelectorAll('#oh-tour-hud, #oh-tour-label').forEach((el) => el.remove());
+  });
+
+  it('press while frozen resumes the narration and stays ON; press while speaking turns off', () => {
+    const state = { speaking: false, resumed: 0, cancelled: 0 };
+    vi.stubGlobal('speechSynthesis', {
+      speak() {
+        state.speaking = true;
+      },
+      cancel() {
+        state.speaking = false;
+        state.cancelled++;
+      },
+      pause() {},
+      resume() {
+        state.resumed++;
+      },
+      getVoices: () => [{ name: 'stub' }],
+      get speaking() {
+        return state.speaking;
+      },
+    });
+
+    const tour = new GalleryTour({ camera, gallery: galleryWithNarration(), onExit: vi.fn() });
+    tour.update(2);
+    tour.update(1); // viewing
+    tour.setAutoplay(true);
+    tour.toggleVoice(); // ON → speaks
+    expect(state.speaking).toBe(true);
+
+    tour.setAutoplay(false); // Pause freezes the utterance
+    const voiceBtn = document.getElementById('oh-tour-voice')!;
+    voiceBtn.click(); // her exact press: must RESUME, not toggle off
+    expect(state.resumed).toBe(1);
+    expect(voiceBtn.getAttribute('aria-pressed')).toBe('true');
+
+    voiceBtn.click(); // now audibly speaking → normal toggle OFF
+    expect(voiceBtn.getAttribute('aria-pressed')).toBe('false');
+    expect(state.speaking).toBe(false);
+    tour.dispose();
+  });
+});

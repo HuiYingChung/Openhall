@@ -590,6 +590,14 @@ export class GalleryTour {
   /** Toggle voice narration on/off and update the button accordingly. */
   toggleVoice(): void {
     if (this.voiceUnavailable) return; // disabled button; belt-and-braces
+    // The sound button always produces sound from silence: when voice is ON
+    // but the utterance is frozen by Pause, a press resumes the narration
+    // (walking stays paused) instead of switching the silent toggle off —
+    // pressing again while it speaks still turns it off as usual.
+    if (this.voiceOn && this.narrator.isPaused) {
+      this.narrator.resume();
+      return;
+    }
     this.voiceOn = !this.voiceOn;
     // Every explicit toggle is the choice autoplay will remember.
     this.autoplayVoicePref = this.voiceOn;

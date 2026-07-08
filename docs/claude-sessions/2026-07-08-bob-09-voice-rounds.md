@@ -144,6 +144,15 @@ no-voices guard trips. 290/290 after (4 new memory tests), plus a
 real-Chromium journey check (manual opt-in → silent next stop → autoplay
 restores the choice and speaks).
 
+One last seam she caught by hand: Autoplay → voice on → Pause → pressing
+Audio guide did nothing audible (it toggled the silent-but-ON switch OFF;
+a second press was needed). Not an implementation bug — a model gap: the
+button can't show "enabled but frozen by Pause", and users read the sound
+button as "give me sound". Rule adopted: when voice is ON but frozen, a
+press resumes the narration (walking stays paused); pressing while it
+audibly speaks still toggles off. 291/291 after, plus a real-Chromium
+replay of her exact press sequence.
+
 ## State at end of session
 
 Voice stack (voice-tour → voice-tour-fixes → voice-tour-ux) merged by Huiying
