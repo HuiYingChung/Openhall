@@ -17,7 +17,7 @@ import { buildScene } from './room-builder';
 import { FirstPersonControls } from './controls';
 import { ArtworkInteractions } from './interactions';
 import { GalleryTour } from './tour';
-import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay } from '../ui/overlay';
+import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay, fadeThroughBlack } from '../ui/overlay';
 
 /** True when pointer lock is available (false on iOS Safari). */
 function supportsPointerLock(): boolean {
@@ -117,9 +117,13 @@ async function bootViewer() {
       getArtworkMesh: (id) => interactions.getMesh(id),
       onExit: (pos) => {
         tour = null;
-        camera.position.copy(pos);
-        camera.position.y = 1.6;
+        // Fade hides the teleport + eye-height snap back to free walk.
+        fadeThroughBlack(() => {
+          camera.position.copy(pos);
+          camera.position.y = 1.6;
+        });
         if (supportsPointerLock()) {
+          // Re-lock within the click's transient activation — before the fade.
           controls.lock();
           // Bug 1: re-mount tour button on desktop (lock event will not remount it)
           mountTourButton();

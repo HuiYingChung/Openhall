@@ -23,7 +23,7 @@ import * as THREE from 'three';
 const origAddEventListener = document.addEventListener.bind(document);
 const origRemoveEventListener = document.removeEventListener.bind(document);
 
-import { GalleryTour } from '../viewer/tour';
+import { GalleryTour, computeDwellSeconds } from '../viewer/tour';
 import type { Gallery } from '../schema/gallery.schema';
 import { GallerySchema } from '../schema/gallery.schema';
 
@@ -155,6 +155,101 @@ describe('GalleryTour waypoint sequencing', () => {
     expect(document.getElementById('oh-tour-hud')).not.toBeNull();
     tour.dispose();
     expect(document.getElementById('oh-tour-hud')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Autoplay
+// ---------------------------------------------------------------------------
+
+describe('computeDwellSeconds', () => {
+  it('gives the 5 s floor for empty and short labels', () => {
+    expect(computeDwellSeconds('')).toBe(5);
+    expect(computeDwellSeconds('Short label')).toBeCloseTo(5.14, 1);
+  });
+
+  it('scales with label length and caps at 12 s', () => {
+    expect(computeDwellSeconds('x'.repeat(240))).toBeCloseTo(8, 1);
+    expect(computeDwellSeconds('x'.repeat(5000))).toBe(12);
+  });
+});
+
+describe('GalleryTour autoplay', () => {
+  let camera: THREE.PerspectiveCamera;
+
+  beforeEach(() => {
+    camera = makeCamera();
+  });
+
+  afterEach(() => {
+    document.querySelectorAll('#oh-tour-hud, #oh-tour-label').forEach((el) => el.remove());
+  });
+
+  /** Drive update() until the tour reaches 'viewing' at its current waypoint. */
+  function settle(tour: GalleryTour): void {
+    tour.update(10); // completes travelling
+    tour.update(1);  // completes pausing → viewing
+  }
+
+  it('starts paused and renders a Play control', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    expect(tour.isAutoplaying).toBe(false);
+    const playBtn = document.getElementById('oh-tour-play')!;
+    expect(playBtn.textContent).toContain('Play');
+    tour.dispose();
+  });
+
+  it('advances to the next waypoint after the dwell when playing', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    settle(tour); // viewing waypoint 0
+    tour.setAutoplay(true);
+
+    tour.update(13); // exceed max dwell → starts travelling to waypoint 1
+    tour.update(10); // completes travel
+    expect(camera.position.x).toBeCloseTo(5, 0);
+    expect(tour.isAutoplaying).toBe(true);
+    tour.dispose();
+  });
+
+  it('stops (not loops) after dwelling on the final waypoint', () => {
+    const gallery = makeGallery(2);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    settle(tour);
+    tour.setAutoplay(true);
+
+    tour.update(13); // advance to waypoint 1 (last)
+    tour.update(10); // travel done
+    tour.update(1);  // pause done → viewing last waypoint
+    expect(tour.isAutoplaying).toBe(true);
+    tour.update(13); // dwell on last waypoint elapses → autoplay stops
+    expect(tour.isAutoplaying).toBe(false);
+    expect(camera.position.x).toBeCloseTo(5, 0); // still at the last waypoint
+    tour.dispose();
+  });
+
+  it('manual next()/prev() pauses autoplay', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    settle(tour);
+    tour.setAutoplay(true);
+    tour.next();
+    expect(tour.isAutoplaying).toBe(false);
+    tour.dispose();
+  });
+
+  it('play button toggles the label between Play and Pause', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    const playBtn = document.getElementById('oh-tour-play') as HTMLButtonElement;
+    playBtn.click();
+    expect(tour.isAutoplaying).toBe(true);
+    expect(playBtn.textContent).toContain('Pause');
+    playBtn.click();
+    expect(tour.isAutoplaying).toBe(false);
+    expect(playBtn.textContent).toContain('Play');
+    tour.dispose();
   });
 });
 

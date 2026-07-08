@@ -31,6 +31,32 @@ export function shouldShowRelockOverlay(opts: {
   return 'show-overlay';
 }
 
+// ---------------------------------------------------------------------------
+// Fade-through-black transition
+// ---------------------------------------------------------------------------
+
+/**
+ * Hide an abrupt camera change (e.g. tour exit teleport) behind a quick
+ * fade to black: fade in, apply the change at full black, fade back out.
+ * Shared by the in-app viewer and the exported viewer — inline styles only.
+ */
+export function fadeThroughBlack(apply: () => void): void {
+  const el = document.createElement('div');
+  el.style.cssText =
+    'position:fixed;inset:0;background:#000;opacity:0;' +
+    'transition:opacity 150ms ease;z-index:250;pointer-events:none;';
+  document.body.appendChild(el);
+  requestAnimationFrame(() => {
+    el.style.opacity = '1';
+    setTimeout(() => {
+      apply();
+      el.style.transition = 'opacity 300ms ease';
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 320);
+    }, 170);
+  });
+}
+
 function buildHintHtml(showClose: boolean): string {
   const closeBtn = showClose ? `
     <button id="oh-overlay-close" style="

@@ -12,7 +12,7 @@ import { buildScene, disposeScene } from '../viewer/room-builder';
 import { FirstPersonControls } from '../viewer/controls';
 import { ArtworkInteractions } from '../viewer/interactions';
 import { GalleryTour } from '../viewer/tour';
-import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay } from './overlay';
+import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay, fadeThroughBlack } from './overlay';
 import { showToast, buildErrorCard, showFieldError, translateError, type ErrorAction } from './feedback';
 import { escapeHtml } from './escape-html';
 import { sanitizePlacements } from './placement-sanity';
@@ -484,9 +484,13 @@ export function bootApp(): void {
         getArtworkMesh: (id) => interactions?.getMesh(id),
         onExit: (pos) => {
           tour = null;
-          camera.position.copy(pos);
-          camera.position.y = 1.6;
-          // Re-lock pointer for free walk
+          // Fade hides the teleport + eye-height snap back to free walk.
+          fadeThroughBlack(() => {
+            camera.position.copy(pos);
+            camera.position.y = 1.6;
+          });
+          // Re-lock pointer for free walk (still within the click's
+          // transient user activation — must not wait for the fade).
           if (controls) controls.lock();
           // Bug 1: re-mount the Tour button (desktop path)
           remountTourBtn(data.gallery!);
@@ -524,8 +528,10 @@ export function bootApp(): void {
         getArtworkMesh: (id) => interactions?.getMesh(id),
         onExit: (pos) => {
           tour = null;
-          camera.position.copy(pos);
-          camera.position.y = 1.6;
+          fadeThroughBlack(() => {
+            camera.position.copy(pos);
+            camera.position.y = 1.6;
+          });
           mountTourStartOverlay(gallery);
         },
       });
@@ -620,8 +626,10 @@ export function bootApp(): void {
                     getArtworkMesh: (id) => interactions?.getMesh(id),
                     onExit: (pos) => {
                       tour = null;
-                      camera.position.copy(pos);
-                      camera.position.y = 1.6;
+                      fadeThroughBlack(() => {
+                        camera.position.copy(pos);
+                        camera.position.y = 1.6;
+                      });
                       // Re-show Start Tour button (can't re-lock on touch)
                       mountTourStartOverlay(gallery);
                     },

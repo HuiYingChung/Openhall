@@ -44,6 +44,19 @@ const TRAVEL_DURATION = 1.4; // seconds per waypoint travel
 const PAUSE_DURATION = 0.8; // seconds to wait after arrival before showing label
 const EYE_HEIGHT = 1.6;
 
+// Autoplay dwell: how long a waypoint stays on screen before auto-advancing.
+const AUTOPLAY_DWELL_MIN = 5; // seconds — even a bare title deserves a beat
+const AUTOPLAY_DWELL_MAX = 12; // seconds — never park on one work forever
+
+/**
+ * Reading time for a wall label, tuned for autoplay: 5 s base plus one second
+ * per 80 characters of label text, capped at 12 s. Pure — unit-tested.
+ */
+export function computeDwellSeconds(labelText: string): number {
+  const readSeconds = 5 + labelText.length / 80;
+  return Math.min(AUTOPLAY_DWELL_MAX, Math.max(AUTOPLAY_DWELL_MIN, readSeconds));
+}
+
 // ---------------------------------------------------------------------------
 // HUD creation helpers
 // ---------------------------------------------------------------------------
@@ -118,11 +131,20 @@ function createLabelBox(isTouch: boolean): HTMLElement {
   return box;
 }
 
+/** Play triangle / pause bars — inline SVG (site rule: no emoji glyphs). */
+function svgPlay(): string {
+  return `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-1px;margin-right:5px;" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>`;
+}
+function svgPause(): string {
+  return `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-1px;margin-right:5px;" aria-hidden="true"><rect x="3.5" y="2.5" width="3.2" height="11" rx="0.8"/><rect x="9.3" y="2.5" width="3.2" height="11" rx="0.8"/></svg>`;
+}
+
 function createButtons(
+  onTogglePlay: () => void,
   onPrev: () => void,
   onNext: () => void,
   onExit: () => void
-): HTMLElement {
+): { row: HTMLElement; playBtn: HTMLButtonElement } {
   const row = document.createElement('div');
   row.style.cssText = `
     display:flex;gap:0.6rem;pointer-events:all;
@@ -143,10 +165,16 @@ function createButtons(
     return btn;
   }
 
+  const playBtn = makeBtn('', onTogglePlay);
+  playBtn.id = 'oh-tour-play';
+  playBtn.innerHTML = `${svgPlay()}Play`;
+  playBtn.setAttribute('aria-label', 'Play tour automatically');
+
+  row.appendChild(playBtn);
   row.appendChild(makeBtn('← Prev', onPrev));
   row.appendChild(makeBtn('Next →', onNext));
   row.appendChild(makeBtn('Exit Tour', onExit));
-  return row;
+  return { row, playBtn };
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +260,9 @@ export class GalleryTour {
   private hud: HTMLElement;
   private labelBox!: HTMLElement;
   private btns: HTMLElement;
+  private playBtn: HTMLButtonElement;
+  private autoplay = false;
+  private currentDwell = AUTOPLAY_DWELL_MIN;
   private isTouch = false;
   private touchLook: TouchLook | null = null;
   private boundResize: () => void;
@@ -264,13 +295,15 @@ export class GalleryTour {
     this.getArtworkMesh = opts.getArtworkMesh;
 
     this.hud = createTourHud();
-    const btns = createButtons(
+    const { row, playBtn } = createButtons(
+      () => this.setAutoplay(!this.autoplay),
       () => this.prev(),
       () => this.next(),
       () => this.exit()
     );
-    this.hud.appendChild(btns);
-    this.btns = btns;
+    this.hud.appendChild(row);
+    this.btns = row;
+    this.playBtn = playBtn;
 
     // Layout (floating card vs bottom sheet) responds to live resizes and
     // device rotation — re-applied whenever the 768 px threshold is crossed.
@@ -369,10 +402,41 @@ export class GalleryTour {
           const mesh = this.getArtworkMesh(wp.artworkId);
           if (mesh) this.restoreMat = swapToUnlitMaterial(mesh);
         }
+        // Dwell time scales with how much there is to read at this stop.
+        const artwork = wp.artworkId
+          ? this.gallery.artworks.find((a) => a.id === wp.artworkId)
+          : null;
+        this.currentDwell = computeDwellSeconds(artwork?.label ?? wp.label ?? '');
         this.showLabel();
       }
+    } else if (this.phase === 'viewing') {
+      // Autoplay: advance after the dwell. Stops (instead of looping) after
+      // the final waypoint so visitors aren't trapped in an endless cycle.
+      if (this.autoplay && this.elapsed >= this.currentDwell) {
+        if (this.index >= this.waypoints.length - 1) {
+          this.setAutoplay(false);
+        } else {
+          this.startWaypoint(this.index + 1);
+        }
+      }
     }
-    // 'viewing' — waiting for user interaction; touch drag handled by TouchLook
+    // manual 'viewing' — waiting for user interaction; touch drag via TouchLook
+  }
+
+  /** Turn autoplay on/off and reflect the state on the Play/Pause button. */
+  setAutoplay(on: boolean): void {
+    this.autoplay = on;
+    // Restart the dwell clock so enabling mid-viewing gives full reading time.
+    if (on && this.phase === 'viewing') this.elapsed = 0;
+    this.playBtn.innerHTML = on ? `${svgPause()}Pause` : `${svgPlay()}Play`;
+    this.playBtn.setAttribute(
+      'aria-label',
+      on ? 'Pause automatic tour' : 'Play tour automatically'
+    );
+  }
+
+  get isAutoplaying(): boolean {
+    return this.autoplay;
   }
 
   private startWaypoint(index: number): void {
@@ -464,10 +528,13 @@ export class GalleryTour {
   }
 
   next(): void {
+    // Manual navigation means the visitor wants control — stop autoplaying.
+    if (this.autoplay) this.setAutoplay(false);
     this.startWaypoint(this.index + 1);
   }
 
   prev(): void {
+    if (this.autoplay) this.setAutoplay(false);
     this.startWaypoint(this.index - 1);
   }
 
