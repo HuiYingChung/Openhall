@@ -25,6 +25,7 @@ const browserGlobals = {
   HTMLButtonElement: 'readonly',
   HTMLCanvasElement: 'readonly',
   HTMLImageElement: 'readonly',
+  SpeechSynthesisUtterance: 'readonly',
   CanvasRenderingContext2D: 'readonly',
   HTMLInputElement: 'readonly',
   HTMLSelectElement: 'readonly',
@@ -75,6 +76,9 @@ export default [
     rules: {
       ...tsPlugin.configs.recommended.rules,
       '@typescript-eslint/no-explicit-any': 'warn',
+      // Underscore-prefixed bindings are intentional discards (same convention
+      // as the scripts/ block) — e.g. destructuring-omit: ({ narration: _n, ...rest })
+      '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }],
     },
   },
   // Worker TypeScript (Cloudflare Workers context)
