@@ -115,17 +115,20 @@ export function fadeInFromBlack(): void {
   });
 }
 
-function buildHintHtml(showClose: boolean, branding?: OverlayBranding): string {
+function buildHintHtml(closeLabel: string | null, branding?: OverlayBranding): string {
   const { title, subtitle } = brandingLines(branding);
-  const closeBtn = showClose ? `
+  // A labelled back button, not an ×: the screen behind was cleared, so this
+  // action navigates back rather than "closing" — the label names where to.
+  const closeBtn = closeLabel ? `
     <button id="oh-overlay-close" style="
-      position:absolute;top:-2.75rem;right:-2.75rem;
-      width:2.25rem;height:2.25rem;padding:0;
-      display:flex;align-items:center;justify-content:center;
-      background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.35);
-      border-radius:50%;color:#ccc;
-      font-size:1.3rem;line-height:1;cursor:pointer;
-    " aria-label="Close">&times;</button>
+      margin-top:0.9rem;
+      padding:0.5rem 1.3rem;
+      background:rgba(0,0,0,0.45);
+      border:1px solid rgba(255,255,255,0.28);
+      color:#ccc;border-radius:8px;
+      font-size:0.85rem;cursor:pointer;
+      font-family:inherit;
+    ">${escapeHtml(closeLabel)}</button>
   ` : '';
   return `
   <div id="oh-overlay" style="
@@ -139,7 +142,6 @@ function buildHintHtml(showClose: boolean, branding?: OverlayBranding): string {
     z-index:100;
   ">
     <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
-    ${closeBtn}
     <h1 style="font-size:2rem;font-weight:700;margin:0 0 0.25em;max-width:min(560px,86vw);text-align:center;">${escapeHtml(title)}</h1>
     <p style="font-size:1rem;color:#aaa;margin:0 0 2rem">${escapeHtml(subtitle)}</p>
 
@@ -178,6 +180,7 @@ function buildHintHtml(showClose: boolean, branding?: OverlayBranding): string {
       cursor:pointer;
       font-weight:600;
     ">Click to Enter</button>
+    ${closeBtn}
     ${creditHtml()}
     </div>
   </div>
@@ -226,10 +229,11 @@ function buildRelockHtml(showExitBtn: boolean): string {
 export function mountHintOverlay(
   onEnter: () => void,
   onClose?: () => void,
-  branding?: OverlayBranding
+  branding?: OverlayBranding,
+  closeLabel = '← Back'
 ): { dismiss: () => void } {
   const container = document.createElement('div');
-  container.innerHTML = buildHintHtml(!!onClose, branding);
+  container.innerHTML = buildHintHtml(onClose ? closeLabel : null, branding);
   document.body.appendChild(container);
 
   const btn = container.querySelector('#oh-enter-btn') as HTMLButtonElement;

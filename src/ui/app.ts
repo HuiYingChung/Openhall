@@ -631,7 +631,7 @@ export function bootApp(): void {
                 // return to the menu (overlay already dismissed by mountHintOverlay).
                 controls!.pointerLock.removeEventListener('lock', onLock);
                 exitToMenu();
-              }, { title: gallery.title, artistName: gallery.artist?.name });
+              }, { title: gallery.title, artistName: gallery.artist?.name }, '← Back to menu');
               onLock = () => {
                 controls!.pointerLock.removeEventListener('lock', onLock);
                 dismiss();
@@ -1754,7 +1754,7 @@ function renderLabels(
     }, {
       title: data.gallery!.title,
       artistName: data.gallery!.artist?.name ?? data.gallery!.branding?.authorName,
-    });
+    }, '← Back to review');
 
     onLock = () => {
       c.pointerLock.removeEventListener('lock', onLock);
