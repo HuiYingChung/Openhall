@@ -70,6 +70,12 @@ export interface AppData {
    * when the user returns to a gallery whose AI inputs haven't changed.
    */
   lastGenKey?: string;
+  /**
+   * The AI curator's one-sentence intent from the last curation run. Session
+   * only (not in gallery.json) — surfaces on the review screen and seeds the
+   * gallery description when the artist hasn't written one.
+   */
+  curatorNote?: string;
 }
 
 /**
@@ -1474,6 +1480,7 @@ function renderGenerating(
         // Stage 2: curation — thumbnails regroup into the curator's rooms
         setProgress('Curating exhibition…', 50);
         const plan = await provider.curate(analyses, data.userBrief);
+        data.curatorNote = plan.curatorNote; // survives to the review screen
         view.showCuration(plan);
 
         // Stage 3: gallery generation
@@ -1538,6 +1545,11 @@ function renderLabels(
 
   // Branding fields are baked into the exported site (title/meta/OG/favicon).
   const branding = (data.gallery!.branding ??= {});
+  // The AI curator's note seeds the description when the artist left it
+  // blank — its words then flow into the exported site's meta/share preview.
+  // Fully editable below; a caption declares the provenance.
+  const descSeededByCurator = !branding.description?.trim() && !!data.curatorNote?.trim();
+  if (descSeededByCurator) branding.description = data.curatorNote!.trim();
   const artistObj = data.gallery!.artist;
   const bTitle = data.gallery!.title ?? '';
   const bDesc = branding.description ?? '';
@@ -1559,6 +1571,7 @@ function renderLabels(
           <input id="oh-brand-title" class="oh-field" type="text" value="${escapeHtml(bTitle)}" placeholder="Gallery title" aria-label="Gallery title"
             style="font-weight:600;">
           <textarea id="oh-brand-desc" class="oh-field" rows="2" placeholder="One-sentence description (shown in browser + when shared on social)" aria-label="Gallery description">${escapeHtml(bDesc)}</textarea>
+          ${descSeededByCurator ? `<p class="oh-help" style="margin:-0.25rem 0 0;">Written by your AI curator — keep it, edit it, or clear it.</p>` : ''}
           <div style="display:flex;gap:0.5rem;">
             <input id="oh-brand-author" class="oh-field" type="text" value="${escapeHtml(bAuthor)}" placeholder="Your name / studio" aria-label="Artist name"
               style="flex:1;">
