@@ -459,3 +459,52 @@ describe('GalleryTour arrow keys', () => {
     expect(() => press('ArrowRight')).not.toThrow();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Autoplay progress bar
+// ---------------------------------------------------------------------------
+
+describe('GalleryTour autoplay progress bar', () => {
+  let camera: THREE.PerspectiveCamera;
+
+  beforeEach(() => {
+    camera = makeCamera();
+  });
+
+  afterEach(() => {
+    document.querySelectorAll('#oh-tour-hud, #oh-tour-label').forEach((el) => el.remove());
+  });
+
+  /** Drive the tour into the 'viewing' phase (travel 1.4 s + pause 0.8 s). */
+  function toViewing(tour: GalleryTour): void {
+    tour.update(2); // finish travelling
+    tour.update(1); // finish pausing → viewing, label rendered
+  }
+
+  it('track hidden while autoplay is off, shown while on, hidden after pause', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    toViewing(tour);
+    const track = document.getElementById('oh-tour-progress-track')!;
+    expect(track.style.display).toBe('none');
+    tour.setAutoplay(true);
+    expect(track.style.display).toBe('block');
+    tour.setAutoplay(false);
+    expect(track.style.display).toBe('none');
+    tour.dispose();
+  });
+
+  it('fill grows with elapsed viewing time during autoplay', () => {
+    const gallery = makeGallery(3);
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    toViewing(tour);
+    tour.setAutoplay(true);
+    tour.update(1);
+    const fill = document.getElementById('oh-tour-progress')!;
+    const w1 = parseFloat(fill.style.width);
+    expect(w1).toBeGreaterThan(0);
+    tour.update(1);
+    expect(parseFloat(fill.style.width)).toBeGreaterThan(w1);
+    tour.dispose();
+  });
+});

@@ -1,4 +1,5 @@
 import { escapeHtml } from '../ui/escape-html';
+import { prefersReducedMotion } from '../ui/overlay';
 import {
   TourNarrator,
   pickNarrationText,
@@ -458,6 +459,12 @@ export class GalleryTour {
         if (spoken) this.narrator.speak(spoken);
       }
     } else if (this.phase === 'viewing') {
+      // Quiet progress line: fills over the dwell; sits full while a long
+      // narration finishes (honest — "waiting for the voice", not stuck).
+      if (this.autoplay && this.progressFill) {
+        const pct = Math.min(100, (this.elapsed / this.currentDwell) * 100);
+        this.progressFill.style.width = `${pct}%`;
+      }
       // Autoplay: advance when dwell has elapsed AND voice is not still speaking.
       // canAutoAdvance enforces the combined condition with a 2× safety fallback.
       if (this.autoplay && canAutoAdvance(this.elapsed, this.currentDwell, this.narrator.isSpeaking)) {
@@ -497,6 +504,7 @@ export class GalleryTour {
       'aria-label',
       on ? 'Pause automatic tour' : 'Play tour automatically'
     );
+    this.syncProgressTrack();
   }
 
   get isAutoplaying(): boolean {
@@ -625,6 +633,31 @@ export class GalleryTour {
 
   private sheetCollapsed = false;
 
+  /** Fill element of the autoplay progress bar; re-queried on each render. */
+  private progressFill: HTMLElement | null = null;
+
+  /**
+   * Quiet autoplay progress: a 2px line that fills over the stop's dwell —
+   * the Stories idiom for "auto-advancing, and this is roughly when".
+   * Hidden while autoplay is off; skipped entirely for reduced-motion visitors.
+   */
+  private progressTrackHtml(): string {
+    if (prefersReducedMotion()) return '';
+    return `
+      <div id="oh-tour-progress-track" aria-hidden="true" style="
+        height:2px;border-radius:1px;overflow:hidden;
+        background:rgba(255,255,255,0.14);margin:0 0 0.6rem;display:none;">
+        <div id="oh-tour-progress" style="height:100%;width:0%;background:rgba(240,236,230,0.55);"></div>
+      </div>
+    `;
+  }
+
+  /** Show/hide the progress track to match the autoplay state. */
+  private syncProgressTrack(): void {
+    const track = this.labelBox?.querySelector('#oh-tour-progress-track') as HTMLElement | null;
+    if (track) track.style.display = this.autoplay ? 'block' : 'none';
+  }
+
   private showLabel(): void {
     const wp = this.waypoints[this.index];
     const isArtist = wp.artworkId === ARTIST_MESH_ID;
@@ -657,6 +690,7 @@ export class GalleryTour {
         ? '0.25rem 1.25rem'
         : '0.9rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px))';
       this.labelBox.innerHTML = `
+        ${this.progressTrackHtml()}
         <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;">
           <p style="font-size:${this.sheetCollapsed ? '0.82rem' : '1rem'};font-weight:700;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(title || 'Untitled')}</p>
           <button id="oh-tour-collapse" aria-label="${this.sheetCollapsed ? 'Expand label' : 'Collapse label'}" style="
@@ -672,20 +706,26 @@ export class GalleryTour {
         this.showLabel(); // re-render in the new state
       });
       this.labelBox.style.display = 'block';
+      this.progressFill = this.labelBox.querySelector('#oh-tour-progress');
+      this.syncProgressTrack();
       return;
     }
 
     this.labelBox.innerHTML = `
+      ${this.progressTrackHtml()}
       <div aria-hidden="true" style="width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,0.28);margin:0 auto 0.65rem;"></div>
       ${title ? `<p style="font-size:1rem;font-weight:700;margin:0 0 0.1rem;">${escapeHtml(title)}</p>` : ''}
       ${bodyHtml}
       <p style="font-size:0.7rem;color:#555;margin:0.45rem 0 0;">Drag this card to move it</p>
     `;
     this.labelBox.style.display = 'block';
+    this.progressFill = this.labelBox.querySelector('#oh-tour-progress');
+    this.syncProgressTrack();
   }
 
   private hideLabel(): void {
     this.labelBox.style.display = 'none';
+    this.progressFill = null;
   }
 
   next(): void {

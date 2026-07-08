@@ -119,6 +119,17 @@ resize relabel. Two harness stumbles recorded honestly: toContain('Play')
 does not match 'Autoplay' (case), and clicking during the entry fade times
 out — wait for the viewing phase.
 
+Same branch, one more UX decision: Huiying proposed an on-screen countdown
+before auto-advancing; discussion landed on a quieter form of the same idea
+(system-status visibility without time pressure) — a 2 px Stories-style
+progress line at the top of the label card, visible only during autoplay,
+filling over the stop's dwell and sitting full while a long narration
+finishes. Ticking numerals were rejected as attention-grabbing and
+tonally wrong for a gallery. Skipped entirely for prefers-reduced-motion
+visitors (helper shared from overlay.ts). Verified: 284/284 unit tests
+(2 new), lint, build, real-Chromium check (hidden manual / fills during
+autoplay / hides on Pause).
+
 ## State at end of session
 
 Voice stack (voice-tour → voice-tour-fixes → voice-tour-ux) merged by Huiying

@@ -67,7 +67,7 @@ export function shouldShowRelockOverlay(opts: {
 // ---------------------------------------------------------------------------
 
 /** Decorative motion is skipped for visitors who ask for reduced motion. */
-function prefersReducedMotion(): boolean {
+export function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
