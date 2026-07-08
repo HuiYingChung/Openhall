@@ -1,0 +1,39 @@
+# CI — the machine's word, not anyone's summary.
+# Runs the same verification chain used locally throughout development:
+# build (the smoke tests boot the real viewer bundle, so build comes first),
+# then the full test suite (unit + integration + real-Chromium smoke), then lint.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for the export smoke tests
+        run: npx playwright install chromium --with-deps
+
+      # build:viewer produces public/assets/viewer.js, which the export-chain
+      # and smoke tests exercise — a fresh clone has no pre-built viewer.
+      - name: Build (viewer + app, includes tsc)
+        run: npm run build
+
+      - name: Test (unit + integration + Chromium smoke)
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
