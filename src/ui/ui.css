@@ -26,8 +26,20 @@
   --oh-danger: #cf6f5a;      /* error tone (warm, matches palette) */
 
   --oh-font: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  /* Display face (wordmark + headings only). Loaded from Google Fonts by
+     index.html with font-display:swap; falls back to system serif. Rule:
+     never below ~1.1rem — a text serif this expressive muddies at UI sizes. */
+  --oh-font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
   --oh-radius: 8px;
   --oh-radius-lg: 12px;
+}
+
+/* Headings across the app chrome speak in the display face. */
+.oh-screen h1,
+.oh-screen h2 {
+  font-family: var(--oh-font-display);
+  font-weight: 500;
+  letter-spacing: 0.005em;
 }
 
 /* ------------------------------------------------------------------ */
@@ -471,5 +483,6 @@ textarea.oh-field { resize: vertical; }
   align-items: center;
   gap: 0.55rem;
   color: var(--oh-ink);
+  font-family: var(--oh-font-display);
 }
 .oh-wordmark svg { display: block; }

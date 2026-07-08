@@ -76,6 +76,12 @@ export interface AppData {
    * gallery description when the artist hasn't written one.
    */
   curatorNote?: string;
+  /**
+   * True while the loaded gallery is the bundled demo. Drives the in-viewer
+   * "Demo gallery" chip so visitors know the works are sample classics, not
+   * the user's uploads. App chrome only — never part of an export.
+   */
+  isDemo?: boolean;
 }
 
 /**
@@ -296,6 +302,7 @@ export function bootApp(): void {
     if (tourBtn) { tourBtn.remove(); tourBtn = null; }
     document.getElementById('oh-touch-tour-btn')?.remove();
     document.getElementById('oh-crosshair')?.remove();
+    document.getElementById('oh-demo-chip')?.remove();
     // Reset suppressNextRelock so the next session starts clean
     suppressNextRelock = false;
     // Navigate: go to upload if there is a stored key, settings otherwise
@@ -336,6 +343,21 @@ export function bootApp(): void {
     // Reflect the gallery title in the browser tab live (matches the exported
     // site's <title>), so it's visible without exporting.
     document.title = gallery.title?.trim() ? gallery.title : 'Openhall — AI 3D Gallery';
+
+    // Demo chip — passive label so nobody mistakes the sample classics for
+    // user uploads. The Paused overlay carries the "create your own" CTA.
+    if (data.isDemo && !document.getElementById('oh-demo-chip')) {
+      const chip = document.createElement('div');
+      chip.id = 'oh-demo-chip';
+      chip.style.cssText =
+        'position:fixed;top:1rem;left:50%;transform:translateX(-50%);z-index:200;' +
+        'background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.2);' +
+        'color:#aaa;padding:0.35rem 0.85rem;border-radius:999px;' +
+        "font-size:0.75rem;font-family:-apple-system,'Segoe UI',system-ui,sans-serif;" +
+        'pointer-events:none;white-space:nowrap;';
+      chip.textContent = 'Demo gallery · sample works by public-domain masters';
+      document.body.appendChild(chip);
+    }
 
     // ← Menu button — always shown
     if (!document.getElementById('oh-menu-btn')) {
@@ -887,7 +909,7 @@ function svgWarn(): string {
 /** Openhall wordmark — arch glyph + text. App chrome only (not the export bundle). */
 function wordmark(sizeRem = 1.6): string {
   const px = Math.round(sizeRem * 16);
-  return `<span class="oh-wordmark"><svg width="${px}" height="${px}" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.45"/><path d="M10 24 V14 a6 6 0 0 1 12 0 V24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><line x1="8" y1="24" x2="24" y2="24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span style="font-size:${sizeRem}rem;font-weight:700;letter-spacing:0.01em;">Openhall</span></span>`;
+  return `<span class="oh-wordmark"><svg width="${px}" height="${px}" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.45"/><path d="M10 24 V14 a6 6 0 0 1 12 0 V24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><line x1="8" y1="24" x2="24" y2="24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span style="font-size:${sizeRem}rem;font-weight:600;letter-spacing:0.01em;">Openhall</span></span>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1039,6 +1061,7 @@ async function loadDemoGallery(data: AppData): Promise<Gallery> {
 
   data.gallery = gallery;
   data.artworks = [];
+  data.isDemo = true;
   return gallery;
 }
 
@@ -1077,13 +1100,14 @@ function renderUpload(
         <p style="color:var(--oh-ink-dim);font-size:0.92rem;margin:0 0 0.8rem;">Turn up to 10 artworks into a walkable 3D gallery — fully AI-generated, exportable as a website you own.</p>
         <div style="display:flex;flex-wrap:wrap;gap:0.35rem 1.2rem;margin-bottom:0.6rem;color:var(--oh-ink-muted);font-size:0.8rem;">
           <span><span style="color:#ddd;font-weight:600;">1</span> · Upload your artworks</span>
-          <span><span style="color:#ddd;font-weight:600;">2</span> · Describe the show and pick a style</span>
-          <span><span style="color:#ddd;font-weight:600;">3</span> · AI designs the gallery</span>
-          <span><span style="color:#ddd;font-weight:600;">4</span> · Walk through it, then export</span>
+          <span><span style="color:#ddd;font-weight:600;">2</span> · Describe your exhibition and pick a style</span>
+          <span><span style="color:#ddd;font-weight:600;">3</span> · AI curates the rooms, layout, and labels</span>
+          <span><span style="color:#ddd;font-weight:600;">4</span> · Walk through it, then export your own website</span>
         </div>
         <p style="color:var(--oh-ink-muted);font-size:0.8rem;margin:0 0 1.5rem;">
-          First time here? Add your AI API key via the <span style="color:#ccc;">Settings</span> button (top right) —
-          or <button id="oh-home-demo" class="oh-btn--link" style="font-size:0.8rem;">view the demo gallery</button> first, no key needed.
+          Openhall runs on your own AI key (IBM watsonx or OpenAI-compatible).
+          Add yours in <button id="oh-home-settings-link" class="oh-btn--link" style="font-size:0.8rem;">Settings</button>, or
+          <button id="oh-home-demo" class="oh-btn--link" style="font-size:0.8rem;">view the demo gallery</button> first, no key needed.
         </p>
 
         <div id="oh-dropzone" class="oh-dropzone" style="margin-bottom:1rem;">
@@ -1160,6 +1184,7 @@ function renderUpload(
   const presetsEl = container.querySelector('#oh-presets') as HTMLElement;
 
   container.querySelector('#oh-to-settings')!.addEventListener('click', onSettings);
+  container.querySelector('#oh-home-settings-link')!.addEventListener('click', onSettings);
   container.querySelector('#oh-home-demo')!.addEventListener('click', onDemo);
 
   // Set by the two-step-confirm wiring below; lets input changes cancel a
@@ -1470,6 +1495,8 @@ function renderGenerating(
       const key = aiInputKey(data);
       let gallery: Gallery;
       let showedPlan = false;
+      // Any generated (or cached user) gallery is the artist's own — not demo.
+      data.isDemo = false;
 
       if (data.gallery && data.lastGenKey === key) {
         // Cache hit — artworks/brief/style are unchanged since the last
