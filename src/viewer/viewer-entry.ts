@@ -17,7 +17,7 @@ import { buildScene } from './room-builder';
 import { FirstPersonControls } from './controls';
 import { ArtworkInteractions } from './interactions';
 import { GalleryTour } from './tour';
-import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay, fadeThroughBlack } from '../ui/overlay';
+import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay, fadeThroughBlack, fadeInFromBlack } from '../ui/overlay';
 
 /** True when pointer lock is available (false on iOS Safari). */
 function supportsPointerLock(): boolean {
@@ -219,6 +219,7 @@ async function bootViewer() {
     const onLock = () => {
       controls.pointerLock.removeEventListener('lock', onLock);
       dismiss();
+      fadeInFromBlack();
       wireRelock();
       // Show tour button after entry
       mountTourButton();
@@ -228,6 +229,7 @@ async function bootViewer() {
     // Touch/no-pointer-lock devices: go straight to tour
     const { dismiss } = mountHintOverlayTouchFallback(() => {
       dismiss();
+      fadeInFromBlack();
       startTour();
     }, overlayBranding);
   }

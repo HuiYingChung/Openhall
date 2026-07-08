@@ -265,6 +265,7 @@ export class GalleryTour {
   private currentDwell = AUTOPLAY_DWELL_MIN;
   private isTouch = false;
   private touchLook: TouchLook | null = null;
+  private boundKeydown!: (e: KeyboardEvent) => void;
   private boundResize: () => void;
   private resizeTimer: ReturnType<typeof setTimeout> | null = null;
   private onExitCb: (position: THREE.Vector3) => void;
@@ -322,6 +323,16 @@ export class GalleryTour {
     if (GalleryTour.isTouchDevice()) {
       this.touchLook = new TouchLook(this.camera);
     }
+
+    // Arrow keys mirror the Prev/Next buttons (and pause autoplay like them).
+    this.boundKeydown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key === 'ArrowRight') { e.preventDefault(); this.next(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); this.prev(); }
+    };
+    document.addEventListener('keydown', this.boundKeydown);
 
     this.startWaypoint(0);
   }
@@ -544,10 +555,11 @@ export class GalleryTour {
     this.onExitCb(pos);
   }
 
-  /** Clean up HUD, label box, resize + touch listeners. */
+  /** Clean up HUD, label box, resize + keyboard + touch listeners. */
   dispose(): void {
     this.restoreMat?.();
     this.restoreMat = null;
+    document.removeEventListener('keydown', this.boundKeydown);
     window.removeEventListener('resize', this.boundResize);
     if (this.resizeTimer !== null) { clearTimeout(this.resizeTimer); this.resizeTimer = null; }
     if (this.hud.parentNode) this.hud.parentNode.removeChild(this.hud);

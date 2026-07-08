@@ -635,3 +635,30 @@ describe('downloadZip', () => {
     expect(anchor.click).toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// slugifyTitle — export filename from the exhibition title
+// ---------------------------------------------------------------------------
+
+import { slugifyTitle } from '../export/bundler';
+
+describe('slugifyTitle', () => {
+  it('slugs a latin title', () => {
+    expect(slugifyTitle('Quiet Forms')).toBe('quiet-forms');
+    expect(slugifyTitle('  Water & Light: A Study  ')).toBe('water-light-a-study');
+  });
+
+  it('keeps CJK characters and strips filename-illegal ones', () => {
+    expect(slugifyTitle('靜物與光')).toBe('靜物與光');
+    expect(slugifyTitle('a/b\c:d*e?f"g<h>i|j')).toBe('abcdefghij');
+  });
+
+  it('falls back when the title slugs to nothing', () => {
+    expect(slugifyTitle('')).toBe('openhall-export');
+    expect(slugifyTitle('???')).toBe('openhall-export');
+  });
+
+  it('caps length at 60 characters', () => {
+    expect(slugifyTitle('x'.repeat(200)).length).toBe(60);
+  });
+});

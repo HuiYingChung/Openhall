@@ -175,6 +175,24 @@ export async function buildExportBundle(opts: BundleOptions): Promise<BundleResu
 }
 
 /**
+ * Filename-safe slug of the exhibition title: the artist downloads
+ * "quiet-forms.zip", not a tool's generic artifact. CJK and other
+ * non-Latin characters are kept — modern filesystems handle them fine;
+ * only filename-illegal/awkward characters are stripped.
+ */
+export function slugifyTitle(title: string): string {
+  const slug = title
+    .trim()
+    .toLowerCase()
+    .replace(/[\\/:*?"<>|#%&{}$!'@+`=]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 60);
+  return slug || 'openhall-export';
+}
+
+/**
  * Trigger a browser download of the export zip.
  */
 export function downloadZip(blob: Blob, filename = 'openhall-export.zip'): void {
