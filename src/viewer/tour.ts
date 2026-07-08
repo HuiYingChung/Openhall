@@ -171,15 +171,16 @@ function createButtons(
 
   const playBtn = makeBtn('', onTogglePlay);
   playBtn.id = 'oh-tour-play';
-  playBtn.innerHTML = `${svgPlay()}Play`;
+  playBtn.innerHTML = `${svgPlay()}Autoplay`;
   playBtn.setAttribute('aria-label', 'Play tour automatically');
 
   let voiceBtn: HTMLButtonElement | null = null;
   if (onToggleVoice !== null) {
     voiceBtn = makeBtn('', onToggleVoice);
     voiceBtn.id = 'oh-tour-voice';
-    // Initialise in OFF state — voice defaults off (opt-in).
-    voiceBtn.innerHTML = `${svgVoiceOff()}Voice`;
+    // Initialise in OFF state — voice defaults off (opt-in). The label text
+    // is width-dependent and set by refreshVoiceButton() via applyLayout().
+    voiceBtn.innerHTML = `${svgVoiceOff()}Audio guide`;
     voiceBtn.setAttribute('aria-label', 'Turn voice narration on');
     voiceBtn.setAttribute('aria-pressed', 'false');
   }
@@ -410,6 +411,9 @@ export class GalleryTour {
       });
     }
 
+    // The Audio-guide label is width-dependent — re-sync it with the layout.
+    this.refreshVoiceButton();
+
     if (wasVisible && this.phase === 'viewing') this.showLabel();
   }
 
@@ -485,7 +489,7 @@ export class GalleryTour {
       // Pause freezes EVERYTHING: movement (autoplay) AND voice mid-sentence.
       if (this.narrator.isSpeaking) this.narrator.pause();
     }
-    this.playBtn.innerHTML = on ? `${svgPause()}Pause` : `${svgPlay()}Play`;
+    this.playBtn.innerHTML = on ? `${svgPause()}Pause` : `${svgPlay()}Autoplay`;
     this.playBtn.setAttribute(
       'aria-label',
       on ? 'Pause automatic tour' : 'Play tour automatically'
@@ -538,16 +542,23 @@ export class GalleryTour {
       if (!this.voiceOn) this.narrator.cancel();
     }
 
-    if (this.voiceBtn) {
-      this.voiceBtn.innerHTML = this.voiceOn
-        ? `${svgVoiceOn()}Voice`
-        : `${svgVoiceOff()}Voice`;
-      this.voiceBtn.setAttribute('aria-pressed', this.voiceOn ? 'true' : 'false');
-      this.voiceBtn.setAttribute(
-        'aria-label',
-        this.voiceOn ? 'Turn voice narration off' : 'Turn voice narration on'
-      );
-    }
+    this.refreshVoiceButton();
+  }
+
+  /**
+   * Sync the Audio-guide button with the current voice state and viewport:
+   * icon by on/off, label text by width ("Audio guide" on desktop, "Audio"
+   * in the narrow bottom-bar layout where five buttons share the row).
+   */
+  private refreshVoiceButton(): void {
+    if (!this.voiceBtn) return;
+    const label = GalleryTour.prefersTouchLayout() ? 'Audio' : 'Audio guide';
+    this.voiceBtn.innerHTML = `${this.voiceOn ? svgVoiceOn() : svgVoiceOff()}${label}`;
+    this.voiceBtn.setAttribute('aria-pressed', this.voiceOn ? 'true' : 'false');
+    this.voiceBtn.setAttribute(
+      'aria-label',
+      this.voiceOn ? 'Turn voice narration off' : 'Turn voice narration on'
+    );
   }
 
   private startWaypoint(index: number): void {

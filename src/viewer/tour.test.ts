@@ -191,12 +191,12 @@ describe('GalleryTour autoplay', () => {
     tour.update(1);  // completes pausing → viewing
   }
 
-  it('starts paused and renders a Play control', () => {
+  it('starts paused and renders an Autoplay control', () => {
     const gallery = makeGallery(3);
     const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
     expect(tour.isAutoplaying).toBe(false);
     const playBtn = document.getElementById('oh-tour-play')!;
-    expect(playBtn.textContent).toContain('Play');
+    expect(playBtn.textContent).toContain('Autoplay');
     tour.dispose();
   });
 
@@ -283,7 +283,7 @@ describe('GalleryTour autoplay', () => {
     tour.dispose();
   });
 
-  it('play button toggles the label between Play and Pause', () => {
+  it('play button toggles the label between Autoplay and Pause', () => {
     const gallery = makeGallery(3);
     const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
     const playBtn = document.getElementById('oh-tour-play') as HTMLButtonElement;
@@ -292,7 +292,7 @@ describe('GalleryTour autoplay', () => {
     expect(playBtn.textContent).toContain('Pause');
     playBtn.click();
     expect(tour.isAutoplaying).toBe(false);
-    expect(playBtn.textContent).toContain('Play');
+    expect(playBtn.textContent).toContain('Autoplay');
     tour.dispose();
   });
 });
@@ -372,6 +372,28 @@ describe('GalleryTour voice UX', () => {
       expect(camera.position.x).toBeCloseTo(5, 0); // advanced to waypoint 1
     }
     tour.dispose();
+  });
+
+  it('Audio-guide button label adapts to viewport width (Audio guide / Audio)', () => {
+    const gallery = makeGallery(2);
+
+    // Wide viewport (jsdom default 1024): full label.
+    let tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    let voiceBtn = document.getElementById('oh-tour-voice') as HTMLButtonElement | null;
+    if (voiceBtn) expect(voiceBtn.textContent).toContain('Audio guide');
+    tour.dispose();
+
+    // Narrow viewport (<768): five buttons share the bottom bar — short label.
+    const origWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true, writable: true });
+    tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+    voiceBtn = document.getElementById('oh-tour-voice') as HTMLButtonElement | null;
+    if (voiceBtn) {
+      expect(voiceBtn.textContent).toContain('Audio');
+      expect(voiceBtn.textContent).not.toContain('Audio guide');
+    }
+    tour.dispose();
+    Object.defineProperty(window, 'innerWidth', { value: origWidth, configurable: true, writable: true });
   });
 });
 
