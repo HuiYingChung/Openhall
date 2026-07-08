@@ -128,7 +128,12 @@ finishes. Ticking numerals were rejected as attention-grabbing and
 tonally wrong for a gallery. Skipped entirely for prefers-reduced-motion
 visitors (helper shared from overlay.ts). Verified: 284/284 unit tests
 (2 new), lint, build, real-Chromium check (hidden manual / fills during
-autoplay / hides on Pause).
+autoplay / hides on Pause). Her demo-mode testing then caught the follow-on
+bug: Pause froze the voice but not the dwell clock, so Play restarted the bar
+and silently granted the stop a fresh dwell. Fixed by freezing the clock
+reading on Pause and restoring it on Play (paused wall time never counts;
+fresh enables still restart; frozen reading dropped on waypoint change and
+voice toggle). 286/286 after the fix, plus a real-Chromium pause/resume check.
 
 ## State at end of session
 
