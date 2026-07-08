@@ -438,6 +438,103 @@ textarea.oh-field { resize: vertical; }
   to { opacity: 1; transform: none; }
 }
 
+/* ------------------------------------------------------------------ */
+/* Writing act (Act 3) — label/narration snippets, writing line,       */
+/* retry notice, and model attribution caption.                        */
+/* All content is real pipeline data; no theatrical text lives here.   */
+/* ------------------------------------------------------------------ */
+
+/* Container that holds per-artwork snippet rows */
+.oh-gen-snippet-area {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+/* One artwork's snippet block (hidden until revealed by labels-batch-done) */
+.oh-gen-snippet {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--oh-panel);
+  border: 1px solid var(--oh-border);
+}
+
+/* Fade-in reveal animation (skipped when prefers-reduced-motion) */
+.oh-gen-snippet--reveal {
+  animation: oh-gen-fadein 0.35s ease;
+}
+
+/* A single icon + text row inside a snippet */
+.oh-gen-snippet-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  color: var(--oh-ink-dim);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+/* The truncated text (label or narration, ≤60 chars + ellipsis) */
+.oh-gen-snippet-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "Composing rooms deterministically…" line */
+.oh-gen-writing-line {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--oh-ink-muted);
+  font-style: italic;
+  text-align: center;
+}
+
+/* Subdued retry notice — honest, non-alarming */
+.oh-gen-retry-notice {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--oh-ink-faint);
+  text-align: center;
+}
+
+/* The title-reveal moment — the one emphasized beat of the writing act */
+.oh-gen-title-reveal {
+  font-style: italic;
+  color: var(--oh-ink);
+}
+
+/* Deterministic-assembly numbers — plain facts, no italics */
+.oh-gen-assembled {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Per-batch validation outcome — quiet success is still news */
+.oh-gen-validated {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--oh-ink-faint);
+  text-align: center;
+}
+
+/* Model attribution caption (e.g. "watsonx · ibm/granite-3-8b-instruct") */
+.oh-gen-caption {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--oh-ink-faint);
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
 /* Floor plan: rooms draw themselves in; the tour path marches. */
 .oh-plan-room {
   stroke-dasharray: 600;
@@ -463,7 +560,8 @@ textarea.oh-field { resize: vertical; }
   .oh-gen-room,
   .oh-plan-room,
   .oh-plan-art,
-  .oh-plan-tour {
+  .oh-plan-tour,
+  .oh-gen-snippet--reveal {
     animation: none;
   }
   .oh-plan-room { stroke-dashoffset: 0; }

@@ -1,5 +1,6 @@
 /**
- * provider.test.ts — Unit tests for generateValidated and extractJSON.
+ * provider.test.ts — Unit tests for generateValidated, extractJSON, and
+ * composeGalleryFromPlan progress events.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -174,5 +175,189 @@ describe('composeGalleryFromPlan', () => {
 
     expect(generate).toHaveBeenCalledTimes(3); // title + 2 label batches of 3
     expect(gallery.artworks.every((a) => a.label.startsWith('A wall label for aw-'))).toBe(true);
+  });
+});
+
+describe('generateValidated — onRetry callback', () => {
+  it('does NOT call onRetry on the first (successful) attempt', async () => {
+    const llm = vi.fn().mockResolvedValue('{"value":"x","count":1}');
+    const onRetry = vi.fn();
+    await generateValidated(llm, SimpleSchema, 2, onRetry);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('calls onRetry exactly once on the first retry (schema failure)', async () => {
+    const llm = vi.fn()
+      .mockResolvedValueOnce('{"value":"x"}') // missing count — validation fails
+      .mockResolvedValueOnce('{"value":"x","count":5}');
+    const onRetry = vi.fn();
+    await generateValidated(llm, SimpleSchema, 2, onRetry);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onRetry on every retry attempt (not on the first try)', async () => {
+    const llm = vi.fn()
+      .mockResolvedValueOnce('bad')
+      .mockResolvedValueOnce('still bad')
+      .mockResolvedValueOnce('{"value":"ok","count":0}');
+    const onRetry = vi.fn();
+    await generateValidated(llm, SimpleSchema, 3, onRetry);
+    expect(onRetry).toHaveBeenCalledTimes(2); // retries 1 and 2, not the initial call
+  });
+});
+
+describe('composeGalleryFromPlan — progress events', () => {
+  it('emits title → labels-batch-start → labels-batch-done → assembling in order', async () => {
+    const generate = vi.fn()
+      .mockResolvedValueOnce('Forms')
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'Label one.', narration: 'Narration one.' },
+        { artworkId: 'aw-02', label: 'Label two.' },
+      ]));
+
+    const events: string[] = [];
+    await composeGalleryFromPlan(
+      generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => events.push(evt.type)
+    );
+
+    expect(events).toEqual([
+      'title',
+      'title-done',
+      'assembling',
+      'assembled',
+      'labels-batch-start',
+      'labels-batch-done',
+    ]);
+  });
+
+  it('title-done carries the real chosen title, or the fallback', async () => {
+    const good = vi.fn()
+      .mockResolvedValueOnce('Quiet Forms')
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'A label for work one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.' },
+      ]));
+    const titles: string[] = [];
+    await composeGalleryFromPlan(
+      good, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => { if (evt.type === 'title-done') titles.push(evt.title); }
+    );
+    expect(titles).toEqual(['Quiet Forms']);
+
+    const unhelpful = vi.fn()
+      .mockResolvedValueOnce('   ')
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'A label for work one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.' },
+      ]));
+    const fallbackTitles: string[] = [];
+    await composeGalleryFromPlan(
+      unhelpful, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => { if (evt.type === 'title-done') fallbackTitles.push(evt.title); }
+    );
+    expect(fallbackTitles).toEqual(['New Exhibition']);
+  });
+
+  it('assembled carries the real deterministic-assembly numbers', async () => {
+    const generate = vi.fn()
+      .mockResolvedValueOnce('Forms')
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'A label for work one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.' },
+      ]));
+    let assembled: { rooms: number; roomDims: string[]; placements: number; tourStops: number } | null = null;
+    const gallery = await composeGalleryFromPlan(
+      generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => { if (evt.type === 'assembled') assembled = evt; }
+    );
+    expect(assembled).not.toBeNull();
+    expect(assembled!.rooms).toBe(gallery.rooms.length);
+    expect(assembled!.placements).toBe(gallery.placements.length);
+    expect(assembled!.tourStops).toBe(gallery.tour.length);
+    expect(assembled!.roomDims).toHaveLength(gallery.rooms.length);
+    expect(assembled!.roomDims[0]).toMatch(/^\d+(\.\d+)?×\d+(\.\d+)? m$/);
+  });
+
+  it('labels-batch-start carries the artwork IDs for that batch', async () => {
+    const generate = vi.fn()
+      .mockResolvedValueOnce('Forms')
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'A label for work one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.' },
+      ]));
+
+    const batchStart: Array<{ artworkIds: string[]; batch: number; totalBatches: number }> = [];
+    await composeGalleryFromPlan(
+      generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => { if (evt.type === 'labels-batch-start') batchStart.push(evt); }
+    );
+
+    expect(batchStart).toHaveLength(1);
+    expect(batchStart[0].artworkIds).toEqual(['aw-01', 'aw-02']);
+    expect(batchStart[0].batch).toBe(1);
+    expect(batchStart[0].totalBatches).toBe(1);
+  });
+
+  it('labels-batch-done carries the real label entries returned by the model', async () => {
+    const entries = [
+      { artworkId: 'aw-01', label: 'Written label.', narration: 'Spoken narration.' },
+      { artworkId: 'aw-02', label: 'Another label.' },
+    ];
+    const generate = vi.fn()
+      .mockResolvedValueOnce('Forms')
+      .mockResolvedValueOnce(JSON.stringify(entries));
+
+    const doneEvents: typeof entries[] = [];
+    await composeGalleryFromPlan(
+      generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => { if (evt.type === 'labels-batch-done') doneEvents.push(evt.entries as typeof entries); }
+    );
+
+    expect(doneEvents).toHaveLength(1);
+    expect(doneEvents[0][0].label).toBe('Written label.');
+    expect(doneEvents[0][0].narration).toBe('Spoken narration.');
+  });
+
+  it('emits retry event when the model output fails validation, then succeeds', async () => {
+    const badEntries = [{ artworkId: 'aw-01' }]; // missing required label field
+    const goodEntries = [
+      { artworkId: 'aw-01', label: 'Good label.' },
+      { artworkId: 'aw-02', label: 'Another good label.' },
+    ];
+    const generate = vi.fn()
+      .mockResolvedValueOnce('Title') // title
+      .mockResolvedValueOnce(JSON.stringify(badEntries)) // first labels attempt fails
+      .mockResolvedValueOnce(JSON.stringify(goodEntries)); // retry succeeds
+
+    const retryEvents: string[] = [];
+    const retriedFlags: boolean[] = [];
+    await composeGalleryFromPlan(
+      generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => {
+        if (evt.type === 'retry') retryEvents.push(evt.step);
+        if (evt.type === 'labels-batch-done') retriedFlags.push(evt.retried);
+      }
+    );
+
+    expect(retryEvents).toHaveLength(1);
+    expect(retryEvents[0]).toBe('labels');
+    // The batch-done event reports the retry honestly
+    expect(retriedFlags).toEqual([true]);
+  });
+
+  it('labels-batch-done reports retried=false on a clean first try', async () => {
+    const generate = vi.fn()
+      .mockResolvedValueOnce('Forms')
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'A label for work one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.' },
+      ]));
+    const retriedFlags: boolean[] = [];
+    await composeGalleryFromPlan(
+      generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube',
+      (evt) => { if (evt.type === 'labels-batch-done') retriedFlags.push(evt.retried); }
+    );
+    expect(retriedFlags).toEqual([false]);
   });
 });

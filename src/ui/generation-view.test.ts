@@ -172,4 +172,182 @@ describe('createGenerationView', () => {
       view.setStatus('Reusing your gallery — no AI call…', 60);
     }).not.toThrow();
   });
+
+  it('showWritingProgress(labels-batch-done) renders real escaped label text', () => {
+    const host = document.createElement('div');
+    const artworks = makeArtworks(2);
+    const view = createGenerationView(host, artworks);
+
+    // Ensure writing stage is initialised first
+    view.showWritingProgress({ type: 'title' });
+
+    // Now fire batch-done with real (and XSS-tainted) text
+    view.showWritingProgress({
+      type: 'labels-batch-done',
+      batch: 1,
+      totalBatches: 1,
+      entries: [
+        { artworkId: 'aw-01', label: '<script>alert(1)</script>A real label.', narration: 'Spoken narration here.' },
+        { artworkId: 'aw-02', label: 'Clean label text.' },
+      ],
+      retried: false,
+    });
+
+    const snippets = host.querySelectorAll('.oh-gen-snippet');
+    expect(snippets.length).toBe(2);
+
+    // aw-01 snippet should be visible and contain escaped text
+    const s1 = snippets[0] as HTMLElement;
+    expect(s1.style.display).not.toBe('none');
+    expect(s1.innerHTML).not.toContain('<script>');
+    expect(s1.innerHTML).toContain('&lt;script&gt;');
+    // Narration row rendered with speaker icon
+    expect(s1.innerHTML).toContain('oh-gen-snippet-row');
+
+    // aw-02 snippet visible, no narration row
+    const s2 = snippets[1] as HTMLElement;
+    expect(s2.style.display).not.toBe('none');
+    expect(s2.textContent).toContain('Clean label text.');
+  });
+
+  it('showWritingProgress(labels-batch-done) truncates long text to ~120 chars + ellipsis', () => {
+    const host = document.createElement('div');
+    const artworks = makeArtworks(1);
+    const view = createGenerationView(host, artworks);
+    view.showWritingProgress({ type: 'title' });
+
+    const longLabel = 'A'.repeat(150);
+    view.showWritingProgress({
+      type: 'labels-batch-done',
+      batch: 1,
+      totalBatches: 1,
+      entries: [{ artworkId: 'aw-01', label: longLabel }],
+      retried: false,
+    });
+
+    const snippetText = host.querySelector('.oh-gen-snippet-text')!.textContent ?? '';
+    expect(snippetText.length).toBeLessThanOrEqual(122); // 120 chars + ellipsis char
+    expect(snippetText).toContain('…');
+  });
+
+  it('title-done reveals the real chosen title, escaped', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+    view.showWritingProgress({ type: 'title' });
+    view.showWritingProgress({ type: 'title-done', title: '<b>Quiet</b> Forms' });
+
+    const reveal = host.querySelector('.oh-gen-title-reveal')!;
+    expect(reveal).not.toBeNull();
+    expect(reveal.textContent).toBe('<b>Quiet</b> Forms');
+    expect(reveal.innerHTML).not.toContain('<b>');
+  });
+
+  it('assembled shows the real deterministic-assembly numbers', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+    view.showWritingProgress({ type: 'title' });
+    view.showWritingProgress({
+      type: 'assembled',
+      rooms: 2,
+      roomDims: ['12×10 m', '10×14 m'],
+      placements: 8,
+      tourStops: 9,
+    });
+
+    const line = host.querySelector('.oh-gen-assembled')!;
+    expect(line).not.toBeNull();
+    expect(line.textContent).toContain('2 rooms');
+    expect(line.textContent).toContain('12×10 m, 10×14 m');
+    expect(line.textContent).toContain('8 placements');
+    expect(line.textContent).toContain('9 tour stops');
+  });
+
+  it('labels-batch-done reports the validation outcome — success is news too', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+    view.showWritingProgress({ type: 'title' });
+
+    view.showWritingProgress({
+      type: 'labels-batch-done',
+      batch: 1,
+      totalBatches: 2,
+      entries: [{ artworkId: 'aw-01', label: 'A label for work one.' }],
+      retried: false,
+    });
+    let validated = host.querySelector('.oh-gen-validated')!;
+    expect(validated.textContent).toBe('Batch 1/2: validated on first try.');
+
+    view.showWritingProgress({
+      type: 'labels-batch-done',
+      batch: 2,
+      totalBatches: 2,
+      entries: [{ artworkId: 'aw-01', label: 'Another label here.' }],
+      retried: true,
+    });
+    validated = host.querySelector('.oh-gen-validated')!;
+    expect(validated.textContent).toBe('Batch 2/2: validated after one retry.');
+  });
+
+  it('a finished batch clears the retry notice in favour of the outcome line', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+    view.showWritingProgress({ type: 'title' });
+    view.showWritingProgress({ type: 'retry', step: 'labels' });
+    expect(host.querySelector('.oh-gen-retry-notice')).not.toBeNull();
+
+    view.showWritingProgress({
+      type: 'labels-batch-done',
+      batch: 1,
+      totalBatches: 1,
+      entries: [{ artworkId: 'aw-01', label: 'A label for work one.' }],
+      retried: true,
+    });
+    expect(host.querySelector('.oh-gen-retry-notice')).toBeNull();
+    expect(host.querySelector('.oh-gen-validated')!.textContent).toBe('validated after one retry.');
+  });
+
+  it('showWritingProgress(assembling) appends the deterministic composing line', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+    view.showWritingProgress({ type: 'title' });
+    view.showWritingProgress({ type: 'assembling' });
+
+    const line = host.querySelector('.oh-gen-writing-line')!;
+    expect(line).not.toBeNull();
+    expect(line.textContent).toContain('deterministically');
+  });
+
+  it('showWritingProgress(retry) shows a subdued retry notice', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+    view.showWritingProgress({ type: 'title' });
+    view.showWritingProgress({ type: 'retry', step: 'labels' });
+
+    const notice = host.querySelector('.oh-gen-retry-notice')!;
+    expect(notice).not.toBeNull();
+    expect(notice.textContent).toContain('retrying');
+  });
+
+  it('showModelCaption renders the configured model string', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+
+    view.showModelCaption('watsonx · ibm/granite-3-8b-instruct');
+    const caption = host.querySelector('.oh-gen-caption')!;
+    expect(caption).not.toBeNull();
+    expect(caption.textContent).toBe('watsonx · ibm/granite-3-8b-instruct');
+  });
+
+  it('showModelCaption updates when called again (stage transition)', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1));
+
+    view.showModelCaption('watsonx · meta-llama/llama-3-2-11b-vision-instruct');
+    view.showModelCaption('watsonx · ibm/granite-3-8b-instruct');
+
+    const captions = host.querySelectorAll('.oh-gen-caption');
+    expect(captions.length).toBe(1); // only one element, updated in place
+    expect(captions[0].textContent).toBe('watsonx · ibm/granite-3-8b-instruct');
+  });
+
 });
