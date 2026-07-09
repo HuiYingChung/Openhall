@@ -44,7 +44,7 @@ Existing virtual-gallery platforms don't fix this. They are **manual 3D editors*
 
 ## What makes it different
 
-Individual pieces of this exist in the market; as far as we could find (checked July 2026 against Artsteps, Kunstmatrix, Exhibbit, MyAIArt and others), **the combination does not**:
+Every piece of this exists somewhere — some commercial, some experimental (we checked, most recently July 2026). Manual 3D exhibition platforms (Artsteps, Kunstmatrix, Exhibbit) are established businesses. AI metadata tagging exists in gallery-management tools ([Artfolio](https://artfolio.ai/)). A procedural open-source generator ([OpenVGAL](https://github.com/lbartworks/openvgal)) turns image folders into a deployable zip — with no AI and hand-written labels. Museums have [run experiments with LLM-curated shows](https://nasher.duke.edu/exhibitions/act-as-if-you-are-a-curator-an-ai-generated-exhibition/), and ML-curation research is active. As far as we could find, **no one — product or experiment — ships the full combination**: AI that analyses *your* artworks, curates them, and writes their labels and spoken narration, in a walkable 3D gallery, exported as a site you own, open source and BYOK.
 
 | | Typical virtual-gallery platforms | Openhall |
 |---|---|---|
