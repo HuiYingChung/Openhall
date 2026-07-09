@@ -104,6 +104,17 @@ export function aiInputKey(data: AppData): string {
  * https:// when the scheme is missing (so "instagram.com/jane" still works).
  * Returns '' when the text isn't a usable web address.
  */
+/**
+ * Remove every stored credential and the provider choice from this browser.
+ * The shared-computer escape hatch: after this, localStorage holds nothing
+ * key-like. Exported for unit tests.
+ */
+export function forgetStoredCredentials(): void {
+  localStorage.removeItem('openhall_watsonx');
+  localStorage.removeItem('openhall_openai');
+  localStorage.removeItem('openhall_provider');
+}
+
 export function normalizeUrl(raw: string): string {
   const s = raw.trim();
   if (!s) return '';
@@ -927,6 +938,7 @@ function renderSettings(
 ): void {
   const wx = loadWatsonxSettings();
   const oai = loadOpenAISettings();
+  const hasStoredCredentials = !!(wx?.apiKey || oai?.apiKey);
   const storedProvider = localStorage.getItem('openhall_provider');
   const providerDefault =
     storedProvider === 'watsonx' || storedProvider === 'openai'
@@ -939,7 +951,7 @@ function renderSettings(
     <div class="oh-screen oh-screen--center">
       <div class="oh-panel">
         <h2 style="margin:0 0 0.25rem;font-size:1.4rem;">API Settings</h2>
-        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Keys are stored in your browser only and never sent anywhere except directly to the AI provider.</p>
+        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Keys are stored in this browser only. OpenAI-compatible calls go directly to the provider; watsonx calls route through your token worker (stateless, no logging).</p>
 
         <label class="oh-label" style="font-size:0.9rem;margin-bottom:0.5rem;">Provider</label>
         <select id="oh-provider" class="oh-field" style="margin-bottom:1rem;">
@@ -976,6 +988,11 @@ function renderSettings(
           <button id="oh-save-settings" class="oh-btn oh-btn--primary" style="flex:1;padding:0.7rem;font-size:1rem;">Save & Continue</button>
         </div>
         <p style="font-size:0.75rem;color:#555;margin:1rem 0 0;text-align:center;">No key? Try the <button id="oh-demo-btn" class="oh-btn--link" style="color:var(--oh-ink-muted);font-size:0.75rem;">demo mode</button> instead.</p>
+        ${hasStoredCredentials ? `
+        <p id="oh-forget-row" style="font-size:0.75rem;color:#555;margin:0.6rem 0 0;text-align:center;">
+          On a shared computer? <button id="oh-forget-key" class="oh-btn--link" style="color:var(--oh-ink-muted);font-size:0.75rem;">Forget my key</button>
+          — removes your keys and provider settings from this browser.
+        </p>` : ''}
       </div>
     </div>`;
 
@@ -1037,6 +1054,31 @@ function renderSettings(
 
   container.querySelector('#oh-demo-btn')!.addEventListener('click', () => {
     onDemo();
+  });
+
+  // Shared-computer escape hatch, two-step: forgetting is destructive
+  // (IBM API keys can't be viewed again after creation), so the first click
+  // only swaps the row into an inline confirmation. "Keep them" restores the
+  // row; only a second, explicit "Forget keys" wipes storage. Re-render then
+  // drops onCancel too — with no key stored there is no upload screen to
+  // go back to.
+  container.querySelector('#oh-forget-key')?.addEventListener('click', () => {
+    const row = container.querySelector('#oh-forget-row') as HTMLElement;
+    row.innerHTML = `
+      This removes your keys from this browser — you'll need to re-enter them.
+      <button id="oh-forget-confirm" class="oh-btn--link" style="color:var(--oh-ink);font-size:0.75rem;font-weight:700;">Forget keys</button>
+      &nbsp;·&nbsp;
+      <button id="oh-forget-cancel" class="oh-btn--link" style="color:var(--oh-ink-muted);font-size:0.75rem;">Keep them</button>
+    `;
+    row.querySelector('#oh-forget-confirm')!.addEventListener('click', () => {
+      forgetStoredCredentials();
+      showToast({ message: 'Keys and provider settings removed from this browser.', tone: 'success' });
+      renderSettings(container, _data, onDone, onDemo, undefined);
+    });
+    row.querySelector('#oh-forget-cancel')!.addEventListener('click', () => {
+      // Restore the whole screen state cheaply — nothing was changed yet.
+      renderSettings(container, _data, onDone, onDemo, onCancel);
+    });
   });
 }
 
