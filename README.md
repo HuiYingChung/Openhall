@@ -60,10 +60,14 @@ Every piece of this exists somewhere — some commercial, some experimental (we 
 ```mermaid
 flowchart TD
     A[Your images] --> B[Vision analysis - one call per artwork]
+    BR[Your one-sentence brief] --> C
     B --> C[Curation plan - rooms, grouping, tour order]
-    C --> D[Deterministic assembly - geometry, placements, doorways]
-    C --> E[Title, labels and narration - validated JSON batches]
-    D --> F[gallery.json - single source of truth]
+    C --> T[Exhibition title - plain text, safe fallback]
+    T --> D
+    P[Style preset - materials, lighting] --> D[Deterministic assembly - geometry, placements, doorways]
+    C --> E[Labels and narration - validated JSON batches, one retry]
+    B --> E
+    D --> F[gallery.json - schema-validated, placement sanity pass]
     E --> F
     F --> G[Three.js walkable viewer]
     F --> H[Export zip - self-contained static site]
@@ -73,7 +77,7 @@ Three decisions carry the architecture:
 
 **1. The AI curates; deterministic code builds.** Early versions let the model emit gallery geometry freeform. The galleries were walkable but spatially incoherent — tour paths through walls, backtracking flow. Models narrate space; they don't reason about it. So the pipeline was split: the LLM decides *rooms, grouping, order, and every word of text*, and a deterministic assembler turns that plan into geometry that is guaranteed consistent. This division — trusting the model exactly where it's strong — is the project's central AI-engineering lesson, and it's visible in the git history ([PR #2](https://github.com/HuiYingChung/Openhall/pull/2)).
 
-**2. `gallery.json` is the contract.** The AI writes it, the viewer renders it, the exporter ships it — all three sides validate against one zod schema. Every LLM output is structured JSON, validated, with exactly one retry on failure. The generating screen shows this honestly: which batch is being written, the actual text as it arrives, whether validation passed on the first try, and the model doing the work (`meta-llama/llama-3-2-11b-vision-instruct` for analysis, `ibm/granite-3-8b-instruct` for text, on the watsonx route). Nothing on that screen is theatre.
+**2. `gallery.json` is the contract.** The AI writes it, the viewer renders it, the exporter ships it — all three sides validate against one zod schema. Curation, labels, and narration are structured JSON, validated with exactly one retry on failure; the exhibition title is deliberately plain text with a safe fallback (models don't answer naming questions in JSON). The generating screen shows this honestly: which batch is being written, the actual text as it arrives, whether validation passed on the first try, and the model doing the work (`meta-llama/llama-3-2-11b-vision-instruct` for analysis, `ibm/granite-3-8b-instruct` for text, on the watsonx route). Nothing on that screen is theatre.
 
 **3. BYOK, everything client-side.** There is no Openhall backend: no accounts, no database, no analytics. Details and trade-offs in [Security & privacy](#security--privacy-honestly).
 
