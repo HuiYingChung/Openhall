@@ -989,7 +989,7 @@ function renderSettings(
         </div>
         <p style="font-size:0.75rem;color:#555;margin:1rem 0 0;text-align:center;">No key? Try the <button id="oh-demo-btn" class="oh-btn--link" style="color:var(--oh-ink-muted);font-size:0.75rem;">demo mode</button> instead.</p>
         ${hasStoredCredentials ? `
-        <p style="font-size:0.75rem;color:#555;margin:0.6rem 0 0;text-align:center;">
+        <p id="oh-forget-row" style="font-size:0.75rem;color:#555;margin:0.6rem 0 0;text-align:center;">
           On a shared computer? <button id="oh-forget-key" class="oh-btn--link" style="color:var(--oh-ink-muted);font-size:0.75rem;">Forget my key</button>
           — removes your keys and provider settings from this browser.
         </p>` : ''}
@@ -1056,13 +1056,29 @@ function renderSettings(
     onDemo();
   });
 
-  // Shared-computer escape hatch: wipe credentials, confirm, re-render clean.
-  // Re-render drops onCancel too — with no key stored there is no upload
-  // screen to go back to.
+  // Shared-computer escape hatch, two-step: forgetting is destructive
+  // (IBM API keys can't be viewed again after creation), so the first click
+  // only swaps the row into an inline confirmation. "Keep them" restores the
+  // row; only a second, explicit "Forget keys" wipes storage. Re-render then
+  // drops onCancel too — with no key stored there is no upload screen to
+  // go back to.
   container.querySelector('#oh-forget-key')?.addEventListener('click', () => {
-    forgetStoredCredentials();
-    showToast({ message: 'Keys and provider settings removed from this browser.', tone: 'success' });
-    renderSettings(container, _data, onDone, onDemo, undefined);
+    const row = container.querySelector('#oh-forget-row') as HTMLElement;
+    row.innerHTML = `
+      This removes your keys from this browser — you'll need to re-enter them.
+      <button id="oh-forget-confirm" class="oh-btn--link" style="color:var(--oh-ink);font-size:0.75rem;font-weight:700;">Forget keys</button>
+      &nbsp;·&nbsp;
+      <button id="oh-forget-cancel" class="oh-btn--link" style="color:var(--oh-ink-muted);font-size:0.75rem;">Keep them</button>
+    `;
+    row.querySelector('#oh-forget-confirm')!.addEventListener('click', () => {
+      forgetStoredCredentials();
+      showToast({ message: 'Keys and provider settings removed from this browser.', tone: 'success' });
+      renderSettings(container, _data, onDone, onDemo, undefined);
+    });
+    row.querySelector('#oh-forget-cancel')!.addEventListener('click', () => {
+      // Restore the whole screen state cheaply — nothing was changed yet.
+      renderSettings(container, _data, onDone, onDemo, onCancel);
+    });
   });
 }
 

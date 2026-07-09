@@ -14,10 +14,16 @@ not one that's planned.
   key-like remains in localStorage.
 - Settings screen: when credentials are stored, a small line appears under the
   demo-mode hint — "On a shared computer? **Forget my key** — removes your keys
-  and provider settings from this browser." One click wipes storage, shows a
-  success toast, and re-renders the form clean (the row disappears with the
-  credentials; Cancel is dropped too since there is no keyed upload screen to
-  return to).
+  and provider settings from this browser."
+- Two-step by design (her call: an IBM API key can never be viewed again after
+  creation, so an accidental tap is genuinely costly): the first click only
+  swaps the row into an inline confirmation — "This removes your keys from this
+  browser — you'll need to re-enter them. **Forget keys** · Keep them". "Keep
+  them" restores everything untouched; only the explicit second click wipes
+  storage, shows a success toast, and re-renders the form clean (the row
+  disappears with the credentials; Cancel is dropped too since there is no
+  keyed upload screen to return to). In-app confirmation, not window.confirm —
+  consistent with the feedback system that replaced native dialogs.
 - Copy honesty fix in the same screen: the old caption claimed keys are "never
   sent anywhere except directly to the AI provider" — false for the watsonx
   route, where calls transit the token worker. Now: "OpenAI-compatible calls go
