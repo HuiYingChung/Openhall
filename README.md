@@ -38,7 +38,7 @@ Existing virtual-gallery platforms don't fix this. They are **manual 3D editors*
 
 1. **Upload** up to 10 works (drag & drop; resized client-side).
 2. **AI analyses and curates** — a vision model reads each work's style, palette, subject, and mood; a language model groups the works into rooms, orders the visitor flow, names the exhibition, and writes both a placard label and a spoken docent narration for every piece.
-3. **Describe your space** in natural language ("concrete walls, cold light, one narrow corridor") or pick a preset — the AI's plan becomes real, walkable rooms.
+3. **Steer it with one sentence.** Your brief ("moody nocturnal oils — hang the seascapes together") shapes the curation — what hangs together, how many rooms, the visitor's route — and the voice of every label. The visual style (materials, lighting) comes from four presets; a deterministic assembler then turns the AI's plan into walkable rooms.
 4. **Walk it** — first-person navigation, click-to-inspect, a guided tour with autoplay, and an opt-in audio guide that speaks the narration.
 5. **Export and own it** — one click produces a zip that is a complete static website: no Openhall dependency, no account, no fee to keep it online. Host it on Netlify, GitHub Pages, or your own domain.
 
@@ -49,7 +49,7 @@ Individual pieces of this exist in the market; as far as we could find (checked 
 | | Typical virtual-gallery platforms | Openhall |
 |---|---|---|
 | Gallery creation | Manual 3D editor, hours of placing | AI-curated from your images, minutes |
-| Customization | Drag-and-drop | Natural language + presets |
+| Customization | Drag-and-drop | A one-sentence curatorial brief + style presets |
 | Docent | Some offer audio add-ons | AI-written labels **and** spoken narration, per work |
 | Ownership | Locked to the platform | Exported static site, yours forever |
 | Cost model | Subscription tiers | Open source; **you pay your AI provider directly per generation** — no subscription, no platform fee, no margin taken |
