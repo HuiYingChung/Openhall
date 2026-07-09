@@ -24,9 +24,9 @@ npm install
 npm run dev        # opens http://localhost:5173
 ```
 
-Click **demo mode**. You get a pre-generated exhibition of eight Met Museum artworks (all CC0 — see [SOURCES.md](src/demo/SOURCES.md)): walk with **WASD + mouse**, click any artwork to inspect it, press **Tour** for the guided walk, and turn on the **Audio guide** to hear the narration. Then hit **Export** and drag the zip onto [Netlify Drop](https://app.netlify.com/drop) — that's the whole product, end to end, without an API key.
+Click **demo mode**. You get a pre-generated exhibition of eight Met Museum artworks (all CC0 — see [SOURCES.md](src/demo/SOURCES.md)): walk with **WASD + mouse**, click any artwork to inspect it, press **Tour** for the guided walk, and turn on the **Audio guide** to hear the narration. Then hit **Export** and drag the zip onto [Netlify Drop](https://app.netlify.com/drop) — the full visitor and export experience, no key needed.
 
-Demo mode makes no AI calls. To generate a gallery from *your own* artworks, you bring your own key — see [Using Openhall](#using-openhall-the-full-guide).
+To be clear about what the demo is *not*: it makes no AI calls — its gallery, labels, and narration were generated once and bundled. The product's core act, generating a gallery from *your own* artworks, requires your own API key — see [Using Openhall](#using-openhall-the-full-guide).
 
 ## The problem
 
