@@ -2,7 +2,7 @@
 
 **AI-generated 3D galleries that artists actually own.**
 
-Upload up to 10 artworks, describe your space in one sentence, and Openhall's AI curates a walkable 3D exhibition — with wall labels, a guided tour, and spoken narration — that you export as a self-contained static site and host anywhere, forever.
+Ten artworks and one sentence in, a walkable exhibition out: AI-curated rooms, wall labels, a guided tour, spoken narration. One click exports it all as a self-contained static site.
 
 > Built with IBM Bob. Powered by watsonx. Owned by artists.
 
