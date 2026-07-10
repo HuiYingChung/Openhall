@@ -292,8 +292,12 @@ export function buildScene(
     }
 
     // Artist wall — vinyl wall text on a free wall of the first room.
-    // When no artist is present, purge any stale artist waypoint that a
-    // previous build might have added (artist removed → rebuild → idempotent).
+    // Purge every stale reserved waypoint before deciding whether a plaque can
+    // be built. This also covers malformed/legacy galleries with duplicates and
+    // an artist that no longer has a free wall slot.
+    for (let i = gallery.tour.length - 1; i >= 0; i--) {
+      if (gallery.tour[i].artworkId === ARTIST_MESH_ID) gallery.tour.splice(i, 1);
+    }
     if (gallery.artist) {
       const slot = pickArtistSlot(entryRoom, doorwayWalls, artworkOffsets, entrancePick);
       if (slot) {
@@ -314,10 +318,6 @@ export function buildScene(
         scene.add(wash.target);
 
         // Make the artist wall the opening stop of the guided tour.
-        // Remove any existing artist waypoint before (re)inserting — makes
-        // repeated buildScene calls idempotent.
-        const artistWpIdx = gallery.tour.findIndex((w) => w.artworkId === ARTIST_MESH_ID);
-        if (artistWpIdx !== -1) gallery.tour.splice(artistWpIdx, 1);
         const stand = worldPos.clone().addScaledVector(normal, 2.0);
         stand.y = 1.6;
         gallery.tour.unshift({
@@ -327,10 +327,6 @@ export function buildScene(
           label: `Welcome — ${gallery.artist.name}`,
         });
       }
-    } else {
-      // No artist: ensure no stale artist waypoint survives a cached-gallery rebuild
-      const staleIdx = gallery.tour.findIndex((w) => w.artworkId === ARTIST_MESH_ID);
-      if (staleIdx !== -1) gallery.tour.splice(staleIdx, 1);
     }
   }
 

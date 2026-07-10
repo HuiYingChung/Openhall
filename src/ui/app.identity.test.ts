@@ -4,7 +4,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { applyIdentity, type AppData } from './app';
+import {
+  applyIdentity,
+  shouldSeedCuratorDescription,
+  syncReviewIdentity,
+  type AppData,
+} from './app';
 import type { Gallery } from '../schema/gallery.schema';
 import { ARTIST_MESH_ID } from '../viewer/room-builder';
 
@@ -133,6 +138,92 @@ describe('applyIdentity (§4)', () => {
   });
 });
 
+describe('review identity source-of-truth (§4 takeover regressions)', () => {
+  it('keeps a review title edit when the cached gallery is rebuilt', () => {
+    const gallery = makeGallery('AI Title');
+    const data = makeData({ title: 'Upload title', links: [] }, 'AI Title');
+    data.gallery = gallery;
+
+    syncReviewIdentity(data, 'title', 'Review title');
+    applyIdentity(gallery, data);
+
+    expect(data.identity?.title).toBe('Review title');
+    expect(gallery.title).toBe('Review title');
+  });
+
+  it('clearing the review title restores the generated title on cached rebuild', () => {
+    const gallery = makeGallery('Old override');
+    const data = makeData({ title: 'Old override', links: [] }, 'AI Title');
+    data.gallery = gallery;
+
+    syncReviewIdentity(data, 'title', '');
+    applyIdentity(gallery, data);
+
+    expect(data.identity?.title).toBeUndefined();
+    expect(gallery.title).toBe('AI Title');
+  });
+
+  it('preserves an explicit review-description clear instead of reseeding curator text', () => {
+    const gallery = makeGallery();
+    gallery.branding = { description: 'Curator description' };
+    const data = makeData({ links: [] }, 'AI Title');
+    data.gallery = gallery;
+    data.curatorNote = 'Curator description';
+
+    syncReviewIdentity(data, 'description', '');
+    applyIdentity(gallery, data);
+
+    expect(data.identity?.description).toBe('');
+    expect(gallery.branding?.description).toBeUndefined();
+    expect(shouldSeedCuratorDescription(data)).toBe(false);
+  });
+
+  it('still seeds the curator description when the identity field was untouched', () => {
+    const data = makeData({ links: [] }, 'AI Title');
+    data.gallery = makeGallery();
+    data.curatorNote = 'Curator description';
+    expect(shouldSeedCuratorDescription(data)).toBe(true);
+  });
+
+  it('syncs review artist name, URL, and statement back to upload drafts', () => {
+    const gallery = makeGallery();
+    gallery.artist = { name: 'Old name', links: [] };
+    const data = makeData({ artistName: 'Old name', links: [] }, 'AI Title');
+    data.gallery = gallery;
+
+    syncReviewIdentity(data, 'artistName', 'New name');
+    syncReviewIdentity(data, 'authorUrl', 'artist.example');
+    syncReviewIdentity(data, 'artistStatement', 'New statement');
+
+    expect(data.identity?.artistName).toBe('New name');
+    expect(data.identity?.links[0]?.url).toBe('artist.example');
+    expect(data.identity?.artistStatement).toBe('New statement');
+    expect(gallery.artist).toMatchObject({
+      name: 'New name',
+      statement: 'New statement',
+      links: [{ url: 'https://artist.example' }],
+    });
+    expect(gallery.branding).toMatchObject({
+      authorName: 'New name',
+      authorUrl: 'https://artist.example',
+    });
+  });
+
+  it('recreates the artist after clearing and retyping the review name', () => {
+    const gallery = makeGallery();
+    gallery.artist = { name: 'Old name', links: [] };
+    const data = makeData({ artistName: 'Old name', links: [] }, 'AI Title');
+    data.gallery = gallery;
+
+    syncReviewIdentity(data, 'artistName', '');
+    expect(gallery.artist).toBeUndefined();
+
+    syncReviewIdentity(data, 'artistName', 'Replacement name');
+    expect(gallery.artist?.name).toBe('Replacement name');
+    expect(gallery.branding?.authorName).toBe('Replacement name');
+  });
+});
+
 // ─── buildScene artist waypoint idempotency ───────────────────────────────────
 
 import { buildScene } from '../viewer/room-builder';
@@ -181,5 +272,18 @@ describe('buildScene artist waypoint (§4)', () => {
     const gallery = galleryWithoutArtist();
     buildScene(gallery);
     expect(gallery.tour.some((w) => w.artworkId === ARTIST_MESH_ID)).toBe(false);
+  });
+
+  it('collapses duplicate legacy artist waypoints to exactly one', () => {
+    const gallery = galleryWithArtist();
+    const template = gallery.tour[0];
+    gallery.tour.unshift(
+      { ...template, artworkId: ARTIST_MESH_ID, label: 'Old artist stop 1' },
+      { ...template, artworkId: ARTIST_MESH_ID, label: 'Old artist stop 2' },
+    );
+
+    buildScene(gallery);
+
+    expect(gallery.tour.filter((w) => w.artworkId === ARTIST_MESH_ID)).toHaveLength(1);
   });
 });

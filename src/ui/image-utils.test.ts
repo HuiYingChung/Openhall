@@ -8,38 +8,34 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { createDisplayBlobUrl } from './image-utils';
-
-// ─── Dimension-fitting helper (mirrors the unexported internal) ────────────
-
-function fit(w: number, h: number, max: number): { width: number; height: number } {
-  if (w <= max && h <= max) return { width: w, height: h };
-  const ratio = w / h;
-  if (w >= h) return { width: max, height: Math.round(max / ratio) };
-  return { width: Math.round(max * ratio), height: max };
-}
+import {
+  computeContentFingerprint,
+  createDisplayBlobUrl,
+  fitDimensions,
+  generateFaviconFromFile,
+} from './image-utils';
 
 describe('fit dimensions (§2 dimension contract)', () => {
   it('landscape image larger than max is scaled down', () => {
-    const r = fit(4000, 2000, 2048);
+    const r = fitDimensions(4000, 2000, 2048);
     expect(r.width).toBe(2048);
     expect(r.height).toBe(1024);
   });
 
   it('portrait image larger than max is scaled down', () => {
-    const r = fit(1000, 5000, 2048);
+    const r = fitDimensions(1000, 5000, 2048);
     expect(r.width).toBe(Math.round(2048 * (1000 / 5000)));
     expect(r.height).toBe(2048);
   });
 
   it('image already within bounds is not upscaled', () => {
-    const r = fit(800, 600, 2048);
+    const r = fitDimensions(800, 600, 2048);
     expect(r.width).toBe(800);
     expect(r.height).toBe(600);
   });
 
   it('square image at exactly max is not changed', () => {
-    const r = fit(2048, 2048, 2048);
+    const r = fitDimensions(2048, 2048, 2048);
     expect(r.width).toBe(2048);
     expect(r.height).toBe(2048);
   });
@@ -98,6 +94,7 @@ beforeEach(() => {
         if (toBlobShouldFail) cb(null);
         else cb(new Blob(['fake'], { type: 'image/jpeg' }));
       }),
+      toDataURL: vi.fn(() => 'data:image/png;base64,favicon'),
     };
     return canvas as unknown as HTMLCanvasElement;
   });
@@ -191,5 +188,44 @@ describe('createDisplayBlobUrl (§2 display-copy path)', () => {
     // The returned display URL is NOT the temp load URL
     expect(url).not.toBe('blob:stub-0');
     expect(url).toBe('blob:stub-1');
+  });
+});
+
+describe('computeContentFingerprint (§1 content identity)', () => {
+  it('is stable for identical bytes and changes for different bytes', async () => {
+    const a1 = await computeContentFingerprint(new File(['same bytes'], 'a.jpg'));
+    const a2 = await computeContentFingerprint(new File(['same bytes'], 'renamed.jpg'));
+    const b = await computeContentFingerprint(new File(['different bytes'], 'a.jpg'));
+    expect(a1).toBe(a2);
+    expect(a1).not.toBe(b);
+    expect(a1).not.toBe('');
+  });
+
+  it('uses a content-derived fallback when Web Crypto is unavailable', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
+    try {
+      const first = await computeContentFingerprint(new File(['fallback-a'], 'a.jpg'));
+      const second = await computeContentFingerprint(new File(['fallback-b'], 'b.jpg'));
+      expect(first).toMatch(/^fnv1a64-/);
+      expect(first).not.toBe(second);
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, 'crypto', descriptor);
+      else delete (globalThis as { crypto?: unknown }).crypto;
+    }
+  });
+});
+
+describe('generateFaviconFromFile (temporary URL lifecycle)', () => {
+  it('revokes the temporary URL after a successful conversion', async () => {
+    const result = await generateFaviconFromFile(makeFile('icon.png', 'image/png'));
+    expect(result).toBe('data:image/png;base64,favicon');
+    expect(revokedUrls).toContain('blob:stub-0');
+  });
+
+  it('revokes the temporary URL when conversion fails', async () => {
+    stubShouldFail = true;
+    await expect(generateFaviconFromFile(makeFile('bad.png', 'image/png'))).rejects.toThrow();
+    expect(revokedUrls).toContain('blob:stub-0');
   });
 });

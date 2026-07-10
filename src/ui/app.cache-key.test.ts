@@ -8,8 +8,8 @@
  * artworks in array order and uses that order for grouping decisions.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
-import { aiInputKey, type AppData } from './app';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { addThumbnail, aiInputKey, type AppData } from './app';
 import { saveOpenAISettings } from '../ai/openai-compat';
 import { _resetArtworkIdAllocator, allocateArtworkId } from './image-utils';
 
@@ -33,7 +33,13 @@ function makeData(): AppData {
 }
 
 describe('aiInputKey', () => {
-  beforeEach(() => { localStorage.clear(); _resetArtworkIdAllocator(); });
+  beforeEach(() => {
+    localStorage.clear();
+    _resetArtworkIdAllocator();
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      value: vi.fn(), writable: true, configurable: true,
+    });
+  });
 
   it('is stable for identical inputs', () => {
     const data = makeData();
@@ -177,5 +183,45 @@ describe('aiInputKey', () => {
     const withOne = makeData();
     withOne.artworks.pop();
     expect(aiInputKey(withOne)).not.toBe(withTwo);
+  });
+
+  it('cannot collide when metadata contains cache-key delimiter characters', () => {
+    const first = makeData();
+    first.artworks[0].title = 'a:b';
+    first.artworks[0].medium = 'c|d';
+    const second = makeData();
+    second.artworks[0].title = 'a';
+    second.artworks[0].medium = 'b:c|d';
+    expect(aiInputKey(first)).not.toBe(aiInputKey(second));
+  });
+});
+
+describe('addThumbnail cache-state notifications', () => {
+  it('notifies when artwork metadata changes so the paid/free hint refreshes', () => {
+    const data = makeData();
+    const grid = document.createElement('div');
+    const onDataChange = vi.fn();
+    addThumbnail(grid, data.artworks[0], data, onDataChange);
+
+    const title = grid.querySelector<HTMLInputElement>('[data-field="title"]')!;
+    title.value = 'Changed title';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+
+    expect(data.artworks[0].title).toBe('Changed title');
+    expect(onDataChange).toHaveBeenCalledOnce();
+  });
+
+  it('removes the final artwork, revokes its URL, and notifies the UI', () => {
+    const data = makeData();
+    data.artworks = [{ ...data.artworks[0], displayObjectUrl: 'blob:display' }];
+    const grid = document.createElement('div');
+    const onDataChange = vi.fn();
+    addThumbnail(grid, data.artworks[0], data, onDataChange);
+
+    grid.querySelector<HTMLButtonElement>('[data-remove]')!.click();
+
+    expect(data.artworks).toHaveLength(0);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:display');
+    expect(onDataChange).toHaveBeenCalledOnce();
   });
 });

@@ -32,16 +32,34 @@ export function _resetArtworkIdAllocator(next = 1): void {
 /**
  * Compute a hex-encoded SHA-256 fingerprint of a File's bytes.
  * Used by aiInputKey() to detect same-filename/different-content replacements.
- * Never logged. Returns empty string if Web Crypto is unavailable.
+ * Never logged. Falls back to a deterministic non-cryptographic fingerprint
+ * when Web Crypto is unavailable, so cache identity is never silently blank.
  */
 export async function computeContentFingerprint(file: File): Promise<string> {
-  const _crypto = globalThis.crypto;
-  if (!_crypto?.subtle) return '';
   const buf = await file.arrayBuffer();
-  const hashBuf = await _crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(hashBuf))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+  const bytes = new Uint8Array(buf);
+  const _crypto = globalThis.crypto;
+  if (_crypto?.subtle) {
+    try {
+      const hashBuf = await _crypto.subtle.digest('SHA-256', buf);
+      return Array.from(new Uint8Array(hashBuf))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+    } catch {
+      // Some non-secure/embedded browser contexts expose crypto but reject
+      // subtle.digest. Cache correctness still needs a content-derived key.
+    }
+  }
+
+  // Non-cryptographic fallback for cache identity only. FNV-1a 64-bit keeps
+  // uploads working in older/non-secure contexts instead of silently returning
+  // an empty fingerprint (which would reintroduce the stale-AI-cache bug).
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of bytes) {
+    hash ^= BigInt(byte);
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return `fnv1a64-${hash.toString(16).padStart(16, '0')}-${bytes.byteLength}`;
 }
 
 /** Resize an image blob to fit within maxEdge pixels (longest side), returning a data URL. */
@@ -81,24 +99,11 @@ export async function readImageDimensions(file: File): Promise<{ width: number; 
   });
 }
 
-function fitDimensions(w: number, h: number, maxEdge: number): { width: number; height: number } {
+export function fitDimensions(w: number, h: number, maxEdge: number): { width: number; height: number } {
   if (w <= maxEdge && h <= maxEdge) return { width: w, height: h };
   const ratio = w / h;
   if (w >= h) return { width: maxEdge, height: Math.round(maxEdge / ratio) };
   return { width: Math.round(maxEdge * ratio), height: maxEdge };
-}
-
-/**
- * Create a persistent object URL for displaying a file in the viewer.
- * The caller is responsible for calling URL.revokeObjectURL when done.
- *
- * @deprecated Use createDisplayBlobUrl() instead. This variant passes the
- *   original (potentially huge) file directly to Three.js and the exporter,
- *   which violates the ≤2048px display-copy contract. Retained only for
- *   portrait uploads where we do not downscale.
- */
-export function createDisplayObjectUrl(file: File): string {
-  return URL.createObjectURL(file);
 }
 
 /**
@@ -164,4 +169,18 @@ export async function generateFaviconDataUrl(sourceUrl: string, size = 256): Pro
     img.onerror = () => reject(new Error(`Failed to load image for favicon: ${sourceUrl}`));
     img.src = sourceUrl;
   });
+}
+
+/**
+ * Generate a favicon from a local file without leaking its temporary blob URL.
+ * Both upload-screen and review-screen favicon inputs use this helper so their
+ * lifecycle behavior cannot drift apart.
+ */
+export async function generateFaviconFromFile(file: File, size = 256): Promise<string> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    return await generateFaviconDataUrl(objectUrl, size);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }

@@ -17,7 +17,14 @@ import { showToast, buildErrorCard, showFieldError, translateError, type ErrorAc
 import { createGenerationView, buildFloorPlanSvg } from './generation-view';
 import { escapeHtml } from './escape-html';
 import { sanitizePlacements } from './placement-sanity';
-import { resizeToDataUrl, createDisplayBlobUrl, generateFaviconDataUrl, allocateArtworkId, computeContentFingerprint } from './image-utils';
+import {
+  resizeToDataUrl,
+  createDisplayBlobUrl,
+  generateFaviconDataUrl,
+  generateFaviconFromFile,
+  allocateArtworkId,
+  computeContentFingerprint,
+} from './image-utils';
 import {
   WatsonxProvider,
   loadWatsonxSettings,
@@ -94,12 +101,32 @@ export interface AppData {
   isDemo?: boolean;
 }
 
+export interface DemoDraftSnapshot {
+  artworks: UploadedArtwork[];
+  gallery: Gallery | null;
+  isDemo: boolean | undefined;
+}
+
 /**
- * Fingerprint of the inputs that require an AI call to (re)generate a gallery.
- * Provider identity (and the OpenAI model) is part of the fingerprint —
- * switching the AI in Settings must invalidate the cache, otherwise the
- * "Continue (no AI)" path silently reuses the old provider's gallery.
+ * Hold the user's live upload/gallery references while the bundled demo is
+ * active. In particular, the artwork blob URLs must remain reachable so
+ * returning from the demo does not discard the user's work or leak the URLs.
  */
+export function captureDraftBeforeDemo(data: AppData): DemoDraftSnapshot {
+  return {
+    artworks: data.artworks,
+    gallery: data.gallery,
+    isDemo: data.isDemo,
+  };
+}
+
+/** Restore the user draft after leaving the demo viewer. */
+export function restoreDraftAfterDemo(data: AppData, snapshot: DemoDraftSnapshot): void {
+  data.artworks = snapshot.artworks;
+  data.gallery = snapshot.gallery;
+  data.isDemo = snapshot.isDemo;
+}
+
 /**
  * Fingerprint of the inputs that require an AI call to (re)generate a gallery.
  *
@@ -115,19 +142,25 @@ export interface AppData {
  * the cache. OpenAI model is only included when the OpenAI provider is active.
  */
 export function aiInputKey(data: AppData): string {
-  const artworkSegments = data.artworks
-    .map((a) => `${a.id}:${a.contentHash ?? ''}:${a.title}:${a.medium}:${a.year ?? ''}`)
-    .join(',');
   const provider = localStorage.getItem('openhall_provider') ?? '';
   const model = provider === 'openai' ? (loadOpenAISettings()?.model ?? '') : '';
-  return `${artworkSegments}|${data.userBrief.trim()}|${data.preset}|${provider}:${model}`;
+  // JSON encoding avoids delimiter collisions when user metadata itself
+  // contains characters such as ':', ',' or '|'.
+  return JSON.stringify({
+    artworks: data.artworks.map((a) => ({
+      id: a.id,
+      contentHash: a.contentHash ?? '',
+      title: a.title,
+      medium: a.medium,
+      year: a.year ?? null,
+    })),
+    brief: data.userBrief.trim(),
+    preset: data.preset,
+    provider,
+    model,
+  });
 }
 
-/**
- * Normalise a user-entered link. Accepts full URLs and bare domains — prepends
- * https:// when the scheme is missing (so "instagram.com/jane" still works).
- * Returns '' when the text isn't a usable web address.
- */
 /**
  * Remove every stored credential and the provider choice from this browser.
  * The shared-computer escape hatch: after this, localStorage holds nothing
@@ -143,6 +176,11 @@ export function forgetStoredCredentials(): void {
   invalidateToken();
 }
 
+/**
+ * Normalise a user-entered link. Accepts full URLs and bare domains — prepends
+ * https:// when the scheme is missing (so "instagram.com/jane" still works).
+ * Returns '' when the text isn't a usable web address.
+ */
 export function normalizeUrl(raw: string): string {
   const s = raw.trim();
   if (!s) return '';
@@ -198,10 +236,9 @@ export function applyIdentity(gallery: Gallery, data: AppData): void {
   const branding = { ...(gallery.branding ?? {}) };
 
   // Assign when set, delete when cleared
-  if (idv.description) {
-    branding.description = idv.description;
-  } else {
-    delete branding.description;
+  if (Object.prototype.hasOwnProperty.call(idv, 'description')) {
+    if (idv.description) branding.description = idv.description;
+    else delete branding.description;
   }
   if (idv.artistName) {
     branding.authorName = idv.artistName;
@@ -225,6 +262,58 @@ export function applyIdentity(gallery: Gallery, data: AppData): void {
   } else {
     gallery.artist = undefined;
   }
+}
+
+export type ReviewIdentityField =
+  | 'title'
+  | 'description'
+  | 'artistName'
+  | 'authorUrl'
+  | 'artistStatement';
+
+/**
+ * Keep review-screen branding edits and upload-screen identity drafts on one
+ * source of truth. Without this, going Back to edit and taking the cached path
+ * reapplies stale upload values over newer review edits.
+ */
+export function syncReviewIdentity(data: AppData, field: ReviewIdentityField, value: string): void {
+  const gallery = data.gallery;
+  if (!gallery) return;
+  const idv = (data.identity ??= { links: [] });
+
+  switch (field) {
+    case 'title':
+      idv.title = value || undefined;
+      break;
+    case 'description':
+      // Preserve an explicit empty string so the curator fallback does not
+      // reappear after the user deliberately clears it on the review screen.
+      idv.description = value;
+      break;
+    case 'artistName':
+      idv.artistName = value || undefined;
+      break;
+    case 'authorUrl': {
+      const first = idv.links[0] ?? { label: '', url: '' };
+      idv.links[0] = { ...first, url: value };
+      break;
+    }
+    case 'artistStatement':
+      idv.artistStatement = value || undefined;
+      break;
+  }
+
+  // Reuse the same fold used before scene builds. Besides preventing the two
+  // edit screens from drifting, this recreates gallery.artist if a user clears
+  // the name and then types a replacement in the same review session.
+  applyIdentity(gallery, data);
+}
+
+/** True when an untouched blank description should receive the curator note. */
+export function shouldSeedCuratorDescription(data: AppData): boolean {
+  return data.identity?.description !== ''
+    && !data.gallery?.branding?.description?.trim()
+    && !!data.curatorNote?.trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -315,6 +404,7 @@ export function bootApp(): void {
     analyses: [],
     gallery: null,
   };
+  let draftBeforeDemo: DemoDraftSnapshot | null = null;
 
   // UI container
   const ui = document.createElement('div');
@@ -375,6 +465,12 @@ export function bootApp(): void {
     document.getElementById('oh-demo-chip')?.remove();
     // Reset suppressNextRelock so the next session starts clean
     suppressNextRelock = false;
+    // Demo mode temporarily swaps in sample data. Restore the user's upload
+    // draft (and its still-live blob URLs) before rendering the menu again.
+    if (data.isDemo && draftBeforeDemo) {
+      restoreDraftAfterDemo(data, draftBeforeDemo);
+      draftBeforeDemo = null;
+    }
     // Navigate: go to upload if there is a stored key, settings otherwise
     const hasKey = !!(loadWatsonxSettings()?.apiKey || loadOpenAISettings()?.apiKey);
     setState(hasKey ? 'upload' : 'settings');
@@ -649,6 +745,9 @@ export function bootApp(): void {
   /** Demo mode: load the sample gallery + build scene + enter viewer (no key needed).
    *  Reachable from both the Settings screen and the upload/home screen. */
   function startDemo(): void {
+          // The demo is a preview, not a destructive reset. Keep the user's
+          // current artwork/gallery references alive until they return.
+          if (!data.isDemo) draftBeforeDemo = captureDraftBeforeDemo(data);
           // Local loads are near-instant, but on a hosted instance the sample
           // images travel the network — never leave a click unanswered.
           const loading = showToast({ message: 'Loading demo gallery…', tone: 'info', duration: 0 });
@@ -757,6 +856,8 @@ export function bootApp(): void {
             }
           }).catch((e) => {
             loading.dismiss();
+            // No demo became active, so no temporary snapshot is needed.
+            if (!data.isDemo) draftBeforeDemo = null;
             showToast({
               message: `Demo mode failed to load: ${String(e).slice(0, 120)}`,
               tone: 'error',
@@ -1324,7 +1425,7 @@ function renderUpload(
     if (cached) {
       genHint.innerHTML = `${svgCheck()}Same artworks, description &amp; style — continues with no new AI call.`;
       genHint.className = 'oh-hint--ok';
-    } else if (hadGallery) {
+    } else if (hadGallery && ready) {
       // They already had a gallery and changed the artworks/description/style/provider.
       genHint.innerHTML = `${svgWarn()}You changed the artworks, description, style, or AI provider — this re-runs the AI and may use API credits.`;
       genHint.className = 'oh-hint--warn';
@@ -1418,13 +1519,7 @@ function renderUpload(
     const file = favInput.files?.[0];
     if (!file) return;
     try {
-      // Create a temporary URL, generate the favicon data URL, then revoke the temp URL
-      const tempUrl = URL.createObjectURL(file);
-      try {
-        data.customFaviconDataUrl = await generateFaviconDataUrl(tempUrl);
-      } finally {
-        URL.revokeObjectURL(tempUrl);
-      }
+      data.customFaviconDataUrl = await generateFaviconFromFile(file);
       refreshFav();
     } catch { showToast({ message: 'Could not read that image. Try a PNG or JPG.', tone: 'error', duration: 6000 }); }
     favInput.value = '';
@@ -1457,13 +1552,18 @@ function renderUpload(
     const errors: string[] = [];
 
     for (const file of toProcess) {
-      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) continue;
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        errors.push(file.name);
+        continue;
+      }
       try {
-        const [{ dataUrl: analysisDataUrl, width, height }, displayObjectUrl, contentHash] = await Promise.all([
+        // Create the persistent display URL only after the other operations
+        // succeed, so a rejected hash/analysis cannot orphan an unreachable URL.
+        const [{ dataUrl: analysisDataUrl, width, height }, contentHash] = await Promise.all([
           resizeToDataUrl(file, 1024),
-          createDisplayBlobUrl(file, 2048),
           computeContentFingerprint(file),
         ]);
+        const displayObjectUrl = await createDisplayBlobUrl(file, 2048);
         const id = allocateArtworkId();
         const artwork: UploadedArtwork = {
           id, filename: file.name, analysisDataUrl, displayObjectUrl,
@@ -1541,11 +1641,11 @@ function renderUpload(
   });
 }
 
-function addThumbnail(
+export function addThumbnail(
   grid: HTMLElement,
   artwork: UploadedArtwork,
   data: AppData,
-  onRemove?: () => void
+  onDataChange?: () => void
 ): void {
   const card = document.createElement('div');
   card.style.cssText = 'background:var(--oh-panel);border-radius:8px;overflow:hidden;border:1px solid var(--oh-border);';
@@ -1568,7 +1668,7 @@ function addThumbnail(
     if (artwork.displayObjectUrl) URL.revokeObjectURL(artwork.displayObjectUrl);
     data.artworks = data.artworks.filter((a) => a.id !== artwork.id);
     card.remove();
-    onRemove?.();
+    onDataChange?.();
   });
 
   card.querySelectorAll<HTMLInputElement>('[data-field]').forEach((input) => {
@@ -1578,6 +1678,7 @@ function addThumbnail(
       if (!aw) return;
       if (field === 'year') aw.year = input.value ? parseInt(input.value) : undefined;
       else aw[field] = input.value;
+      onDataChange?.();
     });
   });
 
@@ -1755,7 +1856,7 @@ function renderLabels(
   // The AI curator's note seeds the description when the artist left it
   // blank — its words then flow into the exported site's meta/share preview.
   // Fully editable below; a caption declares the provenance.
-  const descSeededByCurator = !branding.description?.trim() && !!data.curatorNote?.trim();
+  const descSeededByCurator = shouldSeedCuratorDescription(data);
   if (descSeededByCurator) branding.description = data.curatorNote!.trim();
   const artistObj = data.gallery!.artist;
   const bTitle = data.gallery!.title ?? '';
@@ -1828,24 +1929,19 @@ function renderLabels(
   refreshFaviconPreview();
 
   container.querySelector('#oh-brand-title')!.addEventListener('input', (e) => {
-    data.gallery!.title = (e.target as HTMLInputElement).value;
+    syncReviewIdentity(data, 'title', (e.target as HTMLInputElement).value);
   });
   container.querySelector('#oh-brand-desc')!.addEventListener('input', (e) => {
-    branding.description = (e.target as HTMLTextAreaElement).value || undefined;
+    syncReviewIdentity(data, 'description', (e.target as HTMLTextAreaElement).value);
   });
   container.querySelector('#oh-brand-author')!.addEventListener('input', (e) => {
-    const v = (e.target as HTMLInputElement).value;
-    branding.authorName = v || undefined;
-    // Keep the in-world artist wall's name in sync (panel + tour read it live).
-    if (data.gallery!.artist && v) data.gallery!.artist.name = v;
+    syncReviewIdentity(data, 'artistName', (e.target as HTMLInputElement).value);
   });
   container.querySelector('#oh-brand-url')!.addEventListener('input', (e) => {
-    branding.authorUrl = (e.target as HTMLInputElement).value || undefined;
+    syncReviewIdentity(data, 'authorUrl', (e.target as HTMLInputElement).value);
   });
   container.querySelector('#oh-brand-statement')?.addEventListener('input', (e) => {
-    if (data.gallery!.artist) {
-      data.gallery!.artist.statement = (e.target as HTMLTextAreaElement).value || undefined;
-    }
+    syncReviewIdentity(data, 'artistStatement', (e.target as HTMLTextAreaElement).value);
   });
   const faviconInput = container.querySelector('#oh-favicon-input') as HTMLInputElement;
   faviconInput.addEventListener('change', async () => {
@@ -1853,10 +1949,12 @@ function renderLabels(
     if (!file) return;
     try {
       // Normalise any uploaded image to a square PNG so the exported icon is consistent.
-      data.customFaviconDataUrl = await generateFaviconDataUrl(URL.createObjectURL(file));
+      data.customFaviconDataUrl = await generateFaviconFromFile(file);
       refreshFaviconPreview();
     } catch {
       showToast({ message: 'Could not read that image. Try a PNG or JPG.', tone: 'error', duration: 6000 });
+    } finally {
+      faviconInput.value = '';
     }
   });
   container.querySelector('#oh-favicon-reset')!.addEventListener('click', () => {
