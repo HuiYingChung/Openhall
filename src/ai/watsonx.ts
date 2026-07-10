@@ -51,6 +51,9 @@ export function loadWatsonxSettings(): WatsonxSettings | null {
 }
 
 export function saveWatsonxSettings(s: WatsonxSettings): void {
+  // Invalidate the token cache when settings change — the new credentials
+  // may be for a different account or endpoint.
+  invalidateToken();
   localStorage.setItem('openhall_watsonx', JSON.stringify(s));
 }
 
@@ -61,6 +64,20 @@ export function saveWatsonxSettings(s: WatsonxSettings): void {
 interface TokenCache {
   token: string;
   expiresAt: number; // ms since epoch
+  /** Opaque key derived from the settings that produced this token. */
+  settingsKey: string;
+}
+
+/**
+ * Build a credential-binding key from the settings that produced a token.
+ * This key lives only in memory (never logged, never persisted, never thrown
+ * in error messages) and is used solely for cache-entry comparison.
+ */
+function settingsCacheKey(s: WatsonxSettings): string {
+  // Concatenate all settings that constitute the authentication context.
+  // The result is held only in _tokenCache.settingsKey (module memory) and
+  // used only for === comparison — it is never logged or thrown.
+  return `${s.apiKey}|${s.projectId}|${s.tokenWorkerUrl}|${s.wxUrl}`;
 }
 
 // Module-level cache — survives across provider calls within a session
@@ -68,8 +85,9 @@ let _tokenCache: TokenCache | null = null;
 
 async function getToken(settings: WatsonxSettings): Promise<string> {
   const now = Date.now();
-  // Refresh 60s before expiry
-  if (_tokenCache && _tokenCache.expiresAt - now > 60_000) {
+  const ck = settingsCacheKey(settings);
+  // Reuse only when the cache is still valid AND was produced by the same credentials
+  if (_tokenCache && _tokenCache.expiresAt - now > 60_000 && _tokenCache.settingsKey === ck) {
     return _tokenCache.token;
   }
 
@@ -85,7 +103,7 @@ async function getToken(settings: WatsonxSettings): Promise<string> {
       access_token: string;
       expires_in: number;
     };
-    _tokenCache = { token: access_token, expiresAt: now + expires_in * 1000 };
+    _tokenCache = { token: access_token, expiresAt: now + expires_in * 1000, settingsKey: ck };
     return access_token;
   } else {
     // Direct IAM call (Node scripts only — blocked by CORS in browser)
@@ -103,7 +121,7 @@ async function getToken(settings: WatsonxSettings): Promise<string> {
       access_token: string;
       expires_in: number;
     };
-    _tokenCache = { token: access_token, expiresAt: now + expires_in * 1000 };
+    _tokenCache = { token: access_token, expiresAt: now + expires_in * 1000, settingsKey: ck };
     return access_token;
   }
 }

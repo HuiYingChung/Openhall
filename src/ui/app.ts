@@ -22,6 +22,7 @@ import {
   WatsonxProvider,
   loadWatsonxSettings,
   saveWatsonxSettings,
+  invalidateToken,
   WATSONX_VISION_MODEL,
   WATSONX_TEXT_MODEL,
 } from '../ai/watsonx';
@@ -136,6 +137,10 @@ export function forgetStoredCredentials(): void {
   localStorage.removeItem('openhall_watsonx');
   localStorage.removeItem('openhall_openai');
   localStorage.removeItem('openhall_provider');
+  // Invalidate the in-memory Watsonx token — must not outlive the credentials
+  // that produced it. forgetStoredCredentials() is the "shared computer" escape
+  // hatch; leaving a live token would defeat it.
+  invalidateToken();
 }
 
 export function normalizeUrl(raw: string): string {
