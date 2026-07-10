@@ -61,7 +61,19 @@ async function chat(
     }),
   });
   if (!res.ok) throw new Error(`OpenAI-compat HTTP ${res.status}: ${await res.text()}`);
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const json = (await res.json()) as {
+    choices?: Array<{
+      message?: { content?: string };
+      finish_reason?: string;
+    }>;
+  };
+  const finishReason = json.choices?.[0]?.finish_reason;
+  if (finishReason === 'length' || finishReason === 'max_tokens') {
+    throw new Error(
+      `OpenAI-compat output truncated (finish_reason: "${finishReason}"). ` +
+        'Increase max_tokens or reduce the requested output size.'
+    );
+  }
   return json?.choices?.[0]?.message?.content ?? '';
 }
 
