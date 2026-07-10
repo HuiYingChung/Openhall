@@ -1714,7 +1714,7 @@ export function addThumbnail(
         style="border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;" />
       <input data-field="medium" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Medium (optional)" value="${escapeHtml(artwork.medium)}" aria-label="Artwork medium"
         style="border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;" />
-      <input data-field="year" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Year" type="number" value="${escapeHtml(String(artwork.year ?? ''))}" aria-label="Artwork year"
+      <input data-field="year" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Year (optional)" type="number" value="${escapeHtml(String(artwork.year ?? ''))}" aria-label="Artwork year"
         style="border-radius:4px;padding:3px 6px;font-size:0.75rem;" />
     </div>`;
 
@@ -2068,6 +2068,7 @@ export function renderLabels(
       (aw.imagePath && !aw.imagePath.startsWith('placeholder:') ? aw.imagePath : null);
     const titleValue = aw.title ?? '';
     const mediumValue = aw.medium ?? '';
+    const yearValue = aw.year != null ? String(aw.year) : '';
     const titleSource = data.artworkTitleSources?.[aw.id];
     const titleSourceText = titleSource === 'ai'
       ? 'AI suggestion'
@@ -2095,13 +2096,17 @@ export function renderLabels(
           <input data-id="${escapeHtml(aw.id)}" data-field="medium" class="oh-field" type="text"
             value="${escapeHtml(mediumValue)}" placeholder="Medium (optional)" aria-label="Artwork medium"
             style="flex:1;min-width:0;padding:0.4rem 0.5rem;font-size:0.85rem;color:#999;">
+          <input data-id="${escapeHtml(aw.id)}" data-field="year" class="oh-field" type="number"
+            value="${escapeHtml(yearValue)}" placeholder="Year (optional)" aria-label="Artwork year"
+            style="flex:0 0 7.5rem;min-width:0;padding:0.4rem 0.5rem;font-size:0.85rem;color:#999;">
         </div>
         <textarea data-id="${escapeHtml(aw.id)}" class="oh-field" rows="3" aria-label="Wall label text"
           style="padding:0.5rem;font-size:0.85rem;">${escapeHtml(aw.label)}</textarea>
       </div>`;
-    // Title + medium inputs update both upload metadata and gallery.json.
-    // Inspect/tour change immediately, and a later paid regeneration preserves
-    // the artist's decisions instead of restoring stale AI metadata.
+    // Title, medium, and year inputs update both upload metadata and
+    // gallery.json. Inspect/tour change immediately, and a later paid
+    // regeneration preserves the artist's decisions instead of restoring
+    // stale AI metadata.
     for (const input of Array.from(block.querySelectorAll('input'))) {
       input.addEventListener('input', (e) => {
         const el = e.target as HTMLInputElement;
@@ -2131,6 +2136,16 @@ export function renderLabels(
           if (waypoint) {
             if (el.value.trim()) waypoint.label = el.value;
             else delete waypoint.label;
+          }
+        } else if (el.dataset['field'] === 'year') {
+          const parsed = el.value ? parseInt(el.value) : NaN;
+          const uploadAw = data.artworks.find((artwork) => artwork.id === galleryAw.id);
+          if (Number.isFinite(parsed)) {
+            galleryAw.year = parsed;
+            if (uploadAw) uploadAw.year = parsed;
+          } else {
+            delete galleryAw.year;
+            if (uploadAw) uploadAw.year = undefined;
           }
         } else if (el.value.trim()) {
           galleryAw.medium = el.value.trim();

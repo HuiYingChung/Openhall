@@ -132,6 +132,25 @@ describe('review artwork metadata', () => {
     expect(data.lastGenKey).toBe(aiInputKey(data));
   });
 
+  it('sets and clears the optional year without touching the cache key', () => {
+    const data = makeData();
+    const root = render(data);
+    const year = root.querySelector<HTMLInputElement>('[data-field="year"]')!;
+
+    expect(year.placeholder).toContain('optional');
+    year.value = '1999';
+    year.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(data.gallery!.artworks[0].year).toBe(1999);
+    expect(data.artworks[0].year).toBe(1999);
+    expect(data.lastGenKey).toBe(aiInputKey(data));
+
+    year.value = '';
+    year.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(data.gallery!.artworks[0].year).toBeUndefined();
+    expect(data.artworks[0].year).toBeUndefined();
+    expect(data.lastGenKey).toBe(aiInputKey(data));
+  });
+
   it('does not claim a user-provided title was AI-suggested', () => {
     const data = makeData();
     data.artworks[0].title = 'Artist Title';
