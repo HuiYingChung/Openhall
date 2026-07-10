@@ -115,6 +115,13 @@ export function disposeScene(scene: THREE.Scene): void {
       mat.dispose();
     }
   });
+  // Dispose the scene's environment map when it is an owned texture.
+  // buildScene() creates a PMREMGenerator-derived texture via makeStudioEnvTexture()
+  // and assigns it to scene.environment — it is not shared and must be released here.
+  if (scene.environment instanceof THREE.Texture) {
+    scene.environment.dispose();
+    scene.environment = null;
+  }
   // Remove all children so the scene is empty
   while (scene.children.length > 0) scene.remove(scene.children[0]);
 }
@@ -285,6 +292,12 @@ export function buildScene(
     }
 
     // Artist wall — vinyl wall text on a free wall of the first room.
+    // Purge every stale reserved waypoint before deciding whether a plaque can
+    // be built. This also covers malformed/legacy galleries with duplicates and
+    // an artist that no longer has a free wall slot.
+    for (let i = gallery.tour.length - 1; i >= 0; i--) {
+      if (gallery.tour[i].artworkId === ARTIST_MESH_ID) gallery.tour.splice(i, 1);
+    }
     if (gallery.artist) {
       const slot = pickArtistSlot(entryRoom, doorwayWalls, artworkOffsets, entrancePick);
       if (slot) {
@@ -305,16 +318,14 @@ export function buildScene(
         scene.add(wash.target);
 
         // Make the artist wall the opening stop of the guided tour.
-        if (gallery.tour[0]?.artworkId !== ARTIST_MESH_ID) {
-          const stand = worldPos.clone().addScaledVector(normal, 2.0);
-          stand.y = 1.6;
-          gallery.tour.unshift({
-            artworkId: ARTIST_MESH_ID,
-            position: { x: stand.x, y: stand.y, z: stand.z },
-            lookAt: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
-            label: `Welcome — ${gallery.artist.name}`,
-          });
-        }
+        const stand = worldPos.clone().addScaledVector(normal, 2.0);
+        stand.y = 1.6;
+        gallery.tour.unshift({
+          artworkId: ARTIST_MESH_ID,
+          position: { x: stand.x, y: stand.y, z: stand.z },
+          lookAt: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
+          label: `Welcome — ${gallery.artist.name}`,
+        });
       }
     }
   }

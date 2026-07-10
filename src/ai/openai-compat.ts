@@ -5,10 +5,10 @@
  * (e.g. gpt-4o, llama-vision endpoints).
  */
 
-import { WorkAnalysisSchema, CurationPlanSchema } from '../schema/analysis.schema';
 import { generateValidated, composeGalleryFromPlan } from './provider';
 import { buildAnalyzePrompt } from './prompts/analyze.prompt';
 import { buildCuratePrompt } from './prompts/curate.prompt';
+import { buildAnalysisSchema, buildCurationSchema } from './validation';
 import type { AIProvider, UploadedArtwork, StylePreset } from './provider';
 import type { WorkAnalysis, CurationPlan } from '../schema/analysis.schema';
 import type { Gallery } from '../schema/gallery.schema';
@@ -61,7 +61,19 @@ async function chat(
     }),
   });
   if (!res.ok) throw new Error(`OpenAI-compat HTTP ${res.status}: ${await res.text()}`);
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const json = (await res.json()) as {
+    choices?: Array<{
+      message?: { content?: string };
+      finish_reason?: string;
+    }>;
+  };
+  const finishReason = json.choices?.[0]?.finish_reason;
+  if (finishReason === 'length' || finishReason === 'max_tokens') {
+    throw new Error(
+      `OpenAI-compat output truncated (finish_reason: "${finishReason}"). ` +
+        'Increase max_tokens or reduce the requested output size.'
+    );
+  }
   return json?.choices?.[0]?.message?.content ?? '';
 }
 
@@ -85,11 +97,12 @@ export class OpenAICompatProvider implements AIProvider {
             ],
           },
         ], 512),
-      WorkAnalysisSchema
+      buildAnalysisSchema(artwork.id)
     );
   }
 
   async curate(analyses: WorkAnalysis[], userBrief: string): Promise<CurationPlan> {
+    const expectedIds = analyses.map((a) => a.artworkId);
     const prompt = buildCuratePrompt(
       JSON.stringify(analyses, null, 2),
       userBrief,
@@ -98,7 +111,7 @@ export class OpenAICompatProvider implements AIProvider {
     return generateValidated(
       async (extraContext) =>
         chat(this.settings, [{ role: 'user', content: prompt + extraContext }], 1024),
-      CurationPlanSchema
+      buildCurationSchema(expectedIds)
     );
   }
 

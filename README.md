@@ -114,7 +114,7 @@ Openhall supports two provider routes. Your key is stored in this browser's loca
    ```bash
    npx wrangler deploy worker/token-exchange.ts   # free Cloudflare Workers tier
    ```
-   Set the `ALLOWED_ORIGINS` environment variable in the Cloudflare dashboard to the domains you'll run Openhall from — the default `*` lets anyone use (and bill) your relay.
+   Set `ALLOWED_ORIGINS` in the Cloudflare dashboard to the exact domains that will run Openhall (comma-separated when needed). A blank value accepts only the local Vite development origins; `*` deliberately allows every website. This is browser-side abuse mitigation, not authentication: non-browser clients can omit or forge `Origin`, so deploy the worker for your own gallery rather than treating it as a protected public API.
 5. In Openhall's **Settings**: pick *IBM watsonx.ai*, paste the API key, Project ID, and your worker URL → **Save & Continue**.
 
 **Route 2 — OpenAI-compatible (fallback)**

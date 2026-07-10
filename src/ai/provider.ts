@@ -8,9 +8,10 @@ import type { WorkAnalysis } from '../schema/analysis.schema';
 import type { CurationPlan } from '../schema/analysis.schema';
 import type { Gallery } from '../schema/gallery.schema';
 import { GallerySchema } from '../schema/gallery.schema';
-import { assembleGallery, LabelsResponseSchema } from './gallery-assembler';
+import { assembleGallery } from './gallery-assembler';
 import type { LabelsResponse } from './gallery-assembler';
 import { buildLabelsPrompt } from './prompts/labels.prompt';
+import { buildLabelsSchema } from './validation';
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
@@ -32,6 +33,12 @@ export interface UploadedArtwork {
   title: string;
   medium: string;
   year?: number;
+  /**
+   * SHA-256 hex fingerprint of the image bytes, derived at upload time.
+   * Used by aiInputKey() to detect same-filename/different-content replacements.
+   * Absent for demo artworks and test stubs.
+   */
+  contentHash?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -211,15 +218,11 @@ export async function composeGalleryFromPlan(
 ): Promise<Gallery> {
   // Step 1: derive an exhibition title (tiny output — 32 tokens).
   // Plain text, NOT JSON — generateValidated would reject every real reply.
-  // An unhelpful or failing model falls back to the default title.
+  // An empty successful response falls back to the default title. Transport,
+  // authentication, quota, and other provider failures must remain visible.
   onProgress?.({ type: 'title' });
   const titlePrompt = `In 4 words or fewer, suggest an exhibition title based on this curator note: "${plan.curatorNote}". Reply with ONLY the title, no quotes.`;
-  let rawTitle = '';
-  try {
-    rawTitle = await generate(titlePrompt, 32);
-  } catch {
-    rawTitle = '';
-  }
+  const rawTitle = await generate(titlePrompt, 32);
   const exhibitionTitle = rawTitle.replace(/^["']|["']$/g, '').trim() || 'New Exhibition';
   onProgress?.({ type: 'title-done', title: exhibitionTitle });
 
@@ -248,11 +251,12 @@ export async function composeGalleryFromPlan(
       totalBatches,
       artworkIds: batch.map((a) => a.id),
     });
+    const batchIds = batch.map((a) => a.id);
     const prompt = buildLabelsPrompt(batch, analyses, plan.curatorNote);
     let retried = false;
     const entries = await generateValidated(
       async (extraContext) => generate(prompt + extraContext, 600),
-      LabelsResponseSchema,
+      buildLabelsSchema(batchIds),
       1, // AGENTS.md rule 4: retry once, then fail loudly
       () => {
         retried = true;
@@ -269,17 +273,20 @@ export async function composeGalleryFromPlan(
     }
   }
 
-  // Step 4: merge labels, narration, and artistStatement into artwork records
-  const artworksWithLabels = shell.artworks.map((aw) => ({
-    ...aw,
-    label: labelMap[aw.id]?.label ?? 'No label available.',
-    ...(labelMap[aw.id]?.narration
-      ? { narration: labelMap[aw.id].narration }
-      : {}),
-    ...(labelMap[aw.id]?.artistStatement
-      ? { artistStatement: labelMap[aw.id].artistStatement }
-      : {}),
-  }));
+  // Step 4: merge labels, narration, and artistStatement into artwork records.
+  // The buildLabelsSchema above guarantees every expected id received a label
+  // entry — no silent 'No label available.' fallback needed here. If an entry
+  // is missing it means the schema let something through, which is a bug.
+  const artworksWithLabels = shell.artworks.map((aw) => {
+    const entry = labelMap[aw.id];
+    if (!entry) throw new Error(`Internal error: no label entry for artwork "${aw.id}" after validation.`);
+    return {
+      ...aw,
+      label: entry.label,
+      ...(entry.narration ? { narration: entry.narration } : {}),
+      ...(entry.artistStatement ? { artistStatement: entry.artistStatement } : {}),
+    };
+  });
 
   // Step 5: validate the assembled gallery
   return GallerySchema.parse({ ...shell, artworks: artworksWithLabels });

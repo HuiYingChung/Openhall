@@ -18,6 +18,7 @@ import { FirstPersonControls } from './controls';
 import { ArtworkInteractions } from './interactions';
 import { GalleryTour } from './tour';
 import { mountHintOverlay, mountHintOverlayTouchFallback, mountRelockOverlay, shouldShowRelockOverlay, fadeThroughBlack, fadeInFromBlack } from '../ui/overlay';
+import { renderViewerBootError } from './viewer-error';
 
 /** True when pointer lock is available (false on iOS Safari). */
 function supportsPointerLock(): boolean {
@@ -236,7 +237,5 @@ async function bootViewer() {
 }
 
 bootViewer().catch((e) => {
-  document.body.innerHTML = `<div style="color:#f00;font-family:monospace;padding:2rem;">
-    <h2>Failed to load gallery</h2><pre>${String(e)}</pre>
-  </div>`;
+  renderViewerBootError(document.body, e);
 });
