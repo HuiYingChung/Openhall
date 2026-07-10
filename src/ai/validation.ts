@@ -130,6 +130,26 @@ export function buildCurationSchema(expectedArtworkIds: string[]) {
         message: `tourOrder must be an exact permutation of [${expectedArtworkIds.join(', ')}].`,
         path: ['tourOrder'],
       }
+    )
+    .refine(
+      (d) => {
+        const roomIndexByArtwork = new Map<string, number>();
+        d.rooms.forEach((room, roomIndex) => {
+          room.artworkIds.forEach((artworkId) => roomIndexByArtwork.set(artworkId, roomIndex));
+        });
+
+        let previousRoomIndex = -1;
+        for (const artworkId of d.tourOrder) {
+          const roomIndex = roomIndexByArtwork.get(artworkId);
+          if (roomIndex === undefined || roomIndex < previousRoomIndex) return false;
+          previousRoomIndex = roomIndex;
+        }
+        return true;
+      },
+      {
+        message: 'tourOrder must visit rooms in rooms[] order without returning to an earlier room.',
+        path: ['tourOrder'],
+      }
     );
 }
 

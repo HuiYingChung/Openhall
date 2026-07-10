@@ -62,6 +62,36 @@ function makeGallery(waypointCount: number): Gallery {
   });
 }
 
+function makeGalleryWithTransit(): Gallery {
+  const gallery = makeGallery(0);
+  return GallerySchema.parse({
+    ...gallery,
+    artworks: [
+      { id: 'aw-1', imagePath: 'images/aw-1.jpg', title: 'First', medium: 'Oil', label: 'First label.' },
+      { id: 'aw-2', imagePath: 'images/aw-2.jpg', title: 'Second', medium: 'Ink', label: 'Second label.' },
+    ],
+    tour: [
+      {
+        artworkId: 'aw-1',
+        position: { x: 0, y: 1.6, z: 0 },
+        lookAt: { x: 0, y: 1.5, z: -2 },
+        label: 'First',
+      },
+      {
+        kind: 'transit',
+        position: { x: 5, y: 1.6, z: 0 },
+        lookAt: { x: 10, y: 1.6, z: 0 },
+      },
+      {
+        artworkId: 'aw-2',
+        position: { x: 10, y: 1.6, z: 0 },
+        lookAt: { x: 10, y: 1.5, z: -2 },
+        label: 'Second',
+      },
+    ],
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -107,7 +137,45 @@ describe('GalleryTour waypoint sequencing', () => {
     tour.dispose();
   });
 
-  it('prev() from waypoint 0 wraps to the last waypoint', () => {
+  it('passes through transit waypoints without pausing or counting them as stops', () => {
+    const gallery = makeGalleryWithTransit();
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+
+    tour.update(10);
+    tour.update(1);
+    tour.next();
+
+    tour.update(10);
+    expect(camera.position.x).toBeCloseTo(5, 0);
+    expect(document.getElementById('oh-tour-label')?.style.display).toBe('none');
+
+    tour.update(10);
+    tour.update(1);
+    expect(camera.position.x).toBeCloseTo(10, 0);
+    expect(document.getElementById('oh-tour-label')?.textContent).toContain('2 / 2');
+
+    tour.dispose();
+  });
+
+  it('traverses the same doorway waypoint in reverse when moving to the previous stop', () => {
+    const gallery = makeGalleryWithTransit();
+    const tour = new GalleryTour({ camera, gallery, onExit: vi.fn() });
+
+    tour.next();
+    tour.update(10);
+    tour.update(10);
+    tour.update(1);
+    tour.prev();
+
+    tour.update(10);
+    expect(camera.position.x).toBeCloseTo(5, 0);
+    tour.update(10);
+    expect(camera.position.x).toBeCloseTo(0, 0);
+
+    tour.dispose();
+  });
+
+  it('prev() from waypoint 0 stays at the first waypoint', () => {
     const gallery = makeGallery(3);
     const onExit = vi.fn();
     const tour = new GalleryTour({ camera, gallery, onExit });
@@ -115,8 +183,8 @@ describe('GalleryTour waypoint sequencing', () => {
     tour.prev();
     tour.update(10);
 
-    // Should be at the last waypoint: index 2, x=10
-    expect(camera.position.x).toBeCloseTo(10, 0);
+    // Boundary navigation must not animate across the whole gallery.
+    expect(camera.position.x).toBeCloseTo(0, 0);
 
     tour.dispose();
   });

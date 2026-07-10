@@ -266,6 +266,7 @@ export class GalleryTour {
   private gallery: Gallery;
   private waypoints: TourWaypoint[];
   private index = 0;
+  private travelDirection: 1 | -1 = 1;
   private phase: TourPhase = 'travelling';
   private elapsed = 0;
 
@@ -440,6 +441,14 @@ export class GalleryTour {
       this.camera.position.y = EYE_HEIGHT;
       this.camera.quaternion.slerpQuaternions(this.fromQuat, this.toQuat, ease);
       if (t >= 1) {
+        const waypoint = this.waypoints[this.index];
+        if (waypoint.kind === 'transit') {
+          const nextIndex = this.index + this.travelDirection;
+          if (nextIndex >= 0 && nextIndex < this.waypoints.length) {
+            this.startWaypoint(nextIndex, this.travelDirection);
+            return;
+          }
+        }
         this.phase = 'pausing';
         this.elapsed = 0;
       }
@@ -474,10 +483,10 @@ export class GalleryTour {
       // Autoplay: advance when dwell has elapsed AND voice is not still speaking.
       // canAutoAdvance enforces the combined condition with a 2× safety fallback.
       if (this.autoplay && canAutoAdvance(this.elapsed, this.currentDwell, this.narrator.isSpeaking)) {
-        if (this.index >= this.waypoints.length - 1) {
+        if (this.index >= this.lastStopIndex()) {
           this.setAutoplay(false);
         } else {
-          this.startWaypoint(this.index + 1);
+          this.startWaypoint(this.index + 1, 1);
         }
       }
     }
@@ -498,10 +507,14 @@ export class GalleryTour {
       if (this.phase === 'viewing') {
         // User turned autoplay ON at the last waypoint → replay from the start.
         // startWaypoint calls cancel(), which also clears the paused flag.
-        if (this.index >= this.waypoints.length - 1 && this.waypoints.length > 1) {
+        if (this.index >= this.lastStopIndex() && this.stopCount() > 1) {
           this.playBtn.innerHTML = `${svgPause()}Pause`;
           this.playBtn.setAttribute('aria-label', 'Pause automatic tour');
-          this.startWaypoint(0);
+          const firstIndex = this.firstStopIndex();
+          const first = this.waypoints[firstIndex];
+          // Replaying is a reset, not a cross-gallery camera flight through walls.
+          this.camera.position.set(first.position.x, EYE_HEIGHT, first.position.z);
+          this.startWaypoint(firstIndex, 1);
           return; // startWaypoint resets elapsed; button already updated above
         }
         // Resume a paused utterance if one exists.
@@ -658,8 +671,9 @@ export class GalleryTour {
     );
   }
 
-  private startWaypoint(index: number): void {
+  private startWaypoint(index: number, direction: 1 | -1 = this.travelDirection): void {
     if (!this.waypoints.length) return;
+    if (index < 0 || index >= this.waypoints.length) return;
     // A new stop gets a fresh dwell clock — drop any frozen reading.
     this.pausedDwellElapsed = null;
     // Cancel any in-progress narration when leaving a stop.
@@ -675,7 +689,8 @@ export class GalleryTour {
     // Leaving the previous waypoint — restore its artwork material
     this.restoreMat?.();
     this.restoreMat = null;
-    this.index = ((index % this.waypoints.length) + this.waypoints.length) % this.waypoints.length;
+    this.index = index;
+    this.travelDirection = direction;
     const wp = this.waypoints[this.index];
 
     this.fromPos.copy(this.camera.position);
@@ -683,7 +698,12 @@ export class GalleryTour {
 
     this.toPos.set(wp.position.x, EYE_HEIGHT, wp.position.z);
 
-    const lookAt = new THREE.Vector3(wp.lookAt.x, EYE_HEIGHT, wp.lookAt.z);
+    const routeTarget = wp.kind === 'transit'
+      ? this.waypoints[this.index + this.travelDirection]
+      : undefined;
+    const lookAt = routeTarget
+      ? new THREE.Vector3(routeTarget.position.x, EYE_HEIGHT, routeTarget.position.z)
+      : new THREE.Vector3(wp.lookAt.x, EYE_HEIGHT, wp.lookAt.z);
     const lookDir = lookAt.clone().sub(this.toPos).normalize();
     if (lookDir.lengthSq() < 0.0001) lookDir.set(0, 0, -1);
     this.toQuat.setFromUnitVectors(new THREE.Vector3(0, 0, -1), lookDir);
@@ -733,7 +753,7 @@ export class GalleryTour {
     const medium = artwork?.medium ?? '';
     const year = artwork?.year != null ? `, ${artwork.year}` : '';
     const label = artist?.statement ?? artwork?.label ?? '';
-    const counter = `${this.index + 1} / ${this.waypoints.length}`;
+    const counter = `${this.stopOrdinal()} / ${this.stopCount()}`;
 
     const bodyHtml = `
       ${medium ? `<p style="font-size:0.78rem;color:#aaa;margin:0.35rem 0 0.5rem;">${escapeHtml(medium)}${escapeHtml(year)}</p>` : ''}
@@ -793,12 +813,36 @@ export class GalleryTour {
   next(): void {
     // Manual navigation means the visitor wants control — stop autoplaying.
     if (this.autoplay) this.setAutoplay(false);
-    this.startWaypoint(this.index + 1);
+    if (this.index >= this.lastStopIndex()) return;
+    this.startWaypoint(this.index + 1, 1);
   }
 
   prev(): void {
     if (this.autoplay) this.setAutoplay(false);
-    this.startWaypoint(this.index - 1);
+    if (this.index <= this.firstStopIndex()) return;
+    this.startWaypoint(this.index - 1, -1);
+  }
+
+  private firstStopIndex(): number {
+    const index = this.waypoints.findIndex((waypoint) => waypoint.kind !== 'transit');
+    return index >= 0 ? index : 0;
+  }
+
+  private lastStopIndex(): number {
+    for (let index = this.waypoints.length - 1; index >= 0; index--) {
+      if (this.waypoints[index].kind !== 'transit') return index;
+    }
+    return Math.max(0, this.waypoints.length - 1);
+  }
+
+  private stopCount(): number {
+    return this.waypoints.filter((waypoint) => waypoint.kind !== 'transit').length;
+  }
+
+  private stopOrdinal(): number {
+    return this.waypoints
+      .slice(0, this.index + 1)
+      .filter((waypoint) => waypoint.kind !== 'transit').length;
   }
 
   exit(): void {

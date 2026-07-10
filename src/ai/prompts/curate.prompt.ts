@@ -42,6 +42,7 @@ Rules:
 - Each room should hold 2–4 works; avoid placing more than 2 works on the same wall
 - offsetFromCenter: space works at least 1.5m apart on the same wall (use ±2 for two works)
 - tourOrder: visit works in a narrative arc — start strong, end strong
+- tourOrder: finish each room before entering the next; follow rooms[] order and never return to an earlier room
 - roomId values must be "room-1", "room-2", etc.
 - Respond with ONLY the JSON object — no markdown fences, no extra text`;
 }

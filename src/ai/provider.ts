@@ -234,7 +234,7 @@ export async function composeGalleryFromPlan(
     rooms: shell.rooms.length,
     roomDims: shell.rooms.map((r) => `${r.width}×${r.depth} m`),
     placements: shell.placements.length,
-    tourStops: shell.tour.length,
+    tourStops: shell.tour.filter((waypoint) => waypoint.kind !== 'transit').length,
   });
 
   // Step 3: ask the LLM for labels + narration, in batches of ≤3 works (~800 tokens each)

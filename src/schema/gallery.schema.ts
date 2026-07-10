@@ -146,6 +146,8 @@ export const Vec3Schema = z.object({
 export type Vec3 = z.infer<typeof Vec3Schema>;
 
 export const TourWaypointSchema = z.object({
+  /** Transit points route the camera through a doorway and are not visitor stops. */
+  kind: z.enum(['stop', 'transit']).optional(),
   /** Optional link to an artwork (the waypoint is standing position in front of it) */
   artworkId: z.string().optional(),
   /** Camera position */

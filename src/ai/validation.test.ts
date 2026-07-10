@@ -161,9 +161,19 @@ describe('buildCurationSchema (§3)', () => {
     expect(buildCurationSchema(expectedIds).safeParse(bad).success).toBe(false);
   });
 
-  it('accepts tourOrder as any permutation of the expected ids', () => {
-    const reversed = { ...validPlan, tourOrder: ['aw-03', 'aw-02', 'aw-01'] };
-    expect(buildCurationSchema(expectedIds).safeParse(reversed).success).toBe(true);
+  it('accepts reordering within a room while keeping the room chain monotonic', () => {
+    const reordered = { ...validPlan, tourOrder: ['aw-02', 'aw-01', 'aw-03'] };
+    expect(buildCurationSchema(expectedIds).safeParse(reordered).success).toBe(true);
+  });
+
+  it('rejects a tourOrder that returns to an earlier room', () => {
+    const backtracking = { ...validPlan, tourOrder: ['aw-01', 'aw-03', 'aw-02'] };
+    expect(buildCurationSchema(expectedIds).safeParse(backtracking).success).toBe(false);
+  });
+
+  it('rejects a tourOrder that starts in a later room and moves backwards', () => {
+    const backwards = { ...validPlan, tourOrder: ['aw-03', 'aw-02', 'aw-01'] };
+    expect(buildCurationSchema(expectedIds).safeParse(backwards).success).toBe(false);
   });
 
   it('accepts a valid single-room plan', () => {

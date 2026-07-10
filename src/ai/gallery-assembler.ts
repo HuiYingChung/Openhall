@@ -24,6 +24,7 @@ import type {
   Room,
   Placement,
   TourWaypoint,
+  Doorway,
   WallSide,
 } from '../schema/gallery.schema';
 
@@ -219,6 +220,7 @@ export function buildTourWaypoints(
   }
 
   const waypoints: TourWaypoint[] = [];
+  let previousRoomId: string | undefined;
 
   for (const artworkId of plan.tourOrder) {
     const pb = placementByArtwork[artworkId];
@@ -228,6 +230,43 @@ export function buildTourWaypoints(
     if (!ro) continue;
 
     const aw = artworks.find((a) => a.id === artworkId);
+
+    if (previousRoomId !== undefined && previousRoomId !== pb.roomId) {
+      const fromIndex = rooms.findIndex((room) => room.id === previousRoomId);
+      const toIndex = rooms.findIndex((room) => room.id === pb.roomId);
+      if (fromIndex < 0 || toIndex < 0) {
+        throw new Error(`Cannot route tour between unknown rooms "${previousRoomId}" and "${pb.roomId}".`);
+      }
+
+      const direction = toIndex > fromIndex ? 1 : -1;
+      for (let roomIndex = fromIndex; roomIndex !== toIndex; roomIndex += direction) {
+        const fromRoom = rooms[roomIndex];
+        const toRoom = rooms[roomIndex + direction];
+        const ownedByFrom = fromRoom.doorways.find((d) => d.targetRoomId === toRoom.id);
+        const ownedByTo = toRoom.doorways.find((d) => d.targetRoomId === fromRoom.id);
+        const ownerRoom = ownedByFrom ? fromRoom : toRoom;
+        const doorway = ownedByFrom ?? ownedByTo;
+        if (!doorway) {
+          throw new Error(`Cannot route tour: rooms "${fromRoom.id}" and "${toRoom.id}" have no connecting doorway.`);
+        }
+
+        const doorwayPosition = getDoorwayWorldPosition(
+          doorway,
+          ownerRoom,
+          roomOrigins[ownerRoom.id]
+        );
+        const targetOrigin = roomOrigins[toRoom.id];
+        waypoints.push({
+          kind: 'transit',
+          position: { x: doorwayPosition.x, y: TOUR_EYE_HEIGHT, z: doorwayPosition.z },
+          lookAt: {
+            x: targetOrigin.originX + targetOrigin.width / 2,
+            y: TOUR_EYE_HEIGHT,
+            z: targetOrigin.depth / 2,
+          },
+        });
+      }
+    }
 
     // Room centre in world space
     const cx = ro.originX + ro.width / 2;
@@ -272,14 +311,36 @@ export function buildTourWaypoints(
     }
 
     waypoints.push({
+      kind: 'stop',
       artworkId,
       position: { x: standX, y: TOUR_EYE_HEIGHT, z: standZ },
       lookAt: { x: artX, y: DEFAULT_HANGING_HEIGHT, z: artZ },
       label: aw?.title || artworkId,
     });
+    previousRoomId = pb.roomId;
   }
 
   return waypoints;
+}
+
+function getDoorwayWorldPosition(
+  doorway: Doorway,
+  room: Room,
+  origin: { originX: number; width: number; depth: number }
+): { x: number; z: number } {
+  const centreX = origin.originX + room.width / 2;
+  const centreZ = room.depth / 2;
+
+  switch (doorway.wall) {
+    case 'n':
+      return { x: centreX + doorway.offsetFromCenter, z: 0 };
+    case 's':
+      return { x: centreX + doorway.offsetFromCenter, z: room.depth };
+    case 'w':
+      return { x: origin.originX, z: centreZ + doorway.offsetFromCenter };
+    case 'e':
+      return { x: origin.originX + room.width, z: centreZ + doorway.offsetFromCenter };
+  }
 }
 
 // ---------------------------------------------------------------------------
