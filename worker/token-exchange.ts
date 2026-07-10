@@ -19,7 +19,7 @@
  *   - The API key travels in the POST /token request body over HTTPS only
  *   - The bearer token travels in the Authorization header of /proxy/* requests
  *   - No bodies are logged (they contain artwork images and bearer tokens)
- *   - Add ALLOWED_ORIGINS env var to restrict which domains can call this
+ *   - ALLOWED_ORIGINS limits browser callers; it is defence-in-depth, not auth
  */
 
 export interface Env {
@@ -28,22 +28,51 @@ export interface Env {
 
 const IAM_URL = 'https://iam.cloud.ibm.com/identity/token';
 const WX_PROXY_HOST = 'https://us-south.ml.cloud.ibm.com';
+const LOCAL_DEV_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
+export interface CorsPolicy {
+  allowed: boolean;
+  responseOrigin?: string;
+}
+
+/**
+ * Resolve browser CORS policy. Blank configuration is local-development only;
+ * `*` must be explicit. Requests without Origin are non-browser-compatible and
+ * remain allowed because Origin is forgeable and must never be treated as auth.
+ */
+export function resolveCorsPolicy(origin: string, configured?: string): CorsPolicy {
+  if (!origin) return { allowed: true };
+
+  const configuredOrigins = configured
+    ?.split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const allowedOrigins = configuredOrigins?.length ? configuredOrigins : LOCAL_DEV_ORIGINS;
+  const allowed = allowedOrigins.includes('*') || allowedOrigins.includes(origin);
+  return allowed ? { allowed: true, responseOrigin: origin } : { allowed: false };
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // CORS headers
     const origin = request.headers.get('Origin') ?? '';
-    const allowedOrigins = env.ALLOWED_ORIGINS
-      ? env.ALLOWED_ORIGINS.split(',').map((s) => s.trim())
-      : ['*'];
-    const corsOrigin =
-      allowedOrigins.includes('*') || allowedOrigins.includes(origin) ? origin || '*' : '';
+    const corsPolicy = resolveCorsPolicy(origin, env.ALLOWED_ORIGINS);
 
     const corsHeaders: Record<string, string> = {
-      'Access-Control-Allow-Origin': corsOrigin,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      Vary: 'Origin',
     };
+    if (corsPolicy.responseOrigin) {
+      corsHeaders['Access-Control-Allow-Origin'] = corsPolicy.responseOrigin;
+    }
+
+    if (!corsPolicy.allowed) {
+      return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders });

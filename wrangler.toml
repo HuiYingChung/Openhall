@@ -3,8 +3,9 @@ main = "worker/token-exchange.ts"
 compatibility_date = "2024-05-31"
 
 # ─── Production ──────────────────────────────────────────────────────────────
-# Set ALLOWED_ORIGINS to your hosted app origin before deploying.
-# Replace the placeholder with the real origin once you know it.
+# Set ALLOWED_ORIGINS to your hosted app origin before deploying. Use a
+# comma-separated list for multiple sites. Blank allows only the local Vite
+# origins; use "*" only when you deliberately want any website to call it.
 #
 # Deploy steps (ask Hui to run these):
 #   1.  npx wrangler login          — authenticate to Cloudflare
@@ -16,5 +17,4 @@ compatibility_date = "2024-05-31"
 
 [vars]
 # ALLOWED_ORIGINS = "https://your-openhall.vercel.app"
-# Leave blank (or comment out) during development to allow all origins.
 ALLOWED_ORIGINS = ""
