@@ -5,7 +5,6 @@
  * (e.g. gpt-4o, llama-vision endpoints).
  */
 
-import { CurationPlanSchema } from '../schema/analysis.schema';
 import { generateValidated, composeGalleryFromPlan } from './provider';
 import { buildAnalyzePrompt } from './prompts/analyze.prompt';
 import { buildCuratePrompt } from './prompts/curate.prompt';

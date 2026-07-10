@@ -11,7 +11,6 @@
  *   Text:    ibm/granite-3-8b-instruct
  */
 
-import { CurationPlanSchema } from '../schema/analysis.schema';
 import { generateValidated, composeGalleryFromPlan } from './provider';
 import { buildAnalyzePrompt } from './prompts/analyze.prompt';
 import { buildCuratePrompt } from './prompts/curate.prompt';

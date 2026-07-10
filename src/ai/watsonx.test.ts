@@ -8,7 +8,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  loadWatsonxSettings,
   saveWatsonxSettings,
   invalidateToken,
   WatsonxProvider,
@@ -65,7 +64,7 @@ describe('Watsonx token cache (§5)', () => {
     invalidateToken();
 
     let iamCallCount = 0;
-    vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
       if (String(url).includes('iam.cloud.ibm.com')) {
         iamCallCount++;
         return makeTokenResponse('tok-A') as unknown as Response;
@@ -93,7 +92,7 @@ describe('Watsonx token cache (§5)', () => {
     invalidateToken();
 
     let iamCallCount = 0;
-    vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
       if (String(url).includes('iam.cloud.ibm.com')) {
         iamCallCount++;
         return makeTokenResponse(`tok-${iamCallCount}`) as unknown as Response;
@@ -123,7 +122,7 @@ describe('Watsonx token cache (§5)', () => {
     invalidateToken();
 
     let iamCallCount = 0;
-    vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
       if (String(url).includes('iam.cloud.ibm.com')) {
         iamCallCount++;
         return makeTokenResponse(`tok-${iamCallCount}`) as unknown as Response;
@@ -153,7 +152,7 @@ describe('Watsonx token cache (§5)', () => {
     invalidateToken();
 
     let iamCallCount = 0;
-    vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
       if (String(url).includes('iam.cloud.ibm.com')) {
         iamCallCount++;
         return makeTokenResponse(`tok-${iamCallCount}`) as unknown as Response;
@@ -184,7 +183,7 @@ describe('Watsonx token cache (§5)', () => {
 
     let iamCallCount = 0;
     let mlCallCount = 0;
-    vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
       const urlStr = String(url);
       if (urlStr.includes('iam.cloud.ibm.com')) {
         iamCallCount++;
@@ -218,7 +217,7 @@ describe('Watsonx token cache (§5)', () => {
     const settings = makeSettings({ apiKey: 'sk-MY-SECRET-KEY-xxxxxxxx' });
     invalidateToken();
 
-    vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
       if (String(url).includes('iam.cloud.ibm.com')) {
         return { status: 400, ok: false, text: async () => 'Bad Request' } as unknown as Response;
       }

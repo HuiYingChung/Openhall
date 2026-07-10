@@ -85,7 +85,8 @@ beforeEach(() => {
   // Stub document.createElement('canvas')
   const origCreateElement = document.createElement.bind(document);
   vi.spyOn(document, 'createElement').mockImplementation((tag: string, ...rest: unknown[]) => {
-    if (tag !== 'canvas') return origCreateElement(tag, ...(rest as [ElementCreationOptions?]));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- why: jsdom createElement signature variance
+    if (tag !== 'canvas') return origCreateElement(tag, ...(rest as [any?]));
     const canvas = {
       width: 0,
       height: 0,

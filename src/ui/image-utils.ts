@@ -35,9 +35,10 @@ export function _resetArtworkIdAllocator(next = 1): void {
  * Never logged. Returns empty string if Web Crypto is unavailable.
  */
 export async function computeContentFingerprint(file: File): Promise<string> {
-  if (typeof crypto === 'undefined' || !crypto.subtle) return '';
+  const _crypto = globalThis.crypto;
+  if (!_crypto?.subtle) return '';
   const buf = await file.arrayBuffer();
-  const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+  const hashBuf = await _crypto.subtle.digest('SHA-256', buf);
   return Array.from(new Uint8Array(hashBuf))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
