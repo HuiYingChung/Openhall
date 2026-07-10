@@ -83,6 +83,23 @@ describe('buildExportBundle', () => {
     expect(galleryJson.version).toBe('1.0');
   });
 
+  it('preserves an omitted medium without writing a sentinel', async () => {
+    const gallery = makeGallery();
+    delete gallery.artworks[0].medium;
+    vi.stubGlobal('fetch', makeFetch());
+
+    const { blob } = await buildExportBundle({
+      gallery,
+      artworkUrls: makeArtworkUrls(gallery),
+      viewerScriptUrl: 'https://example.com/assets/viewer.js',
+    });
+
+    const zip = await JSZip.loadAsync(blob);
+    const galleryJson = JSON.parse(await zip.file('gallery.json')!.async('string'));
+    expect(galleryJson.artworks[0]).not.toHaveProperty('medium');
+    expect(JSON.stringify(galleryJson)).not.toContain('Unknown medium');
+  });
+
   it('includes viewer JS in assets/', async () => {
     const gallery = makeGallery();
     vi.stubGlobal('fetch', makeFetch());

@@ -794,3 +794,41 @@ describe('GalleryTour audio guide during Pause', () => {
     tour.dispose();
   });
 });
+
+describe('GalleryTour optional artwork metadata', () => {
+  afterEach(() => {
+    document.querySelectorAll('#oh-tour-hud, #oh-tour-label').forEach((el) => el.remove());
+  });
+
+  it('shows a year without a medium and omits Untitled', () => {
+    const gallery = GallerySchema.parse({
+      ...makeGallery(0),
+      artworks: [
+        {
+          id: 'aw-01',
+          imagePath: 'images/aw-01.jpg',
+          title: '',
+          year: 2024,
+          label: 'A year-only tour label.',
+        },
+      ],
+      tour: [
+        {
+          artworkId: 'aw-01',
+          position: { x: 0, y: 1.6, z: 0 },
+          lookAt: { x: 0, y: 1.6, z: -5 },
+        },
+      ],
+    });
+    const tour = new GalleryTour({ camera: makeCamera(), gallery, onExit: vi.fn() });
+    tour.update(10);
+    tour.update(1);
+
+    const text = document.getElementById('oh-tour-label')?.textContent ?? '';
+    expect(text).toContain('2024');
+    expect(text).toContain('A year-only tour label.');
+    expect(text).not.toContain('Untitled');
+    expect(text).not.toContain('Unknown medium');
+    tour.dispose();
+  });
+});

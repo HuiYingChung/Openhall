@@ -27,7 +27,7 @@ export { computeDwellSeconds } from './narration';
 
 import * as THREE from 'three';
 import type { TourWaypoint, Gallery } from '../schema/gallery.schema';
-import { wirePanelDrag, swapToUnlitMaterial, ARTIST_MESH_ID } from './interactions';
+import { wirePanelDrag, swapToUnlitMaterial, ARTIST_MESH_ID, formatArtworkMetadata } from './interactions';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -749,14 +749,13 @@ export class GalleryTour {
       : null;
 
     // Artist intro stop: show the artist's name + statement instead of artwork data.
-    const title = artist?.name ?? artwork?.title ?? wp.label ?? '';
-    const medium = artwork?.medium ?? '';
-    const year = artwork?.year != null ? `, ${artwork.year}` : '';
+    const title = (artist?.name ?? artwork?.title ?? wp.label ?? '').trim();
+    const metadata = artwork ? formatArtworkMetadata(artwork) : '';
     const label = artist?.statement ?? artwork?.label ?? '';
     const counter = `${this.stopOrdinal()} / ${this.stopCount()}`;
 
     const bodyHtml = `
-      ${medium ? `<p style="font-size:0.78rem;color:#aaa;margin:0.35rem 0 0.5rem;">${escapeHtml(medium)}${escapeHtml(year)}</p>` : ''}
+      ${metadata ? `<p style="font-size:0.78rem;color:#aaa;margin:0.35rem 0 0.5rem;">${escapeHtml(metadata)}</p>` : ''}
       ${label ? `<p style="font-size:0.85rem;line-height:1.5;margin:0 0 0.5rem;">${escapeHtml(label)}</p>` : ''}
       <p style="font-size:0.72rem;color:#666;margin:0;">${escapeHtml(counter)}</p>
     `;
@@ -774,7 +773,7 @@ export class GalleryTour {
       this.labelBox.innerHTML = `
         ${this.progressTrackHtml()}
         <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;">
-          <p style="font-size:${this.sheetCollapsed ? '0.82rem' : '1rem'};font-weight:700;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(title || 'Untitled')}</p>
+          <p style="font-size:${this.sheetCollapsed ? '0.82rem' : '1rem'};font-weight:700;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(title || (artwork ? 'Artwork' : ''))}</p>
           <button id="oh-tour-collapse" aria-label="${this.sheetCollapsed ? 'Expand label' : 'Collapse label'}" style="
             flex-shrink:0;background:none;border:none;color:#aaa;cursor:pointer;
             padding:${this.sheetCollapsed ? '0.2rem' : '0.45rem'};line-height:0;">

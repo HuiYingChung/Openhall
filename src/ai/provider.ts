@@ -191,6 +191,27 @@ export function extractJSON(text: string): string {
   return text.slice(start, end + 1);
 }
 
+/**
+ * Resolve the display metadata once for every downstream composition step.
+ * Artist-entered titles always win; only a blank upload receives the title
+ * already produced by the existing vision-analysis request.
+ */
+export function resolveArtworkTitles(
+  artworks: UploadedArtwork[],
+  analyses: WorkAnalysis[]
+): UploadedArtwork[] {
+  const analysisById = new Map(analyses.map((analysis) => [analysis.artworkId, analysis]));
+
+  return artworks.map((artwork) => {
+    if (artwork.title.trim()) return { ...artwork, title: artwork.title.trim() };
+    const analysis = analysisById.get(artwork.id);
+    if (!analysis) {
+      throw new Error(`Internal error: no analysis found for artwork "${artwork.id}".`);
+    }
+    return { ...artwork, title: analysis.suggestedTitle };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // composeGalleryFromPlan — shared gallery composition (used by all providers)
 // ---------------------------------------------------------------------------
@@ -216,6 +237,8 @@ export async function composeGalleryFromPlan(
   preset: StylePreset,
   onProgress?: (evt: ComposeProgressEvent) => void
 ): Promise<Gallery> {
+  const effectiveArtworks = resolveArtworkTitles(artworks, analyses);
+
   // Step 1: derive an exhibition title (tiny output — 32 tokens).
   // Plain text, NOT JSON — generateValidated would reject every real reply.
   // An empty successful response falls back to the default title. Transport,
@@ -228,7 +251,7 @@ export async function composeGalleryFromPlan(
 
   // Step 2: build all geometry deterministically (rooms, placements, doorways, tour)
   onProgress?.({ type: 'assembling' });
-  const shell = assembleGallery(plan, preset, artworks, exhibitionTitle);
+  const shell = assembleGallery(plan, preset, effectiveArtworks, exhibitionTitle);
   onProgress?.({
     type: 'assembled',
     rooms: shell.rooms.length,
@@ -239,11 +262,11 @@ export async function composeGalleryFromPlan(
 
   // Step 3: ask the LLM for labels + narration, in batches of ≤3 works (~800 tokens each)
   const BATCH_SIZE = 3;
-  const totalBatches = Math.ceil(artworks.length / BATCH_SIZE);
+  const totalBatches = Math.ceil(effectiveArtworks.length / BATCH_SIZE);
   const labelMap: Record<string, { label: string; narration?: string; artistStatement?: string }> = {};
 
-  for (let i = 0; i < artworks.length; i += BATCH_SIZE) {
-    const batch = artworks.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < effectiveArtworks.length; i += BATCH_SIZE) {
+    const batch = effectiveArtworks.slice(i, i + BATCH_SIZE);
     const batchNum = Math.floor(i / BATCH_SIZE) + 1;
     onProgress?.({
       type: 'labels-batch-start',

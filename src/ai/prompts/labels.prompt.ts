@@ -17,21 +17,27 @@ export function buildLabelsPrompt(
   analyses: WorkAnalysis[],
   curatorNote: string
 ): string {
-  const artworkBlock = artworks
-    .map((aw) => {
+  const artworkBlock = JSON.stringify(
+    artworks.map((aw) => {
       const an = analyses.find((a) => a.artworkId === aw.id);
-      return `  { "id": "${aw.id}", "title": "${aw.title || 'Untitled'}", "medium": "${aw.medium || 'Unknown medium'}", "style": "${an?.style ?? ''}", "subject": "${an?.subject ?? ''}", "mood": "${an?.mood ?? ''}", "description": "${an?.description ?? ''}" }`;
-    })
-    .join(',\n');
+      return {
+        id: aw.id,
+        style: an?.style ?? '',
+        subject: an?.subject ?? '',
+        mood: an?.mood ?? '',
+        description: an?.description ?? '',
+      };
+    }),
+    null,
+    2
+  );
 
   return `You are writing wall labels and spoken narration for an art exhibition.
 
-CURATOR NOTE: "${curatorNote}"
+CURATOR NOTE: ${JSON.stringify(curatorNote)}
 
 ARTWORKS:
-[
 ${artworkBlock}
-]
 
 For each artwork, write:
 1. A 2–3 sentence wall label (neutral curatorial tone, written to be read).
@@ -50,6 +56,7 @@ Respond with ONLY a JSON array:
 Rules:
 - label: neutral curatorial tone, for reading on a wall plaque
 - narration: warmer than the label — what a gallery guide would SAY while the visitor looks at the work; no coordinates, no invented biography, grounded only in the visual analysis provided
+- Artwork title, medium, and year are editable display metadata and intentionally omitted here; do not infer or mention a title, medium, or year
 - narration is required for every artwork
 - artistStatement is optional — omit it if unsure
 - Respond with ONLY the JSON array — no markdown fences, no extra text`;

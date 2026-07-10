@@ -49,12 +49,18 @@ import type { Gallery } from '../schema/gallery.schema';
 
 type AppState = 'settings' | 'upload' | 'generating' | 'viewer' | 'labels';
 
+export type ArtworkTitleSource = 'ai' | 'edited' | 'none';
+
 export interface AppData {
   artworks: UploadedArtwork[];
   userBrief: string;
   preset: StylePreset;
   analyses: WorkAnalysis[];
   gallery: Gallery | null;
+  /** Review-only provenance/state for titles that began as AI suggestions. */
+  artworkTitleSources?: Record<string, ArtworkTitleSource>;
+  /** Artwork ids whose title the artist explicitly cleared on the review screen. */
+  suppressedArtworkTitleIds?: Set<string>;
   /**
    * Artist-uploaded custom favicon as a data URL. When set, it overrides the
    * auto-generated (first-artwork) favicon at export time. Not persisted into
@@ -105,6 +111,8 @@ export interface DemoDraftSnapshot {
   artworks: UploadedArtwork[];
   gallery: Gallery | null;
   isDemo: boolean | undefined;
+  artworkTitleSources: Record<string, ArtworkTitleSource> | undefined;
+  suppressedArtworkTitleIds: Set<string> | undefined;
 }
 
 /**
@@ -117,6 +125,12 @@ export function captureDraftBeforeDemo(data: AppData): DemoDraftSnapshot {
     artworks: data.artworks,
     gallery: data.gallery,
     isDemo: data.isDemo,
+    artworkTitleSources: data.artworkTitleSources
+      ? { ...data.artworkTitleSources }
+      : undefined,
+    suppressedArtworkTitleIds: data.suppressedArtworkTitleIds
+      ? new Set(data.suppressedArtworkTitleIds)
+      : undefined,
   };
 }
 
@@ -125,15 +139,19 @@ export function restoreDraftAfterDemo(data: AppData, snapshot: DemoDraftSnapshot
   data.artworks = snapshot.artworks;
   data.gallery = snapshot.gallery;
   data.isDemo = snapshot.isDemo;
+  data.artworkTitleSources = snapshot.artworkTitleSources;
+  data.suppressedArtworkTitleIds = snapshot.suppressedArtworkTitleIds;
 }
 
 /**
  * Fingerprint of the inputs that require an AI call to (re)generate a gallery.
  *
- * Per-artwork segment: `id:contentHash:title:medium:year` — upload order is
+ * Per-artwork segment: `id:contentHash` — upload order is
  * preserved (NOT sorted) because the curation prompt receives artworks in order,
  * meaning order affects grouping. Content hash detects same-filename-different-bytes
- * replacements. Title/medium/year are user-editable fields copied into the gallery.
+ * replacements. Title, medium, and year are deliberately excluded: they are
+ * editable display metadata, kept out of AI writing prompts, and folded into an
+ * existing gallery without a paid regeneration.
  *
  * Identity/branding fields (artistName, statement, links, portrait, favicon) are
  * deliberately excluded: they are applied without any AI call.
@@ -144,21 +162,50 @@ export function restoreDraftAfterDemo(data: AppData, snapshot: DemoDraftSnapshot
 export function aiInputKey(data: AppData): string {
   const provider = localStorage.getItem('openhall_provider') ?? '';
   const model = provider === 'openai' ? (loadOpenAISettings()?.model ?? '') : '';
-  // JSON encoding avoids delimiter collisions when user metadata itself
-  // contains characters such as ':', ',' or '|'.
+  // JSON encoding keeps the fingerprint unambiguous as ids and hashes evolve.
   return JSON.stringify({
     artworks: data.artworks.map((a) => ({
       id: a.id,
       contentHash: a.contentHash ?? '',
-      title: a.title,
-      medium: a.medium,
-      year: a.year ?? null,
     })),
     brief: data.userBrief.trim(),
     preset: data.preset,
     provider,
     model,
   });
+}
+
+/** Preserve AI-title provenance for live artworks across a later generation. */
+export function titleSourcesAfterGeneration(
+  artworks: UploadedArtwork[],
+  previous: Record<string, ArtworkTitleSource> = {},
+  suppressed: Set<string> = new Set()
+): Record<string, ArtworkTitleSource> {
+  return Object.fromEntries(
+    artworks.flatMap((artwork) => {
+      const prior = previous[artwork.id];
+      if (prior) return [[artwork.id, prior] as const];
+      if (!artwork.title.trim() && !suppressed.has(artwork.id)) {
+        return [[artwork.id, 'ai' as const] as const];
+      }
+      return [];
+    })
+  );
+}
+
+/** Reapply the artist's explicit no-title choice after any future generation. */
+export function applySuppressedArtworkTitles(
+  gallery: Gallery,
+  suppressed: Set<string> | undefined
+): void {
+  if (!suppressed?.size) return;
+  for (const artwork of gallery.artworks) {
+    if (!suppressed.has(artwork.id)) continue;
+    artwork.title = '';
+    for (const waypoint of gallery.tour) {
+      if (waypoint.artworkId === artwork.id) delete waypoint.label;
+    }
+  }
 }
 
 /**
@@ -1325,6 +1372,7 @@ export function renderUpload(
           <input id="oh-file-input" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none;" />
         </div>
 
+        <p class="oh-help" style="color:#777;margin:-0.35rem 0 0.75rem;">Artwork title is optional — leave it blank for an AI suggestion. Medium and year are optional and appear only when supplied.</p>
         <div id="oh-thumbnail-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:1rem;margin-bottom:1.5rem;"></div>
 
         <label class="oh-label" style="font-size:0.9rem;margin-bottom:0.2rem;">Describe your exhibition in one sentence</label>
@@ -1662,9 +1710,9 @@ export function addThumbnail(
       <button data-remove="${escapeHtml(artwork.id)}" aria-label="Remove artwork" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;padding:2px 6px;">✕</button>
     </div>
     <div style="padding:0.4rem;">
-      <input data-field="title" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Title" value="${escapeHtml(artwork.title)}" aria-label="Artwork title"
+      <input data-field="title" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Title (optional)" value="${escapeHtml(artwork.title)}" aria-label="Artwork title"
         style="border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;" />
-      <input data-field="medium" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Medium" value="${escapeHtml(artwork.medium)}" aria-label="Artwork medium"
+      <input data-field="medium" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Medium (optional)" value="${escapeHtml(artwork.medium)}" aria-label="Artwork medium"
         style="border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;" />
       <input data-field="year" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Year" type="number" value="${escapeHtml(String(artwork.year ?? ''))}" aria-label="Artwork year"
         style="border-radius:4px;padding:3px 6px;font-size:0.75rem;" />
@@ -1674,6 +1722,8 @@ export function addThumbnail(
     // Revoke the display blob URL before removing — prevents memory leak
     if (artwork.displayObjectUrl) URL.revokeObjectURL(artwork.displayObjectUrl);
     data.artworks = data.artworks.filter((a) => a.id !== artwork.id);
+    data.suppressedArtworkTitleIds?.delete(artwork.id);
+    if (data.artworkTitleSources) delete data.artworkTitleSources[artwork.id];
     card.remove();
     onDataChange?.();
   });
@@ -1683,8 +1733,35 @@ export function addThumbnail(
       const field = input.dataset['field'] as 'title' | 'medium' | 'year';
       const aw = data.artworks.find((a) => a.id === input.dataset['id']);
       if (!aw) return;
-      if (field === 'year') aw.year = input.value ? parseInt(input.value) : undefined;
-      else aw[field] = input.value;
+      const galleryAw = data.gallery?.artworks.find((entry) => entry.id === aw.id);
+      if (field === 'year') {
+        aw.year = input.value ? parseInt(input.value) : undefined;
+        if (galleryAw) {
+          if (aw.year !== undefined) galleryAw.year = aw.year;
+          else delete galleryAw.year;
+        }
+      } else if (field === 'medium') {
+        aw.medium = input.value;
+        if (galleryAw) {
+          if (input.value.trim()) galleryAw.medium = input.value.trim();
+          else delete galleryAw.medium;
+        }
+      } else {
+        aw.title = input.value;
+        data.suppressedArtworkTitleIds?.delete(aw.id);
+        if (data.artworkTitleSources) delete data.artworkTitleSources[aw.id];
+        const suggestedTitle = data.analyses.find((analysis) => analysis.artworkId === aw.id)?.suggestedTitle;
+        const displayTitle = input.value.trim() || suggestedTitle || '';
+        if (galleryAw) galleryAw.title = displayTitle;
+        const waypoint = data.gallery?.tour.find((entry) => entry.artworkId === aw.id);
+        if (waypoint) {
+          if (displayTitle) waypoint.label = displayTitle;
+          else delete waypoint.label;
+        }
+        if (!input.value.trim() && suggestedTitle) {
+          (data.artworkTitleSources ??= {})[aw.id] = 'ai';
+        }
+      }
       onDataChange?.();
     });
   });
@@ -1715,7 +1792,8 @@ function renderGenerating(
 
   const view = createGenerationView(
     container.querySelector('#oh-gen-view') as HTMLElement,
-    data.artworks
+    data.artworks,
+    data.suppressedArtworkTitleIds
   );
   const setProgress = (text: string, pct: number) => view.setStatus(text, pct);
 
@@ -1807,9 +1885,16 @@ function renderGenerating(
         view.showFloorPlan(gallery);
         showedPlan = true;
         data.gallery = gallery;
+        data.artworkTitleSources = titleSourcesAfterGeneration(
+          data.artworks,
+          data.artworkTitleSources,
+          data.suppressedArtworkTitleIds
+        );
         data.lastGenKey = key; // remember these inputs so a return trip is free
         data.generatedTitle = gallery.title; // snapshot AI title for identity clear/restore
       }
+
+      applySuppressedArtworkTitles(gallery, data.suppressedArtworkTitleIds);
 
       // Patch imagePaths to use display object URLs (idempotent across rebuilds)
       const urlMap = new Map(data.artworks.map((a) => [a.id, a.displayObjectUrl]));
@@ -1849,7 +1934,7 @@ function renderGenerating(
 // Label editor
 // ---------------------------------------------------------------------------
 
-function renderLabels(
+export function renderLabels(
   container: HTMLElement,
   data: AppData,
   onEnterViewer: () => void,
@@ -1866,6 +1951,10 @@ function renderLabels(
   const descSeededByCurator = shouldSeedCuratorDescription(data);
   if (descSeededByCurator) branding.description = data.curatorNote!.trim();
   const artistObj = data.gallery!.artist;
+  const hasAiSuggestedTitles = Object.keys(data.artworkTitleSources ?? {}).length > 0;
+  const artworkReviewIntro = hasAiSuggestedTitles
+    ? 'AI suggested titles for artworks you left blank. Keep, edit, or clear them. Medium is optional and won’t appear when blank. Changes are saved automatically.'
+    : 'Edit artwork titles or wall labels as needed. Medium is optional and won’t appear when blank. Changes are saved automatically.';
   const bTitle = data.gallery!.title ?? '';
   const bDesc = branding.description ?? '';
   const bAuthor = branding.authorName ?? '';
@@ -1908,18 +1997,18 @@ function renderLabels(
           <p style="margin:0 0 0.6rem;font-size:0.8rem;color:var(--oh-ink-muted);">Floor plan — green marks are your works on the walls; the dashed line is the visitor tour.</p>
           <div style="background:var(--oh-bg);border-radius:8px;padding:0.75rem;">${buildFloorPlanSvg(data.gallery!)}</div>
         </div>
-        <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Review Wall Labels</h2>
-        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Edit any title, medium, or label text before entering the gallery. Changes are saved automatically.</p>
+        <h2 style="margin:0 0 0.5rem;font-size:1.3rem;">Review Artwork Details</h2>
+        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">${artworkReviewIntro}</p>
         <div id="oh-labels-list"></div>
         <div style="display:flex;gap:0.75rem;margin-top:1rem;">
           <button id="oh-back-labels" class="oh-btn oh-btn--ghost" style="flex:0 0 auto;padding:0.85rem 1.2rem;font-size:1rem;">&larr; Back to edit</button>
           <button id="oh-enter-gallery" class="oh-btn oh-btn--primary" style="flex:1;padding:0.85rem;font-size:1rem;font-weight:700;">
-            Enter Gallery →
+            Approve &amp; Enter Gallery →
           </button>
         </div>
         <p style="display:flex;gap:0.5rem;align-items:flex-start;font-size:0.75rem;color:var(--oh-warn);background:rgba(217,164,65,0.08);border:1px solid rgba(217,164,65,0.25);border-radius:8px;padding:0.6rem 0.75rem;margin:0.6rem 0 0;">
           <span aria-hidden="true" style="flex-shrink:0;margin-top:0.1rem;">${svgWarn()}</span>
-          <span>Going back keeps everything you've entered. Your gallery is only re-generated — re-calling the AI, which may cost API credits — if you change your <strong>artworks, description, style, or AI provider</strong>. Editing names, labels, or branding is free.</span>
+          <span>Going back keeps everything you've entered. Your gallery is only re-generated — re-calling the AI, which may cost API credits — if you change your <strong>artwork images or order, description, style, or AI provider</strong>. Editing titles, medium, year, labels, names, or branding is free.</span>
         </p>
       </div>
     </div>`;
@@ -1977,10 +2066,16 @@ function renderLabels(
     const thumbSrc =
       data.artworks.find((a) => a.id === aw.id)?.displayObjectUrl ??
       (aw.imagePath && !aw.imagePath.startsWith('placeholder:') ? aw.imagePath : null);
-    // Don't pre-fill the assembler's sentinel defaults — an empty input with
-    // a placeholder is easier to edit than text you must delete first.
-    const titleValue = aw.title === 'Untitled' ? '' : (aw.title ?? '');
-    const mediumValue = aw.medium === 'Unknown medium' ? '' : (aw.medium ?? '');
+    const titleValue = aw.title ?? '';
+    const mediumValue = aw.medium ?? '';
+    const titleSource = data.artworkTitleSources?.[aw.id];
+    const titleSourceText = titleSource === 'ai'
+      ? 'AI suggestion'
+      : titleSource === 'edited'
+        ? 'Edited by you'
+        : titleSource === 'none'
+          ? 'No title'
+          : '';
     const block = document.createElement('div');
     block.style.cssText = 'display:flex;gap:0.75rem;align-items:flex-start;margin-bottom:1.25rem;';
     block.innerHTML = `
@@ -1988,26 +2083,64 @@ function renderLabels(
         ? `<img src="${escapeHtml(thumbSrc)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--oh-border);flex-shrink:0;background:var(--oh-panel);">`
         : '<div style="width:72px;height:72px;border-radius:6px;border:1px solid var(--oh-border);background:var(--oh-panel);flex-shrink:0;"></div>'}
       <div style="flex:1;min-width:0;">
-        <div style="display:flex;gap:0.5rem;margin:0 0 0.35rem;">
-          <input data-id="${escapeHtml(aw.id)}" data-field="title" class="oh-field" type="text"
-            value="${escapeHtml(titleValue)}" placeholder="Untitled" aria-label="Artwork title"
-            style="flex:1.4;min-width:0;padding:0.4rem 0.5rem;font-size:0.9rem;font-weight:600;">
+        <div style="display:flex;gap:0.5rem;margin:0 0 0.35rem;align-items:flex-start;">
+          <div style="flex:1.4;min-width:0;">
+            <input data-id="${escapeHtml(aw.id)}" data-field="title" class="oh-field" type="text"
+              value="${escapeHtml(titleValue)}" placeholder="Artwork title (optional)" aria-label="Artwork title"
+              style="width:100%;min-width:0;padding:0.4rem 0.5rem;font-size:0.9rem;font-weight:600;box-sizing:border-box;">
+            <span data-title-source-holder="${escapeHtml(aw.id)}">${titleSourceText
+              ? `<span data-title-source="${escapeHtml(aw.id)}" style="display:inline-block;margin-top:0.25rem;font-size:0.7rem;color:var(--oh-ink-faint);">${titleSourceText}</span>`
+              : ''}</span>
+          </div>
           <input data-id="${escapeHtml(aw.id)}" data-field="medium" class="oh-field" type="text"
-            value="${escapeHtml(mediumValue)}" placeholder="Medium (e.g. Oil on canvas)" aria-label="Artwork medium"
+            value="${escapeHtml(mediumValue)}" placeholder="Medium (optional)" aria-label="Artwork medium"
             style="flex:1;min-width:0;padding:0.4rem 0.5rem;font-size:0.85rem;color:#999;">
         </div>
         <textarea data-id="${escapeHtml(aw.id)}" class="oh-field" rows="3" aria-label="Wall label text"
           style="padding:0.5rem;font-size:0.85rem;">${escapeHtml(aw.label)}</textarea>
       </div>`;
-    // Title + medium inputs write straight back to the gallery object —
-    // inspect panel / tour read these live, so edits show up in the viewer.
+    // Title + medium inputs update both upload metadata and gallery.json.
+    // Inspect/tour change immediately, and a later paid regeneration preserves
+    // the artist's decisions instead of restoring stale AI metadata.
     for (const input of Array.from(block.querySelectorAll('input'))) {
       input.addEventListener('input', (e) => {
         const el = e.target as HTMLInputElement;
         const galleryAw = data.gallery!.artworks.find((a) => a.id === el.dataset['id']);
         if (!galleryAw) return;
-        if (el.dataset['field'] === 'title') galleryAw.title = el.value;
-        else galleryAw.medium = el.value;
+        if (el.dataset['field'] === 'title') {
+          galleryAw.title = el.value;
+          const id = galleryAw.id;
+          const uploadAw = data.artworks.find((artwork) => artwork.id === id);
+          if (uploadAw) uploadAw.title = el.value;
+          if (el.value.trim()) {
+            data.suppressedArtworkTitleIds?.delete(id);
+          } else {
+            (data.suppressedArtworkTitleIds ??= new Set()).add(id);
+          }
+          const currentSource = data.artworkTitleSources?.[id];
+          if (currentSource) {
+            const nextSource: ArtworkTitleSource = el.value.trim() ? 'edited' : 'none';
+            (data.artworkTitleSources ??= {})[id] = nextSource;
+            const holder = block.querySelector('[data-title-source-holder]');
+            if (holder) {
+              const text = nextSource === 'edited' ? 'Edited by you' : 'No title';
+              holder.innerHTML = `<span data-title-source="${escapeHtml(id)}" style="display:inline-block;margin-top:0.25rem;font-size:0.7rem;color:var(--oh-ink-faint);">${text}</span>`;
+            }
+          }
+          const waypoint = data.gallery!.tour.find((entry) => entry.artworkId === id);
+          if (waypoint) {
+            if (el.value.trim()) waypoint.label = el.value;
+            else delete waypoint.label;
+          }
+        } else if (el.value.trim()) {
+          galleryAw.medium = el.value.trim();
+          const uploadAw = data.artworks.find((artwork) => artwork.id === galleryAw.id);
+          if (uploadAw) uploadAw.medium = el.value.trim();
+        } else {
+          delete galleryAw.medium;
+          const uploadAw = data.artworks.find((artwork) => artwork.id === galleryAw.id);
+          if (uploadAw) uploadAw.medium = '';
+        }
       });
     }
     block.querySelector('textarea')!.addEventListener('input', (e) => {

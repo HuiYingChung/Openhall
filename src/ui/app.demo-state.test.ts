@@ -37,12 +37,16 @@ describe('demo draft preservation', () => {
       analyses: [],
       gallery: userGallery,
       lastGenKey: 'user-cache-key',
+      artworkTitleSources: { 'aw-17': 'none' },
+      suppressedArtworkTitleIds: new Set(['aw-17']),
     };
     const snapshot = captureDraftBeforeDemo(data);
 
     data.artworks = [];
     data.gallery = GallerySchema.parse(sampleGallery);
     data.isDemo = true;
+    data.artworkTitleSources = {};
+    data.suppressedArtworkTitleIds = new Set();
     restoreDraftAfterDemo(data, snapshot);
 
     expect(data.artworks).toBe(userArtworks);
@@ -50,6 +54,8 @@ describe('demo draft preservation', () => {
     expect(data.gallery).toBe(userGallery);
     expect(data.isDemo).toBeUndefined();
     expect(data.lastGenKey).toBe('user-cache-key');
+    expect(data.artworkTitleSources).toEqual({ 'aw-17': 'none' });
+    expect(data.suppressedArtworkTitleIds).toEqual(new Set(['aw-17']));
   });
 
   it('restores an empty pre-demo state without retaining the demo gallery', () => {

@@ -91,7 +91,7 @@ function makeUpload(id: string): UploadedArtwork {
 const COMPOSE_ARTWORKS = [makeUpload('aw-01'), makeUpload('aw-02')];
 
 const COMPOSE_ANALYSES: WorkAnalysis[] = COMPOSE_ARTWORKS.map((a) => ({
-  artworkId: a.id, style: 'abstract', palette: ['#112233'],
+  artworkId: a.id, suggestedTitle: `Suggested ${a.id}`, style: 'abstract', palette: ['#112233'],
   subject: 'forms', mood: 'calm', description: 'A work.',
 }));
 
@@ -132,6 +132,35 @@ describe('composeGalleryFromPlan', () => {
     expect(aw2.narration).toBe('Narration two.');
   });
 
+  it('uses an AI title only for blank uploads and adds no model call', async () => {
+    const artworks = [
+      { ...COMPOSE_ARTWORKS[0], title: '   ', medium: '' },
+      { ...COMPOSE_ARTWORKS[1], title: 'Artist Given Title' },
+    ];
+    const analyses: WorkAnalysis[] = [
+      { ...COMPOSE_ANALYSES[0], suggestedTitle: 'Quiet Drift' },
+      { ...COMPOSE_ANALYSES[1], suggestedTitle: 'Ignored Suggestion' },
+    ];
+    const generate = vi.fn()
+      .mockResolvedValueOnce('Two Works')
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'Label one.', narration: 'Narration one.' },
+        { artworkId: 'aw-02', label: 'Label two.', narration: 'Narration two.' },
+      ]));
+
+    const gallery = await composeGalleryFromPlan(
+      generate, artworks, analyses, COMPOSE_PLAN, 'white-cube'
+    );
+
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(gallery.artworks.find((a) => a.id === 'aw-01')?.title).toBe('Quiet Drift');
+    expect(gallery.artworks.find((a) => a.id === 'aw-02')?.title).toBe('Artist Given Title');
+    expect(gallery.tour.find((waypoint) => waypoint.artworkId === 'aw-01')?.label).toBe('Quiet Drift');
+    expect(generate.mock.calls[1][0]).not.toContain('Quiet Drift');
+    expect(generate.mock.calls[1][0]).not.toContain('Artist Given Title');
+    expect(artworks[0].title).toBe('   ');
+  });
+
   it('two consecutive invalid label responses surface an error (no silent fallback)', async () => {
     // The old 'No label available.' fallback is gone (§3). Two bad responses
     // must fail loudly via generateValidated's retry-once-then-throw contract.
@@ -165,7 +194,7 @@ describe('composeGalleryFromPlan', () => {
   it('batches labels in groups of three (narration doubles token budget)', async () => {
     const many = Array.from({ length: 6 }, (_, i) => makeUpload(`aw-0${i + 1}`));
     const manyAnalyses = many.map((a) => ({
-      artworkId: a.id, style: 's', palette: ['#000000'],
+      artworkId: a.id, suggestedTitle: `Suggested ${a.id}`, style: 's', palette: ['#000000'],
       subject: 'x', mood: 'm', description: 'd',
     }));
     const plan: CurationPlan = {

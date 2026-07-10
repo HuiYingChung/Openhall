@@ -18,6 +18,16 @@ import { WallSideSchema } from './gallery.schema';
 export const WorkAnalysisSchema = z.object({
   /** Matches the artwork id assigned during upload */
   artworkId: z.string(),
+  /** Short image-grounded title suggestion, used only when the artist left title blank */
+  suggestedTitle: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .refine((value) => value.toLowerCase() !== 'untitled', {
+      message: 'AI title suggestion must not be "Untitled"',
+    })
+    .describe('A concise image-grounded artwork title, never "Untitled"'),
   style: z.string().describe('Art style or movement (e.g. "abstract expressionism", "photography")'),
   palette: z
     .array(z.string().regex(/^#[0-9a-fA-F]{6}$/))
