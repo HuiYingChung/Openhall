@@ -1271,7 +1271,7 @@ async function loadDemoGallery(data: AppData): Promise<Gallery> {
 // Upload screen
 // ---------------------------------------------------------------------------
 
-function renderUpload(
+export function renderUpload(
   container: HTMLElement,
   data: AppData,
   onGenerate: () => void,
@@ -1323,7 +1323,7 @@ function renderUpload(
         <label class="oh-label" style="font-size:0.9rem;margin-bottom:0.2rem;">Describe your exhibition in one sentence</label>
         <p class="oh-help" style="color:#777;margin:0 0 0.5rem;">This shapes how your works are grouped into rooms, the tour order, and the tone of the wall labels.</p>
         <textarea id="oh-brief" class="oh-field" rows="2" placeholder="e.g. A series of abstract landscapes exploring the tension between the natural world and urban decay"
-          style="padding:0.6rem;font-size:0.95rem;margin-bottom:1rem;">${data.userBrief}</textarea>
+          style="padding:0.6rem;font-size:0.95rem;margin-bottom:1rem;">${escapeHtml(data.userBrief)}</textarea>
         <p id="oh-brief-error" class="oh-field-error" style="display:none;margin:-0.6rem 0 1rem;" role="alert"></p>
 
         <label class="oh-label" style="font-size:0.9rem;margin-bottom:0.5rem;">Gallery style</label>
