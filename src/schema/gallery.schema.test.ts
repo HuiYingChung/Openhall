@@ -37,6 +37,20 @@ describe('GallerySchema', () => {
     expect(typeof artworkId).toBe('string');
   });
 
+  it('accepts artwork without a medium', () => {
+    const artworks = sampleGallery.artworks.map((artwork, index) => {
+      if (index !== 0) return artwork;
+      const { medium: _medium, ...withoutMedium } = artwork;
+      return withoutMedium;
+    });
+
+    const result = GallerySchema.safeParse({ ...sampleGallery, artworks });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.artworks[0].medium).toBeUndefined();
+    }
+  });
+
   it('rejects a gallery with more than 4 rooms (AGENTS.md rule 6 cap)', () => {
     const singleRoom = sampleGallery.rooms[0];
     const bad = { ...sampleGallery, rooms: [singleRoom, singleRoom, singleRoom, singleRoom, singleRoom] };

@@ -227,6 +227,17 @@ describe('assembleGallery', () => {
     expect(shell.artworks).toHaveLength(ARTWORKS_6.length);
   });
 
+  it('omits blank medium instead of inventing a sentinel value', () => {
+    const artworks = ARTWORKS_6.map((artwork, index) => (
+      index === 0 ? { ...artwork, medium: '   ' } : artwork
+    ));
+    const shell = assembleGallery(PLAN_2_ROOMS, 'white-cube', artworks, 'Test');
+
+    expect(shell.artworks[0]).not.toHaveProperty('medium');
+    expect(JSON.stringify(shell.artworks)).not.toContain('Unknown medium');
+    expect(shell.artworks[1].medium).toBe('Oil on canvas');
+  });
+
   it('artwork imagePaths use artworkId', () => {
     const shell = assembleGallery(PLAN_2_ROOMS, 'white-cube', ARTWORKS_6, 'Test');
     for (const aw of shell.artworks) {

@@ -12,11 +12,19 @@
  */
 
 import * as THREE from 'three';
-import type { Gallery } from '../schema/gallery.schema';
+import type { Artwork, Gallery } from '../schema/gallery.schema';
 import { escapeHtml } from '../ui/escape-html';
 
 /** Reserved id for the artist plaque mesh (mirrors room-builder). */
 export const ARTIST_MESH_ID = '__artist__';
+
+/** Join independently optional medium/year fields for public artwork cards. */
+export function formatArtworkMetadata(artwork: Pick<Artwork, 'medium' | 'year'>): string {
+  const medium = artwork.medium?.trim();
+  return [medium || '', artwork.year != null ? String(artwork.year) : '']
+    .filter(Boolean)
+    .join(', ');
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -372,8 +380,11 @@ export class ArtworkInteractions {
     this.inspecting = true;
     this.clearHighlight();
 
-    const yearStr = aw.year != null ? `, ${aw.year}` : '';
-    const medStr = aw.medium ? `<p style="color:#aaa;font-size:0.82rem;margin:0.15rem 0 0.75rem;">${escapeHtml(aw.medium)}${escapeHtml(yearStr)}</p>` : '';
+    const metadata = formatArtworkMetadata(aw);
+    const medStr = metadata ? `<p style="color:#aaa;font-size:0.82rem;margin:0.15rem 0 0.75rem;">${escapeHtml(metadata)}</p>` : '';
+    const titleStr = aw.title.trim()
+      ? `<p style="font-size:1.05rem;font-weight:700;margin:0;">${escapeHtml(aw.title)}</p>`
+      : '';
     const statStr = aw.artistStatement
       ? `<p style="color:#888;font-size:0.8rem;margin:0.75rem 0 0;font-style:italic;">&ldquo;${escapeHtml(aw.artistStatement)}&rdquo;</p>`
       : '';
@@ -382,7 +393,7 @@ export class ArtworkInteractions {
       <div aria-hidden="true" style="width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,0.28);margin:0 auto 0.65rem;"></div>
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;">
         <div style="flex:1;min-width:0;">
-          <p style="font-size:1.05rem;font-weight:700;margin:0;">${escapeHtml(aw.title || 'Untitled')}</p>
+          ${titleStr}
           ${medStr}
           <p style="font-size:0.88rem;line-height:1.55;margin:0;">${escapeHtml(aw.label)}</p>
           ${statStr}

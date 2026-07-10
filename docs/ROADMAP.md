@@ -21,7 +21,7 @@ Goal: establish the complete technical foundation and verify the critical paths.
 - [x] Zod schemas for `gallery.json` and transient AI outputs.
 - [x] Procedural rooms, artwork placement, lighting, and materials.
 - [x] Pointer Lock WASD controls, mouse-look, AABB wall collision, and controls overlay.
-- [x] Upload preprocessing and metadata editing for up to 10 works.
+- [x] Upload preprocessing and metadata editing for up to 10 works, with AI title suggestions for blanks and optional medium omission.
 - [x] BYOK settings, watsonx provider, OpenAI-compatible provider, and localStorage cleanup.
 - [x] Stateless Cloudflare relay for watsonx IAM and ML browser requests.
 - [x] Deterministic room chain, doorway-aware tour routing, and placement sanity.

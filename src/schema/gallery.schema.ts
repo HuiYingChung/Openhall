@@ -48,8 +48,10 @@ export const ArtworkSchema = z.object({
   id: z.string(),
   /** Relative path to the image file (e.g. "images/01.jpg") */
   imagePath: z.string(),
+  /** Artist title or accepted AI suggestion. Empty means the artist chose no title. */
   title: z.string(),
-  medium: z.string(),
+  /** Artist-provided medium. Omitted when the artist leaves it blank. */
+  medium: z.string().optional(),
   year: z.number().int().optional(),
   /** AI-generated wall label text */
   label: z.string(),

@@ -179,7 +179,8 @@ export interface GenerationView {
  */
 export function createGenerationView(
   host: HTMLElement,
-  artworks: UploadedArtwork[]
+  artworks: UploadedArtwork[],
+  suppressedTitleIds: ReadonlySet<string> = new Set()
 ): GenerationView {
   host.innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;gap:1.1rem;width:min(560px,92vw);font-family:var(--oh-font);color:var(--oh-ink);">
@@ -298,7 +299,14 @@ export function createGenerationView(
           .filter(Boolean)
           .map((w) => escapeHtml(w))
           .join(' · ');
-        readout.innerHTML = `${dots}<span style="margin-left:6px;">${words}</span>`;
+        const artistTitle = artworks[index]?.title.trim();
+        const noTitleKept = suppressedTitleIds.has(analysis.artworkId);
+        const titleReadout = noTitleKept
+          ? 'No title kept'
+          : artistTitle
+            ? `Artist title kept: ${escapeHtml(artistTitle)}`
+            : `Suggested title: ${escapeHtml(analysis.suggestedTitle)}`;
+        readout.innerHTML = `${dots}<span style="margin-left:6px;"><span class="oh-gen-suggested-title" style="font-weight:650;">${titleReadout}</span><span style="display:block;">${words}</span></span>`;
       }
     },
 

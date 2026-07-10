@@ -101,6 +101,7 @@ describe('createGenerationView', () => {
 
   const ANALYSIS: WorkAnalysis = {
     artworkId: 'aw-01',
+    suggestedTitle: 'Harbor Quiet',
     style: 'impressionism',
     palette: ['#3e5a7a', '#9db4c8'],
     subject: 'boating scene',
@@ -127,8 +128,34 @@ describe('createGenerationView', () => {
     expect(thumbs[0].classList.contains('is-done')).toBe(true);
     expect(thumbs[0].classList.contains('is-analysing')).toBe(false);
     const readout = host.querySelector('.oh-gen-readout')!;
+    expect(readout.textContent).toContain('Suggested title:');
+    expect(readout.textContent).toContain('Harbor Quiet');
     expect(readout.textContent).toContain('impressionism · boating scene · tranquil');
     expect(readout.querySelectorAll('.oh-gen-dot').length).toBe(2);
+  });
+
+  it('confirms the artist title instead of presenting the unused AI suggestion', () => {
+    const host = document.createElement('div');
+    const artworks = makeArtworks(1);
+    artworks[0].title = 'Artist Title';
+    const view = createGenerationView(host, artworks);
+
+    view.finishArtwork(0, ANALYSIS);
+
+    const text = host.querySelector('.oh-gen-readout')!.textContent ?? '';
+    expect(text).toContain('Artist title kept: Artist Title');
+    expect(text).not.toContain('Suggested title: Harbor Quiet');
+  });
+
+  it('confirms an explicit no-title choice during a later generation', () => {
+    const host = document.createElement('div');
+    const view = createGenerationView(host, makeArtworks(1), new Set(['aw-01']));
+
+    view.finishArtwork(0, ANALYSIS);
+
+    const text = host.querySelector('.oh-gen-readout')!.textContent ?? '';
+    expect(text).toContain('No title kept');
+    expect(text).not.toContain('Suggested title: Harbor Quiet');
   });
 
   it('groups thumbnails into curated rooms with tour order and the curator note', () => {

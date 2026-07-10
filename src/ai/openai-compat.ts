@@ -7,7 +7,7 @@
 
 import { generateValidated, composeGalleryFromPlan } from './provider';
 import { buildAnalyzePrompt } from './prompts/analyze.prompt';
-import { buildCuratePrompt } from './prompts/curate.prompt';
+import { buildCuratePrompt, serializeCurationAnalyses } from './prompts/curate.prompt';
 import { buildAnalysisSchema, buildCurationSchema } from './validation';
 import type { AIProvider, UploadedArtwork, StylePreset } from './provider';
 import type { WorkAnalysis, CurationPlan } from '../schema/analysis.schema';
@@ -104,7 +104,7 @@ export class OpenAICompatProvider implements AIProvider {
   async curate(analyses: WorkAnalysis[], userBrief: string): Promise<CurationPlan> {
     const expectedIds = analyses.map((a) => a.artworkId);
     const prompt = buildCuratePrompt(
-      JSON.stringify(analyses, null, 2),
+      serializeCurationAnalyses(analyses),
       userBrief,
       analyses.length
     );

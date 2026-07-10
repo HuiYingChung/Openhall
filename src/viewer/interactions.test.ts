@@ -124,6 +124,48 @@ describe('ArtworkInteractions.close()', () => {
   });
 });
 
+describe('ArtworkInteractions artwork metadata', () => {
+  afterEach(() => {
+    document.querySelectorAll('#oh-crosshair, #oh-info-panel').forEach((el) => el.remove());
+  });
+
+  it('shows a year without a medium and never invents an Untitled heading', () => {
+    const gallery = GallerySchema.parse({
+      ...makeGallery(),
+      artworks: [
+        {
+          id: 'aw-1',
+          imagePath: 'images/aw-1.jpg',
+          title: '',
+          year: 2024,
+          label: 'A year-only metadata test.',
+        },
+      ],
+    });
+    const interactions = new ArtworkInteractions({
+      camera: new THREE.PerspectiveCamera(70, 1, 0.05, 200),
+      scene: new THREE.Scene(),
+      artworkMeshes: new Map(),
+      gallery,
+      onInspectOpen: vi.fn(),
+      onInspectClose: vi.fn(),
+      getIsLocked: () => true,
+    });
+    // Drive the private panel renderer directly; raycasting is unrelated here.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const priv = interactions as any;
+    priv.currentArtworkId = 'aw-1';
+    priv.showInfoPanel();
+
+    const text = document.querySelector('#oh-info-panel')?.textContent ?? '';
+    expect(text).toContain('2024');
+    expect(text).toContain('A year-only metadata test.');
+    expect(text).not.toContain('Untitled');
+    expect(text).not.toContain('Unknown medium');
+    interactions.dispose();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // onClick guards — keyboard-activated clicks and UI chrome targets
 // ---------------------------------------------------------------------------

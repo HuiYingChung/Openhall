@@ -367,8 +367,8 @@ export function assembleGallery(
   const galleryArtworks = artworks.map((aw) => ({
     id: aw.id,
     imagePath: `images/${aw.id}.jpg`,
-    title: aw.title || 'Untitled',
-    medium: aw.medium || 'Unknown medium',
+    title: aw.title,
+    ...(aw.medium.trim() ? { medium: aw.medium.trim() } : {}),
     ...(aw.year !== undefined ? { year: aw.year } : {}),
     label: '', // filled in by label batches
   }));

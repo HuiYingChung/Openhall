@@ -104,28 +104,37 @@ describe('aiInputKey', () => {
     expect(aiInputKey(changed)).not.toBe(base);
   });
 
-  // 2a. Title change produces a different key.
-  it('[§1.2a] title change produces a different key', () => {
+  // 2a. Title is free display metadata and does not invalidate AI output.
+  it('[§1.2a] title change does not change the key', () => {
     const base = aiInputKey(makeData());
     const changed = makeData();
     changed.artworks[0].title = 'New Title';
-    expect(aiInputKey(changed)).not.toBe(base);
+    expect(aiInputKey(changed)).toBe(base);
   });
 
-  // 2b. Medium change produces a different key.
-  it('[§1.2b] medium change produces a different key', () => {
+  // 2b. Medium is optional display metadata and does not invalidate AI output.
+  it('[§1.2b] medium change does not change the key', () => {
     const base = aiInputKey(makeData());
     const changed = makeData();
     changed.artworks[0].medium = 'Watercolour';
-    expect(aiInputKey(changed)).not.toBe(base);
+    expect(aiInputKey(changed)).toBe(base);
   });
 
-  // 2c. Year change produces a different key.
-  it('[§1.2c] year change produces a different key', () => {
+  it('treats whitespace-only title and medium as blank metadata', () => {
+    const blank = makeData();
+    const whitespace = makeData();
+    whitespace.artworks[0].title = '   ';
+    whitespace.artworks[0].medium = '  \n ';
+
+    expect(aiInputKey(whitespace)).toBe(aiInputKey(blank));
+  });
+
+  // 2c. Year is optional display metadata and does not invalidate AI output.
+  it('[§1.2c] year change does not change the key', () => {
     const base = aiInputKey(makeData());
     const changed = makeData();
     changed.artworks[0].year = 2023;
-    expect(aiInputKey(changed)).not.toBe(base);
+    expect(aiInputKey(changed)).toBe(base);
   });
 
   // 3. Identity/branding-only edits do NOT change the key.
@@ -185,14 +194,14 @@ describe('aiInputKey', () => {
     expect(aiInputKey(withOne)).not.toBe(withTwo);
   });
 
-  it('cannot collide when metadata contains cache-key delimiter characters', () => {
+  it('ignores punctuation inside free display metadata', () => {
     const first = makeData();
     first.artworks[0].title = 'a:b';
     first.artworks[0].medium = 'c|d';
     const second = makeData();
     second.artworks[0].title = 'a';
     second.artworks[0].medium = 'b:c|d';
-    expect(aiInputKey(first)).not.toBe(aiInputKey(second));
+    expect(aiInputKey(first)).toBe(aiInputKey(second));
   });
 });
 
@@ -204,11 +213,72 @@ describe('addThumbnail cache-state notifications', () => {
     addThumbnail(grid, data.artworks[0], data, onDataChange);
 
     const title = grid.querySelector<HTMLInputElement>('[data-field="title"]')!;
+    const medium = grid.querySelector<HTMLInputElement>('[data-field="medium"]')!;
+    expect(title.placeholder).toContain('optional');
+    expect(medium.placeholder).toContain('optional');
     title.value = 'Changed title';
     title.dispatchEvent(new Event('input', { bubbles: true }));
 
     expect(data.artworks[0].title).toBe('Changed title');
     expect(onDataChange).toHaveBeenCalledOnce();
+  });
+
+  it('folds metadata edits into a cached gallery without changing the AI key', () => {
+    const data = makeData();
+    data.analyses = [
+      {
+        artworkId: 'aw-01',
+        suggestedTitle: 'AI Harbor',
+        style: 'photography',
+        palette: ['#112233'],
+        subject: 'harbor',
+        mood: 'quiet',
+        description: 'A quiet harbor.',
+      },
+    ];
+    data.gallery = {
+      version: '1.0',
+      title: 'Cached Gallery',
+      rooms: [],
+      artworks: [
+        { id: 'aw-01', imagePath: 'images/aw-01.jpg', title: 'AI Harbor', label: 'Label.' },
+      ],
+      placements: [],
+      tour: [
+        {
+          artworkId: 'aw-01',
+          position: { x: 0, y: 1.6, z: 2 },
+          lookAt: { x: 0, y: 1.5, z: 0 },
+          label: 'AI Harbor',
+        },
+      ],
+    };
+    data.lastGenKey = aiInputKey(data);
+    const grid = document.createElement('div');
+    addThumbnail(grid, data.artworks[0], data);
+
+    const title = grid.querySelector<HTMLInputElement>('[data-field="title"]')!;
+    const medium = grid.querySelector<HTMLInputElement>('[data-field="medium"]')!;
+    const year = grid.querySelector<HTMLInputElement>('[data-field="year"]')!;
+    title.value = 'Artist Harbor';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    medium.value = 'Ink';
+    medium.dispatchEvent(new Event('input', { bubbles: true }));
+    year.value = '2024';
+    year.dispatchEvent(new Event('input', { bubbles: true }));
+
+    expect(data.gallery.artworks[0]).toMatchObject({
+      title: 'Artist Harbor',
+      medium: 'Ink',
+      year: 2024,
+    });
+    expect(data.gallery.tour[0].label).toBe('Artist Harbor');
+    expect(aiInputKey(data)).toBe(data.lastGenKey);
+
+    title.value = '';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(data.gallery.artworks[0].title).toBe('AI Harbor');
+    expect(data.artworkTitleSources?.['aw-01']).toBe('ai');
   });
 
   it('removes the final artwork, revokes its URL, and notifies the UI', () => {

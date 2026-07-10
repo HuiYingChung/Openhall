@@ -12,6 +12,7 @@ import { buildAnalysisSchema, buildCurationSchema, buildLabelsSchema } from './v
 
 const validAnalysis = {
   artworkId: 'aw-01',
+  suggestedTitle: 'Quiet Forms',
   style: 'abstract expressionism',
   palette: ['#cc3333'],
   subject: 'two figures',

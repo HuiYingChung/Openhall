@@ -47,7 +47,7 @@ Existing options solve parts of this problem. Many established virtual-gallery p
 ## What Openhall does
 
 1. **Upload** up to 10 works (drag & drop; resized client-side).
-2. **AI analyses and curates** — a vision model reads each work's style, palette, subject, and mood; a language model groups the works into rooms, orders the visitor flow, names the exhibition, and writes both a placard label and a spoken docent narration for every piece.
+2. **AI analyses and curates** — a vision model reads each work's style, palette, subject, and mood and suggests a title when the artist leaves it blank; a language model groups the works into rooms, orders the visitor flow, names the exhibition, and writes both a placard label and a spoken docent narration for every piece.
 3. **Steer it with one sentence.** Your brief ("moody nocturnal oils — hang the seascapes together") shapes the curation — what hangs together, how many rooms, the visitor's route — and the voice of every label. The visual style (materials, lighting) comes from four presets; a deterministic assembler then turns the AI's plan into walkable rooms.
 4. **Walk it** — first-person navigation, click-to-inspect, a guided tour with autoplay, and an opt-in audio guide that speaks the narration.
 5. **Export and own it** — one click produces a zip that is a complete static website: no Openhall dependency, account, or recurring Openhall fee. Host it on a free static tier such as Netlify or GitHub Pages, or on your own domain.
@@ -69,7 +69,7 @@ The market overlaps with Openhall in important ways (reviewed July 2026): [KUNST
 
 ```mermaid
 flowchart TD
-    A[Your images] --> B[Vision analysis - one call per artwork]
+    A[Your images] --> B[Vision analysis + artwork title suggestion - one call per artwork]
     BR[Your one-sentence brief] --> C
     B --> C[Curation plan - rooms, grouping, tour order]
     C --> T[Exhibition title - plain text, safe fallback]
@@ -87,7 +87,7 @@ Three decisions carry the architecture:
 
 **1. The AI curates; deterministic code builds.** Early versions let the model emit gallery geometry freeform. The galleries were walkable but spatially incoherent — tour paths through walls, backtracking flow. Models narrate space; they don't reason about it. So the pipeline was split: the LLM decides *rooms, grouping, which wall each piece hangs on, each room's visitor order, and every word of text*; validation requires the tour to move through the linear room chain without returning to an earlier room. A deterministic assembler turns those choices into coordinates and doorways, inserts invisible transit waypoints through each opening, and a sanity pass clamps placements away from wall edges and doorways while best-effort separating same-wall overlaps. This division — trusting the model exactly where it's strong — is the project's central AI-engineering lesson, and it's visible in the git history ([PR #2](https://github.com/HuiYingChung/Openhall/pull/2)).
 
-**2. `gallery.json` is the contract.** The generation pipeline produces it, the viewer renders it, and the exporter ships it. One zod schema guards both ends: the pipeline validates on the way out, and every exported gallery re-validates it on boot. Curation, labels, and narration are structured JSON, validated with exactly one retry on failure; the exhibition title is deliberately plain text (models don't answer naming questions in JSON). An empty successful title response gets a safe fallback, while authentication, quota, and network failures still surface to the user. The generating screen shows this honestly: each returned analysis, the curator's grouping, the title response, every completed label/narration batch, whether that batch needed its validation retry, and the model doing the work (`meta-llama/llama-3-2-11b-vision-instruct` for analysis, `ibm/granite-3-8b-instruct` for text, on the watsonx route). Nothing on that screen is theatre.
+**2. `gallery.json` is the contract.** The generation pipeline produces it, the viewer renders it, and the exporter ships it. One zod schema guards both ends: the pipeline validates on the way out, and every exported gallery re-validates it on boot. Analysis (including an artwork-title suggestion), curation, labels, and narration are structured JSON, validated with exactly one retry on failure; the exhibition title is deliberately plain text (models don't answer naming questions in JSON). An artist-entered artwork title always wins, while a blank title receives the suggestion already returned by the vision call. An empty successful exhibition-title response gets a safe fallback, while authentication, quota, and network failures still surface to the user. The generating screen shows this honestly: each returned analysis and suggested artwork title, the curator's grouping, the exhibition-title response, every completed label/narration batch, whether that batch needed its validation retry, and the model doing the work (`meta-llama/llama-3-2-11b-vision-instruct` for analysis, `ibm/granite-3-8b-instruct` for text, on the watsonx route). Nothing on that screen is theatre.
 
 **3. BYOK, (almost) everything client-side.** No accounts, no database, no analytics. The one server-side piece is a small, stateless, open-source CORS relay the watsonx route needs. Details and trade-offs in [Security & privacy](#security--privacy-honestly).
 
@@ -159,14 +159,14 @@ input**; text-only models fail at artwork analysis. The endpoint must also allow
 browser CORS and expose an OpenAI-style `/chat/completions` route that accepts
 multimodal `image_url` data URLs.
 
-**What a generation costs you:** a 10-artwork run makes **16 base model requests**: 10 vision analyses, one curation, one plain-text title, and four label/narration batches. Structured stages retry at most once; if every eligible stage needed its retry, a successful run could reach 31 requests. Providers charge by token/image usage and their current pricing, not a fixed Openhall per-call fee; Openhall adds no markup. Budget accordingly and configure billing notifications, remembering that [IBM spending thresholds send alerts but do not stop charges](https://cloud.ibm.com/docs/account?topic=account-billusagefaqs).
+**What a generation costs you:** a 10-artwork run makes **16 base model requests**: 10 vision analyses, one curation, one plain-text exhibition title, and four label/narration batches. Artwork-title suggestions come back inside those same 10 vision responses, so they add no request. Structured stages retry at most once; if every eligible stage needed its retry, a successful run could reach 31 requests. Providers charge by token/image usage and their current pricing, not a fixed Openhall per-call fee; Openhall adds no markup. Budget accordingly and configure billing notifications, remembering that [IBM spending thresholds send alerts but do not stop charges](https://cloud.ibm.com/docs/account?topic=account-billusagefaqs).
 
 ### C. Create
 
-1. **Upload** JPG, PNG, or WebP images (up to 10). Add titles, medium, and year if you want them on the placards. You can also set exhibition branding (title, description, and favicon) and artist identity (name, statement, links, and portrait or initials); the export carries that metadata and the gallery includes a clickable artist wall.
+1. **Upload** JPG, PNG, or WebP images (up to 10). Artwork title is optional: if left blank, AI suggests one during the existing vision analysis; your own title always wins. Medium and year are optional and appear only when supplied (a year can appear by itself). You can also set exhibition branding (title, description, and favicon) and artist identity (name, statement, links, and portrait or initials); the export carries that metadata and the gallery includes a clickable artist wall.
 2. **Write the one-sentence brief.** It steers grouping, tour order, and the label tone — "moody nocturnal oils, hang the seascapes together" is a real instruction, not decoration.
-3. Pick a **style preset** and hit **Generate**. The preset controls materials, lighting, proportions, and ceiling height; your sentence controls curation and writing. The generating screen shows the real pipeline as it runs — analysis per artwork, the curator's grouping, the exhibition title the model chose, each completed batch of labels and narration after validation, and which model is doing the work.
-4. **Review wall labels** — edit any text, or go back and regenerate. Then **Enter Gallery**.
+3. Pick a **style preset** and hit **Generate**. The preset controls materials, lighting, proportions, and ceiling height; your sentence controls curation and writing. The generating screen shows the real pipeline as it runs — analysis and, where needed, a suggested title for each artwork, the curator's grouping, the exhibition title the model chose, each completed batch of labels and narration after validation, and which model is doing the work.
+4. **Review artwork details** — AI suggestions are identified; keep, edit, or clear each title, edit label text, and optionally add or remove medium. Title, medium, year, and review edits are folded into `gallery.json` without another AI call. Then **Approve & Enter Gallery**.
 
 ### D. Walk
 
@@ -219,7 +219,7 @@ Why the paranoia about the export path: during export development, our unit test
 - **watsonx region is hardcoded to us-south** for now.
 - **Voice quality varies by OS/browser**; voiceless platforms degrade to text with an explanation.
 - **Rooms are linear chains, max 4** — no L-shaped or freeform floor plans in the MVP.
-- **The pipeline is one-shot.** You can regenerate or edit labels, but you can't yet tell the AI "make room two warmer" — conversational refinement is the obvious next step.
+- **The pipeline is one-shot.** You can regenerate or edit titles, medium, and labels, but you can't yet tell the AI "make room two warmer" — conversational refinement is the obvious next step.
 - Max 10 artworks per gallery (MVP scope).
 
 ## Development

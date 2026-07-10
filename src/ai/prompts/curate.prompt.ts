@@ -5,6 +5,27 @@
  * Input: WorkAnalysis[] JSON + user brief string
  */
 
+import type { WorkAnalysis } from '../../schema/analysis.schema';
+
+/**
+ * Artwork title suggestions are editable display metadata, not curatorial
+ * evidence. Keep them out of room themes, curator notes, and exhibition naming.
+ */
+export function serializeCurationAnalyses(analyses: WorkAnalysis[]): string {
+  return JSON.stringify(
+    analyses.map(({ artworkId, style, palette, subject, mood, description }) => ({
+      artworkId,
+      style,
+      palette,
+      subject,
+      mood,
+      description,
+    })),
+    null,
+    2
+  );
+}
+
 export function buildCuratePrompt(analysesJson: string, userBrief: string, artworkCount: number): string {
   return `You are an experienced exhibition curator. You have received ${artworkCount} artworks to arrange into a walkable gallery.
 

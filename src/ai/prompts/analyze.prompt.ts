@@ -12,6 +12,7 @@ Analyse the image carefully and respond with ONLY a JSON object matching this ex
 
 {
   "artworkId": "${artworkId}",
+  "suggestedTitle": "<a concise 2–6 word title grounded in the image>",
   "style": "<art style or movement, e.g. abstract expressionism, documentary photography>",
   "palette": ["#rrggbb", ...],
   "subject": "<what is depicted or represented in one clause>",
@@ -21,6 +22,9 @@ Analyse the image carefully and respond with ONLY a JSON object matching this ex
 
 Rules:
 - palette: 2–5 dominant hex colours from the image
+- suggestedTitle: 2–6 words, concise, based only on what you see in the image, with no surrounding quotation marks
+- Never use "Untitled" as suggestedTitle
+- Do not infer or mention an artwork medium, artist, location, or date
 - style, subject, mood: concise, factual, based only on what you see
 - description: neutral curatorial tone, no invented artist biography
 - Respond with ONLY the JSON object — no markdown fences, no extra text`;

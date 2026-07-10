@@ -9,6 +9,7 @@ describe('WorkAnalysisSchema', () => {
   it('accepts a valid work analysis', () => {
     const valid = {
       artworkId: 'aw-01',
+      suggestedTitle: 'Tension in Red',
       style: 'abstract expressionism',
       palette: ['#cc3333', '#336699'],
       subject: 'two figures in tension',
@@ -21,6 +22,7 @@ describe('WorkAnalysisSchema', () => {
   it('rejects invalid palette hex', () => {
     const bad = {
       artworkId: 'aw-01',
+      suggestedTitle: 'Quiet Landscape',
       style: 'painting',
       palette: ['not-a-hex'],
       subject: 'landscape',
@@ -28,6 +30,34 @@ describe('WorkAnalysisSchema', () => {
       description: 'A peaceful scene.',
     };
     expect(WorkAnalysisSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('requires a non-blank suggested title', () => {
+    const base = {
+      artworkId: 'aw-01',
+      style: 'painting',
+      palette: ['#336699'],
+      subject: 'landscape',
+      mood: 'calm',
+      description: 'A peaceful scene.',
+    };
+
+    expect(WorkAnalysisSchema.safeParse(base).success).toBe(false);
+    expect(WorkAnalysisSchema.safeParse({ ...base, suggestedTitle: '   ' }).success).toBe(false);
+  });
+
+  it('rejects Untitled as an AI suggestion', () => {
+    const analysis = {
+      artworkId: 'aw-01',
+      suggestedTitle: 'Untitled',
+      style: 'painting',
+      palette: ['#336699'],
+      subject: 'landscape',
+      mood: 'calm',
+      description: 'A peaceful scene.',
+    };
+
+    expect(WorkAnalysisSchema.safeParse(analysis).success).toBe(false);
   });
 });
 

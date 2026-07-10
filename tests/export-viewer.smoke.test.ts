@@ -27,6 +27,11 @@ const externalRequests: string[] = [];
 beforeAll(async () => {
   // 1. Real export zip → unzipped static site in a temp dir
   const { zip, gallery } = await buildRealExportZip();
+  // Exercise the new optional-medium contract against the real pre-built
+  // standalone viewer. A stale viewer bundle with the old schema will fail boot.
+  const exportedGallery = JSON.parse(await zip.file('gallery.json')!.async('string'));
+  delete exportedGallery.artworks[0].medium;
+  zip.file('gallery.json', JSON.stringify(exportedGallery, null, 2));
   galleryTitle = gallery.title;
   unzipDir = mkdtempSync(join(tmpdir(), 'openhall-e2e-'));
   for (const [relPath, file] of Object.entries(zip.files)) {
