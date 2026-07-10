@@ -32,6 +32,12 @@ export interface UploadedArtwork {
   title: string;
   medium: string;
   year?: number;
+  /**
+   * SHA-256 hex fingerprint of the image bytes, derived at upload time.
+   * Used by aiInputKey() to detect same-filename/different-content replacements.
+   * Absent for demo artworks and test stubs.
+   */
+  contentHash?: string;
 }
 
 // ---------------------------------------------------------------------------

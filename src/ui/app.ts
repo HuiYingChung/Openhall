@@ -17,7 +17,7 @@ import { showToast, buildErrorCard, showFieldError, translateError, type ErrorAc
 import { createGenerationView, buildFloorPlanSvg } from './generation-view';
 import { escapeHtml } from './escape-html';
 import { sanitizePlacements } from './placement-sanity';
-import { resizeToDataUrl, createDisplayObjectUrl, generateFaviconDataUrl } from './image-utils';
+import { resizeToDataUrl, createDisplayObjectUrl, generateFaviconDataUrl, allocateArtworkId, computeContentFingerprint } from './image-utils';
 import {
   WatsonxProvider,
   loadWatsonxSettings,
@@ -92,11 +92,27 @@ export interface AppData {
  * switching the AI in Settings must invalidate the cache, otherwise the
  * "Continue (no AI)" path silently reuses the old provider's gallery.
  */
+/**
+ * Fingerprint of the inputs that require an AI call to (re)generate a gallery.
+ *
+ * Per-artwork segment: `id:contentHash:title:medium:year` — upload order is
+ * preserved (NOT sorted) because the curation prompt receives artworks in order,
+ * meaning order affects grouping. Content hash detects same-filename-different-bytes
+ * replacements. Title/medium/year are user-editable fields copied into the gallery.
+ *
+ * Identity/branding fields (artistName, statement, links, portrait, favicon) are
+ * deliberately excluded: they are applied without any AI call.
+ *
+ * Provider + model round out the fingerprint so switching AI settings invalidates
+ * the cache. OpenAI model is only included when the OpenAI provider is active.
+ */
 export function aiInputKey(data: AppData): string {
-  const ids = data.artworks.map((a) => a.id).sort().join(',');
+  const artworkSegments = data.artworks
+    .map((a) => `${a.id}:${a.contentHash ?? ''}:${a.title}:${a.medium}:${a.year ?? ''}`)
+    .join(',');
   const provider = localStorage.getItem('openhall_provider') ?? '';
   const model = provider === 'openai' ? (loadOpenAISettings()?.model ?? '') : '';
-  return `${ids}|${data.userBrief.trim()}|${data.preset}|${provider}:${model}`;
+  return `${artworkSegments}|${data.userBrief.trim()}|${data.preset}|${provider}:${model}`;
 }
 
 /**
@@ -1386,19 +1402,39 @@ function renderUpload(
     if (!files || files.length === 0) return;
     const remaining = 10 - data.artworks.length;
     const toProcess = Array.from(files).slice(0, remaining);
+    const errors: string[] = [];
 
     for (const file of toProcess) {
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) continue;
-      const { dataUrl: analysisDataUrl, width, height } = await resizeToDataUrl(file, 1024);
-      const displayObjectUrl = createDisplayObjectUrl(file);
-      const id = `aw-${String(data.artworks.length + 1).padStart(2, '0')}`;
-      const artwork: UploadedArtwork = {
-        id, filename: file.name, analysisDataUrl, displayObjectUrl,
-        aspectRatio: width / height, title: '', medium: '', year: undefined,
-      };
-      data.artworks.push(artwork);
-      addThumbnail(thumbnailGrid, artwork, data);
+      try {
+        const [{ dataUrl: analysisDataUrl, width, height }, contentHash] = await Promise.all([
+          resizeToDataUrl(file, 1024),
+          computeContentFingerprint(file),
+        ]);
+        const displayObjectUrl = createDisplayObjectUrl(file);
+        const id = allocateArtworkId();
+        const artwork: UploadedArtwork = {
+          id, filename: file.name, analysisDataUrl, displayObjectUrl,
+          aspectRatio: width / height, title: '', medium: '', year: undefined,
+          contentHash,
+        };
+        data.artworks.push(artwork);
+        addThumbnail(thumbnailGrid, artwork, data, () => { disarmOnInputChange(); refreshFav(); });
+      } catch {
+        errors.push(file.name);
+      }
     }
+    if (errors.length) {
+      showToast({
+        message: errors.length === 1
+          ? `Could not process "${errors[0]}" — file may be corrupt or unsupported.`
+          : `${errors.length} files could not be processed: ${errors.join(', ')}.`,
+        tone: 'error',
+        duration: 8000,
+      });
+    }
+    // Clear the input so selecting the same file again fires a new change event
+    fileInput.value = '';
     disarmOnInputChange(); // refreshes label/hint + cancels a pending confirm
     refreshFav(); // the auto favicon derives from the first artwork
   }
@@ -1414,7 +1450,7 @@ function renderUpload(
   fileInput.addEventListener('change', () => handleFiles(fileInput.files));
 
   // Re-render existing artworks
-  for (const aw of data.artworks) addThumbnail(thumbnailGrid, aw, data);
+  for (const aw of data.artworks) addThumbnail(thumbnailGrid, aw, data, () => { disarmOnInputChange(); refreshFav(); });
   updateGenerateBtn();
 
   // Two-step confirm — guards ONLY the billable path (a real AI call). The
@@ -1453,7 +1489,12 @@ function renderUpload(
   });
 }
 
-function addThumbnail(grid: HTMLElement, artwork: UploadedArtwork, data: AppData): void {
+function addThumbnail(
+  grid: HTMLElement,
+  artwork: UploadedArtwork,
+  data: AppData,
+  onRemove?: () => void
+): void {
   const card = document.createElement('div');
   card.style.cssText = 'background:var(--oh-panel);border-radius:8px;overflow:hidden;border:1px solid var(--oh-border);';
   card.innerHTML = `
@@ -1473,6 +1514,7 @@ function addThumbnail(grid: HTMLElement, artwork: UploadedArtwork, data: AppData
   card.querySelector(`[data-remove="${artwork.id}"]`)!.addEventListener('click', () => {
     data.artworks = data.artworks.filter((a) => a.id !== artwork.id);
     card.remove();
+    onRemove?.();
   });
 
   card.querySelectorAll<HTMLInputElement>('[data-field]').forEach((input) => {

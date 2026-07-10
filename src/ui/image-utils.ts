@@ -3,6 +3,46 @@
  * Uses the Canvas API — no external dependencies.
  */
 
+// ---------------------------------------------------------------------------
+// Artwork ID allocator — monotonic, session-scoped, never reuses an id
+// even after removals.
+// ---------------------------------------------------------------------------
+
+let _nextArtworkSeq = 1;
+
+/**
+ * Allocate the next artwork id in the form `aw-NN`.
+ * Never derived from array length, so deleting an artwork cannot create
+ * a collision when a new file is uploaded later in the same session.
+ */
+export function allocateArtworkId(): string {
+  const seq = _nextArtworkSeq++;
+  return `aw-${String(seq).padStart(2, '0')}`;
+}
+
+/** Reset the allocator — test-only. */
+export function _resetArtworkIdAllocator(next = 1): void {
+  _nextArtworkSeq = next;
+}
+
+// ---------------------------------------------------------------------------
+// Content fingerprint — SHA-256 via Web Crypto (browser-native)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute a hex-encoded SHA-256 fingerprint of a File's bytes.
+ * Used by aiInputKey() to detect same-filename/different-content replacements.
+ * Never logged. Returns empty string if Web Crypto is unavailable.
+ */
+export async function computeContentFingerprint(file: File): Promise<string> {
+  if (typeof crypto === 'undefined' || !crypto.subtle) return '';
+  const buf = await file.arrayBuffer();
+  const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hashBuf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 /** Resize an image blob to fit within maxEdge pixels (longest side), returning a data URL. */
 export async function resizeToDataUrl(
   file: File,

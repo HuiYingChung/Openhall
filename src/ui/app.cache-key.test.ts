@@ -3,22 +3,26 @@
  * app.cache-key.test.ts — the regeneration-cache fingerprint.
  * Switching AI provider (or OpenAI model) must change the key, otherwise the
  * free "Continue" path silently reuses the old provider's gallery.
+ *
+ * Upload order IS preserved in the key because the curation prompt receives
+ * artworks in array order and uses that order for grouping decisions.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { aiInputKey, type AppData } from './app';
 import { saveOpenAISettings } from '../ai/openai-compat';
+import { _resetArtworkIdAllocator, allocateArtworkId } from './image-utils';
 
 function makeData(): AppData {
   return {
     artworks: [
       {
         id: 'aw-01', filename: 'a.jpg', analysisDataUrl: '', displayObjectUrl: '',
-        aspectRatio: 1, title: '', medium: '',
+        aspectRatio: 1, title: '', medium: '', contentHash: 'hash-a',
       },
       {
         id: 'aw-02', filename: 'b.jpg', analysisDataUrl: '', displayObjectUrl: '',
-        aspectRatio: 1, title: '', medium: '',
+        aspectRatio: 1, title: '', medium: '', contentHash: 'hash-b',
       },
     ],
     userBrief: 'A quiet show',
@@ -29,7 +33,7 @@ function makeData(): AppData {
 }
 
 describe('aiInputKey', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => { localStorage.clear(); _resetArtworkIdAllocator(); });
 
   it('is stable for identical inputs', () => {
     const data = makeData();
@@ -75,10 +79,103 @@ describe('aiInputKey', () => {
     expect(aiInputKey(data)).toBe(before);
   });
 
-  it('sorts artwork ids so upload order does not matter', () => {
+  // Upload order is preserved: the curation prompt receives artworks in array
+  // order and that order influences how rooms are grouped (pipeline-order-sensitive).
+  it('upload order is preserved — reversing the array produces a different key', () => {
     const data = makeData();
     const reversed = makeData();
     reversed.artworks.reverse();
-    expect(aiInputKey(reversed)).toBe(aiInputKey(data));
+    expect(aiInputKey(reversed)).not.toBe(aiInputKey(data));
+  });
+
+  // ─── §1 regression tests ───────────────────────────────────────────────────
+
+  // 1. Same ids but different image fingerprints produce different keys.
+  it('[§1.1] same ids but different contentHash produces a different key', () => {
+    const base = aiInputKey(makeData());
+    const changed = makeData();
+    changed.artworks[0].contentHash = 'hash-totally-different';
+    expect(aiInputKey(changed)).not.toBe(base);
+  });
+
+  // 2a. Title change produces a different key.
+  it('[§1.2a] title change produces a different key', () => {
+    const base = aiInputKey(makeData());
+    const changed = makeData();
+    changed.artworks[0].title = 'New Title';
+    expect(aiInputKey(changed)).not.toBe(base);
+  });
+
+  // 2b. Medium change produces a different key.
+  it('[§1.2b] medium change produces a different key', () => {
+    const base = aiInputKey(makeData());
+    const changed = makeData();
+    changed.artworks[0].medium = 'Watercolour';
+    expect(aiInputKey(changed)).not.toBe(base);
+  });
+
+  // 2c. Year change produces a different key.
+  it('[§1.2c] year change produces a different key', () => {
+    const base = aiInputKey(makeData());
+    const changed = makeData();
+    changed.artworks[0].year = 2023;
+    expect(aiInputKey(changed)).not.toBe(base);
+  });
+
+  // 3. Identity/branding-only edits do NOT change the key.
+  it('[§1.3] identity-only edits do not change the key', () => {
+    const base = makeData();
+    const withIdv = makeData();
+    withIdv.identity = {
+      title: 'My Override',
+      description: 'Something',
+      artistName: 'Jane',
+      artistStatement: 'I paint.',
+      portraitObjectUrl: 'blob:fake',
+      links: [{ label: 'Web', url: 'https://jane.example' }],
+    };
+    expect(aiInputKey(withIdv)).toBe(aiInputKey(base));
+  });
+
+  // 4a. Delete-middle-then-add: new id must not duplicate any live id.
+  it('[§1.4a] delete-middle-then-add does not duplicate a live id', () => {
+    _resetArtworkIdAllocator(1);
+    // Simulate: allocate 3 ids, delete middle, allocate 1 more
+    const id1 = allocateArtworkId(); // aw-01
+    const id2 = allocateArtworkId(); // aw-02 (will be deleted)
+    const id3 = allocateArtworkId(); // aw-03
+    const liveIds = new Set([id1, id3]);
+    // Delete middle (id2) from live set — allocate a new one
+    const id4 = allocateArtworkId(); // aw-04
+    expect(liveIds.has(id4)).toBe(false); // no collision with remaining live ids
+    expect(id4).not.toBe(id2); // and not the same as the deleted one either
+  });
+
+  // 4b. Delete-last-then-add: new id must not equal the deleted one.
+  it('[§1.4b] delete-last-then-add never duplicates a live id', () => {
+    _resetArtworkIdAllocator(10);
+    const id10 = allocateArtworkId(); // aw-10 (deleted)
+    const id11 = allocateArtworkId(); // aw-11 (new)
+    expect(id11).not.toBe(id10);
+  });
+
+  // 5. Replacing last image with different bytes cannot enter the "Continue" path.
+  it('[§1.5] replacing the last image with different bytes invalidates the cache', () => {
+    const data = makeData();
+    data.gallery = { version: '1.0', title: 'X', rooms: [] as never, artworks: [], placements: [], tour: [] };
+    data.lastGenKey = aiInputKey(data);
+
+    // Same ids, same everything, but a different contentHash (different bytes)
+    const replaced = makeData();
+    replaced.artworks[1].contentHash = 'hash-completely-different';
+    expect(aiInputKey(replaced)).not.toBe(data.lastGenKey);
+  });
+
+  // 6. Removing the final artwork produces a different key (disables "Continue").
+  it('[§1.6] removing the final artwork produces a different key', () => {
+    const withTwo = aiInputKey(makeData());
+    const withOne = makeData();
+    withOne.artworks.pop();
+    expect(aiInputKey(withOne)).not.toBe(withTwo);
   });
 });
