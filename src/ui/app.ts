@@ -7,7 +7,7 @@
  */
 
 import * as THREE from 'three';
-import { GallerySchema } from '../schema/gallery.schema';
+import { GallerySchema, ARTIST_TOUR_ID } from '../schema/gallery.schema';
 import { buildScene, disposeScene } from '../viewer/room-builder';
 import { FirstPersonControls } from '../viewer/controls';
 import { ArtworkInteractions } from '../viewer/interactions';
@@ -261,6 +261,13 @@ export function applyIdentity(gallery: Gallery, data: AppData): void {
     };
   } else {
     gallery.artist = undefined;
+    // GallerySchema only allows the reserved artist tour stop while
+    // gallery.artist exists. buildScene purges stale ones on rebuild, but the
+    // review screen → Export path never rebuilds — drop them here so the
+    // exported gallery.json still passes its own boot validation.
+    for (let i = gallery.tour.length - 1; i >= 0; i--) {
+      if (gallery.tour[i].artworkId === ARTIST_TOUR_ID) gallery.tour.splice(i, 1);
+    }
   }
 }
 
