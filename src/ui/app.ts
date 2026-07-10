@@ -73,6 +73,13 @@ export interface AppData {
    */
   lastGenKey?: string;
   /**
+   * The AI-generated exhibition title, snapshotted immediately after generation.
+   * Used as the restore target when the user clears a previously-set title
+   * override in the identity or review forms (clearing → restore AI title, not
+   * a stale override). Never set when the gallery comes from the demo path.
+   */
+  generatedTitle?: string;
+  /**
    * The AI curator's one-sentence intent from the last curation run. Session
    * only (not in gallery.json) — surfaces on the review screen and seeds the
    * gallery description when the artist hasn't written one.
@@ -160,19 +167,48 @@ export function cleanArtistLinks(
  * work — no AI. The artist name/links also seed the export branding (author),
  * and set up the in-world artist plaque. Called before every scene build so
  * edits made on the upload/review screens take effect on the next build.
+ *
+ * Fields are ASSIGNED when set and DELETED when cleared. This ensures that a
+ * user who previously set a value and then cleared it does not leave a stale
+ * value in the gallery object.
+ *
+ * Title override: uses idv.title when set, falls back to data.generatedTitle
+ * (the AI-generated title snapshot) when the override is cleared. This prevents
+ * 'undefined'/'New Exhibition' leaking into the exported gallery.json after a
+ * user clears a previously-set override.
  */
-function applyIdentity(gallery: Gallery, data: AppData): void {
+export function applyIdentity(gallery: Gallery, data: AppData): void {
   const idv = data.identity;
   if (!idv) return;
 
-  if (idv.title) gallery.title = idv.title;
+  // Title: use user override if set; otherwise restore AI-generated title
+  if (idv.title) {
+    gallery.title = idv.title;
+  } else if (data.generatedTitle) {
+    gallery.title = data.generatedTitle;
+  }
+  // (If neither is set — freshly loaded demo — leave gallery.title unchanged.)
 
   const links = cleanArtistLinks(idv.links);
   const branding = { ...(gallery.branding ?? {}) };
-  if (idv.description) branding.description = idv.description;
-  if (idv.artistName) branding.authorName = idv.artistName;
-  if (links[0]) branding.authorUrl = links[0].url;
-  if (Object.keys(branding).length) gallery.branding = branding;
+
+  // Assign when set, delete when cleared
+  if (idv.description) {
+    branding.description = idv.description;
+  } else {
+    delete branding.description;
+  }
+  if (idv.artistName) {
+    branding.authorName = idv.artistName;
+  } else {
+    delete branding.authorName;
+  }
+  if (links[0]) {
+    branding.authorUrl = links[0].url;
+  } else {
+    delete branding.authorUrl;
+  }
+  gallery.branding = Object.keys(branding).length ? branding : undefined;
 
   if (idv.artistName) {
     gallery.artist = {
@@ -1659,6 +1695,7 @@ function renderGenerating(
         showedPlan = true;
         data.gallery = gallery;
         data.lastGenKey = key; // remember these inputs so a return trip is free
+        data.generatedTitle = gallery.title; // snapshot AI title for identity clear/restore
       }
 
       // Patch imagePaths to use display object URLs (idempotent across rebuilds)

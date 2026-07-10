@@ -285,6 +285,8 @@ export function buildScene(
     }
 
     // Artist wall — vinyl wall text on a free wall of the first room.
+    // When no artist is present, purge any stale artist waypoint that a
+    // previous build might have added (artist removed → rebuild → idempotent).
     if (gallery.artist) {
       const slot = pickArtistSlot(entryRoom, doorwayWalls, artworkOffsets, entrancePick);
       if (slot) {
@@ -305,17 +307,23 @@ export function buildScene(
         scene.add(wash.target);
 
         // Make the artist wall the opening stop of the guided tour.
-        if (gallery.tour[0]?.artworkId !== ARTIST_MESH_ID) {
-          const stand = worldPos.clone().addScaledVector(normal, 2.0);
-          stand.y = 1.6;
-          gallery.tour.unshift({
-            artworkId: ARTIST_MESH_ID,
-            position: { x: stand.x, y: stand.y, z: stand.z },
-            lookAt: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
-            label: `Welcome — ${gallery.artist.name}`,
-          });
-        }
+        // Remove any existing artist waypoint before (re)inserting — makes
+        // repeated buildScene calls idempotent.
+        const artistWpIdx = gallery.tour.findIndex((w) => w.artworkId === ARTIST_MESH_ID);
+        if (artistWpIdx !== -1) gallery.tour.splice(artistWpIdx, 1);
+        const stand = worldPos.clone().addScaledVector(normal, 2.0);
+        stand.y = 1.6;
+        gallery.tour.unshift({
+          artworkId: ARTIST_MESH_ID,
+          position: { x: stand.x, y: stand.y, z: stand.z },
+          lookAt: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
+          label: `Welcome — ${gallery.artist.name}`,
+        });
       }
+    } else {
+      // No artist: ensure no stale artist waypoint survives a cached-gallery rebuild
+      const staleIdx = gallery.tour.findIndex((w) => w.artworkId === ARTIST_MESH_ID);
+      if (staleIdx !== -1) gallery.tour.splice(staleIdx, 1);
     }
   }
 
