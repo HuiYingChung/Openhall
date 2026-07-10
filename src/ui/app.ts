@@ -1714,7 +1714,7 @@ export function addThumbnail(
         style="border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;" />
       <input data-field="medium" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Medium (optional)" value="${escapeHtml(artwork.medium)}" aria-label="Artwork medium"
         style="border-radius:4px;padding:3px 6px;font-size:0.75rem;margin-bottom:3px;" />
-      <input data-field="year" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Year (optional)" type="number" value="${escapeHtml(String(artwork.year ?? ''))}" aria-label="Artwork year"
+      <input data-field="year" data-id="${escapeHtml(artwork.id)}" class="oh-field" placeholder="Year (optional)" type="text" inputmode="numeric" value="${escapeHtml(String(artwork.year ?? ''))}" aria-label="Artwork year"
         style="border-radius:4px;padding:3px 6px;font-size:0.75rem;" />
     </div>`;
 
@@ -1735,7 +1735,10 @@ export function addThumbnail(
       if (!aw) return;
       const galleryAw = data.gallery?.artworks.find((entry) => entry.id === aw.id);
       if (field === 'year') {
-        aw.year = input.value ? parseInt(input.value) : undefined;
+        // type="text" (no spinner) means the raw value can be non-numeric —
+        // only a finite parse may reach the gallery contract.
+        const parsed = input.value ? parseInt(input.value) : NaN;
+        aw.year = Number.isFinite(parsed) ? parsed : undefined;
         if (galleryAw) {
           if (aw.year !== undefined) galleryAw.year = aw.year;
           else delete galleryAw.year;
@@ -2096,7 +2099,7 @@ export function renderLabels(
           <input data-id="${escapeHtml(aw.id)}" data-field="medium" class="oh-field" type="text"
             value="${escapeHtml(mediumValue)}" placeholder="Medium (optional)" aria-label="Artwork medium"
             style="flex:1;min-width:0;padding:0.4rem 0.5rem;font-size:0.85rem;color:#999;">
-          <input data-id="${escapeHtml(aw.id)}" data-field="year" class="oh-field" type="number"
+          <input data-id="${escapeHtml(aw.id)}" data-field="year" class="oh-field" type="text" inputmode="numeric"
             value="${escapeHtml(yearValue)}" placeholder="Year (optional)" aria-label="Artwork year"
             style="flex:0 0 7.5rem;min-width:0;padding:0.4rem 0.5rem;font-size:0.85rem;color:#999;">
         </div>

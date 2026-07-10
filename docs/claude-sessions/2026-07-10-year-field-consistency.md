@@ -36,3 +36,19 @@ generation, so the three-input row's visual layout was not eyeballed in a
 real browser this session — the jsdom test renders the real `renderLabels`
 DOM and pins the behavior, and the row should be glanced at during the next
 real generation run (narrow-viewport wrapping in particular).
+
+## Follow-up in the same session — no year spinner
+
+Huiying spotted the number-input spinner on the review screen's year field
+(and dialled it to `-1` in one click — exactly the failure mode). Her call:
+remove it. A year is typed identifier-like input, not a quantity to
+increment; the spinner also made scroll-wheel focus accidents possible.
+Both year inputs (upload thumbnail + review) switched from `type="number"`
+to `type="text" inputmode="numeric"` (numeric keyboard on touch, no
+spinner). Rejected alternative: hiding the spinner with CSS — wheel
+increments would remain and it needs browser-private pseudo-elements.
+
+Because `type="text"` no longer filters non-numeric input, both handlers now
+guard with `Number.isFinite` before writing to the gallery contract (the
+upload handler previously would have written `NaN`). Regression test extended:
+`abc` input never reaches `gallery.artworks[].year`. 442/442 green.

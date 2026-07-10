@@ -149,6 +149,13 @@ describe('review artwork metadata', () => {
     expect(data.gallery!.artworks[0].year).toBeUndefined();
     expect(data.artworks[0].year).toBeUndefined();
     expect(data.lastGenKey).toBe(aiInputKey(data));
+
+    // type="text" (spinner removed) admits raw non-numeric input — it must
+    // never reach the gallery contract as NaN.
+    year.value = 'abc';
+    year.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(data.gallery!.artworks[0].year).toBeUndefined();
+    expect(data.artworks[0].year).toBeUndefined();
   });
 
   it('does not claim a user-provided title was AI-suggested', () => {
