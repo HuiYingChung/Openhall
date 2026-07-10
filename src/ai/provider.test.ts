@@ -153,6 +153,15 @@ describe('composeGalleryFromPlan', () => {
     ).rejects.toThrow('generateValidated');
   });
 
+  it('surfaces title provider failures instead of disguising them as a fallback title', async () => {
+    const generate = vi.fn().mockRejectedValue(new Error('OpenAI-compat HTTP 401: invalid key'));
+
+    await expect(
+      composeGalleryFromPlan(generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube')
+    ).rejects.toThrow('OpenAI-compat HTTP 401');
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
   it('batches labels in groups of three (narration doubles token budget)', async () => {
     const many = Array.from({ length: 6 }, (_, i) => makeUpload(`aw-0${i + 1}`));
     const manyAnalyses = many.map((a) => ({

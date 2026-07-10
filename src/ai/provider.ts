@@ -218,15 +218,11 @@ export async function composeGalleryFromPlan(
 ): Promise<Gallery> {
   // Step 1: derive an exhibition title (tiny output — 32 tokens).
   // Plain text, NOT JSON — generateValidated would reject every real reply.
-  // An unhelpful or failing model falls back to the default title.
+  // An empty successful response falls back to the default title. Transport,
+  // authentication, quota, and other provider failures must remain visible.
   onProgress?.({ type: 'title' });
   const titlePrompt = `In 4 words or fewer, suggest an exhibition title based on this curator note: "${plan.curatorNote}". Reply with ONLY the title, no quotes.`;
-  let rawTitle = '';
-  try {
-    rawTitle = await generate(titlePrompt, 32);
-  } catch {
-    rawTitle = '';
-  }
+  const rawTitle = await generate(titlePrompt, 32);
   const exhibitionTitle = rawTitle.replace(/^["']|["']$/g, '').trim() || 'New Exhibition';
   onProgress?.({ type: 'title-done', title: exhibitionTitle });
 
