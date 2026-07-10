@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "AI-generated 3D galleries that artists actually own.",
   "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "npm run build:viewer && vite",
     "worker:dev": "wrangler dev worker/token-exchange.ts --port 8787",

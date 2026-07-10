@@ -9,22 +9,32 @@ Ten artworks and one sentence in, a walkable exhibition out: AI-curated rooms, w
 [![CI](https://github.com/HuiYingChung/Openhall/actions/workflows/ci.yml/badge.svg)](https://github.com/HuiYingChung/Openhall/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-<!-- TODO(huiying): hero GIF or screenshot — suggested: the walkable gallery with the tour label card visible -->
-<!-- TODO(huiying): demo video link -->
-<!-- TODO(huiying): hosted instance link, if deployed -->
-
 Built for the **IBM AI Builders Challenge, July 2026** — *"Reimagine Creative Industries with AI"*.
 
 ---
 
-## Try it in 60 seconds (no key, no setup)
+## Try it locally in 60 seconds (no API key)
+
+Prerequisite: **Node.js 22.12 or newer** with npm. From a fresh clone:
 
 ```bash
-npm install
-npm run dev        # opens http://localhost:5173
+git clone https://github.com/HuiYingChung/Openhall.git
+cd Openhall
+npm ci
+npm run dev
 ```
 
-Click **demo mode**. You get a pre-generated exhibition of eight Met Museum artworks (all CC0 — see [SOURCES.md](src/demo/SOURCES.md)): walk with **WASD + mouse**, click any artwork to inspect it, press **Tour** for the guided walk, and turn on the **Audio guide** to hear the narration. Then hit **Export** and drag the zip onto [Netlify Drop](https://app.netlify.com/drop) — the full visitor and export experience, no key needed.
+Keep that terminal running. When it prints the local URL, open
+**http://localhost:5173** in Chrome or Edge yourself — the command starts the
+server but does not open a browser automatically. Click **demo mode**. You need
+only this one terminal for the demo; press `Ctrl+C` in it when you are finished.
+
+The demo is a pre-generated exhibition of eight Met Museum artworks (all CC0 —
+see [SOURCES.md](src/demo/SOURCES.md)): walk with **WASD + mouse**, click any
+artwork to inspect it, press **Tour** for the guided walk, and turn on the
+**Audio guide** to hear the narration. Then hit **Export** and drag the zip onto
+[Netlify Drop](https://app.netlify.com/drop) — the full visitor and export
+experience, no key needed.
 
 To be clear about what the demo is *not*: it makes no AI calls — its gallery, labels, and narration were generated once and bundled. The product's core act, generating a gallery from *your own* artworks, requires your own API key — see [Using Openhall](#using-openhall-the-full-guide).
 
@@ -77,9 +87,9 @@ Three decisions carry the architecture:
 
 **1. The AI curates; deterministic code builds.** Early versions let the model emit gallery geometry freeform. The galleries were walkable but spatially incoherent — tour paths through walls, backtracking flow. Models narrate space; they don't reason about it. So the pipeline was split: the LLM decides *rooms, grouping, which wall each piece hangs on, the visitor's order, and every word of text*; a deterministic assembler turns those choices into coordinates, doorways, and a tour path, and a sanity pass catches placements that still collide. This division — trusting the model exactly where it's strong — is the project's central AI-engineering lesson, and it's visible in the git history ([PR #2](https://github.com/HuiYingChung/Openhall/pull/2)).
 
-**2. `gallery.json` is the contract.** The AI writes it, the viewer renders it, the exporter ships it. One zod schema guards both ends: the pipeline validates on the way out, and every exported gallery re-validates it on boot. Curation, labels, and narration are structured JSON, validated with exactly one retry on failure; the exhibition title is deliberately plain text with a safe fallback (models don't answer naming questions in JSON). The generating screen shows this honestly: which batch is being written, the actual text as it arrives, whether validation passed on the first try, and the model doing the work (`meta-llama/llama-3-2-11b-vision-instruct` for analysis, `ibm/granite-3-8b-instruct` for text, on the watsonx route). Nothing on that screen is theatre.
+**2. `gallery.json` is the contract.** The AI writes it, the viewer renders it, the exporter ships it. One zod schema guards both ends: the pipeline validates on the way out, and every exported gallery re-validates it on boot. Curation, labels, and narration are structured JSON, validated with exactly one retry on failure; the exhibition title is deliberately plain text (models don't answer naming questions in JSON). An empty successful title response gets a safe fallback, while authentication, quota, and network failures still surface to the user. The generating screen shows this honestly: which batch is being written, the actual text as it arrives, whether validation passed on the first try, and the model doing the work (`meta-llama/llama-3-2-11b-vision-instruct` for analysis, `ibm/granite-3-8b-instruct` for text, on the watsonx route). Nothing on that screen is theatre.
 
-**3. BYOK, (almost) everything client-side.** No accounts, no database, no analytics. The one server-side piece is a stateless CORS relay the watsonx route needs — ~130 lines, open source, self-hostable. Details and trade-offs in [Security & privacy](#security--privacy-honestly).
+**3. BYOK, (almost) everything client-side.** No accounts, no database, no analytics. The one server-side piece is a small, stateless, open-source CORS relay the watsonx route needs. Details and trade-offs in [Security & privacy](#security--privacy-honestly).
 
 The spoken audio guide uses the browser's built-in speech synthesis — zero dependencies, works offline in exports. We considered bundling a WASM TTS engine for platforms without voices and rejected it (2–3 MB of robotic speech against a 5 MB bundle budget); instead the app detects a voiceless platform and says so, with instructions ([details below](#known-limitations)).
 
@@ -91,9 +101,9 @@ The creative industry's bottleneck isn't creation — it's **exhibition**. Openh
 
 This tool about AI was also built by AI, under human direction — and the process is documented, warts included:
 
-- **Division of labour.** Huiying directed all product and design decisions and did every by-ear/by-hand test. **IBM Bob** implemented features from written work orders — see the numbered prompts in [docs/bob-prompts/](docs/bob-prompts/) and its session logs in [docs/bob-sessions/](docs/bob-sessions/). **Claude** wrote the work orders, reviewed Bob's output, and did acceptance verification; its logs are in [docs/claude-sessions/](docs/claude-sessions/).
+- **Division of labour.** Huiying directed all product and design decisions and did every by-ear/by-hand test. **IBM Bob** implemented the core features from written work orders — see the numbered prompts in [docs/bob-prompts/](docs/bob-prompts/) and its session logs in [docs/bob-sessions/](docs/bob-sessions/). **Claude** wrote the work orders, reviewed Bob's output, and did acceptance verification; its logs are in [docs/claude-sessions/](docs/claude-sessions/). **Codex** completed the final hardening audit, security fixes, and fresh verification; its evidence is in [docs/codex-sessions/](docs/codex-sessions/).
 - **Trust, but re-verify.** The logs record real incidents: an agent summarising a red test run as green (caught by re-running everything locally), work committed to the wrong branch, a spec violation of our own retry rule. Process rules grew from each one — work orders now require branches, incremental commits, and pasted verification output. Managing an AI crew turned out to be its own design problem; we treated it like one.
-- **Scale.** The MVP was built in three days of active work; polish, the voice tour, and generation transparency brought the total to 19 written work orders, merged through [pull requests](https://github.com/HuiYingChung/Openhall/pulls?q=is%3Apr+is%3Aclosed) — the later ones gated by CI.
+- **Scale.** The MVP was built in three days of active work; polish, the voice tour, generation transparency, and final hardening brought the total to 20 written work orders, merged through 14 [pull requests](https://github.com/HuiYingChung/Openhall/pulls?q=is%3Apr+is%3Aclosed) — the later ones gated by CI.
 
 ## Using Openhall (the full guide)
 
@@ -110,16 +120,42 @@ Openhall supports two provider routes. Your key is stored in this browser's loca
 1. Create an [IBM Cloud](https://cloud.ibm.com/) account and a [watsonx.ai](https://www.ibm.com/watsonx) project (us-south region — currently the only supported region).
 2. Create an API key (IBM Cloud → Manage → Access (IAM) → API keys). **Copy it immediately — IBM never shows it again.** We recommend a dedicated key for Openhall so you can revoke it independently.
 3. Find your **Project ID** (watsonx project → Manage → General).
-4. Deploy the token worker (IBM's auth and ML endpoints don't allow browser calls, so a tiny CORS relay is required):
+4. Choose where to run the token worker (IBM's auth and ML endpoints don't allow browser calls, so a CORS relay is required).
+
+   For local testing, keep **two terminals** open in the repository:
+
    ```bash
-   npx wrangler deploy worker/token-exchange.ts   # free Cloudflare Workers tier
+   # Terminal 1 — local token worker
+   npm run worker:dev
    ```
+
+   ```bash
+   # Terminal 2 — Openhall app
+   npm run dev
+   ```
+
+   Then open **http://localhost:5173** and use
+   `http://localhost:8787` as the Token Worker URL. If the app is already
+   running from the demo quick start, that window is Terminal 2 — do not start
+   it twice.
+
+   For a reusable hosted worker, authenticate once and deploy the entry already
+   configured in `wrangler.toml`:
+
+   ```bash
+   npx wrangler login
+   npx wrangler deploy
+   ```
+
    Set `ALLOWED_ORIGINS` in the Cloudflare dashboard to the exact domains that will run Openhall (comma-separated when needed). A blank value accepts only the local Vite development origins; `*` deliberately allows every website. This is browser-side abuse mitigation, not authentication: non-browser clients can omit or forge `Origin`, so deploy the worker for your own gallery rather than treating it as a protected public API.
 5. In Openhall's **Settings**: pick *IBM watsonx.ai*, paste the API key, Project ID, and your worker URL → **Save & Continue**.
 
 **Route 2 — OpenAI-compatible (fallback)**
 
-Settings → *OpenAI-compatible*: API key, base URL (defaults to `https://api.openai.com/v1`), and a model name. **The model must support image input** — `gpt-4o` is a safe default; text-only models fail at artwork analysis.
+This route needs only the single Openhall app terminal — no token worker.
+Settings → *OpenAI-compatible*: API key, base URL (defaults to
+`https://api.openai.com/v1`), and a model name. **The model must support image
+input**; text-only models fail at artwork analysis.
 
 **What a generation costs you:** a 10-artwork run is roughly a dozen model calls (one vision analysis per artwork, plus curation, a title, and 3–4 label/narration batches). You pay your provider's usual per-call rates; Openhall adds nothing on top. During development our watsonx free-trial quota ran out and we switched to pay-as-you-go — budget accordingly and set spending alerts.
 
@@ -156,7 +192,7 @@ The export contains no API keys, no analytics, and no reference to Openhall's in
 
 ## Security & privacy, honestly
 
-**Data flow.** On the OpenAI-compatible route, your browser talks to the provider directly. On the watsonx route, your key and artwork images transit the token worker (IBM's endpoints don't allow browser calls) — the worker is stateless, logs no bodies, forwards to exactly one host, and is [~130 lines you can read](worker/token-exchange.ts) and deploy on your own Cloudflare account, so no machine you don't control ever sees your data. **Either way, your AI provider sees your images and processes them under its own terms** — that's inherent to using any AI API.
+**Data flow.** On the OpenAI-compatible route, your browser talks to the provider directly. On the watsonx route, your key and artwork images transit the token worker (IBM's endpoints don't allow browser calls) — the worker is stateless, logs no bodies, forwards to exactly one host, and is [small enough to audit](worker/token-exchange.ts) and deploy on your own Cloudflare account, so no machine you don't control ever sees your data. **Either way, your AI provider sees your images and processes them under its own terms** — that's inherent to using any AI API.
 
 **Key storage.** Your key lives in this browser's localStorage. That's the standard trade-off for a serverless BYOK tool — the alternative (our server holding your keys) would create a far bigger honeypot — but it has real limitations you should know:
 
@@ -169,7 +205,7 @@ The export contains no API keys, no analytics, and no reference to Openhall's in
 
 ## Testing & CI
 
-`npm run build && npm test` — the build first, because the test suite includes integration tests that run the **real export pipeline** and smoke tests that boot the **real exported bundle in headless Chromium** (canvas renders, no 404s, no console errors). 313 tests; [CI](.github/workflows/ci.yml) runs the same chain on every push and PR.
+`npm run build && npm test` — the build first, because the test suite includes integration tests that run the **real export pipeline** and smoke tests that boot the **real exported bundle in headless Chromium** (canvas renders, no 404s, no console errors). 412 tests; [CI](.github/workflows/ci.yml) runs the same chain on every push and PR.
 
 Why the paranoia about the export path: in week 3, our unit tests were all green while every export was broken — the failures lived in the integration layer the mocks had hidden. The E2E layer exists because of that failure, and we've verified it can fail (sabotaging the viewer bundle turns it red). Tests tell you what's covered, not that there are no bugs; ours cover the schema contract, the export chain, and the tour's interaction rules. The 3D *feel* — lighting, movement, audio pacing — is still verified by a human walking the gallery.
 
@@ -180,14 +216,20 @@ Why the paranoia about the export path: in week 3, our unit tests were all green
 - **Desktop-first.** Free walking needs pointer lock; touch devices get tour mode only.
 - **watsonx region is hardcoded to us-south** for now.
 - **Voice quality varies by OS/browser** (Edge's voices are notably better than most); voiceless platforms degrade to text with an explanation.
-- **Rooms are linear or L-shaped chains, max 4** — no freeform floor plans.
+- **Rooms are linear chains, max 4** — no L-shaped or freeform floor plans in the MVP.
 - **The pipeline is one-shot.** You can regenerate or edit labels, but you can't yet tell the AI "make room two warmer" — conversational refinement is the obvious next step.
 - Max 10 artworks per gallery (MVP scope).
 
 ## Development
 
+Use Node.js 22.12 or newer. Demo mode and credentials entered through the Settings screen do
+not need an `.env` file. Copy `.env.example` to `.env` only when you want local
+watsonx diagnostic scripts or automatic dev-only settings prefill; `.env` is
+gitignored and must never be committed.
+
 ```bash
 npm run dev       # rebuild viewer + dev server on :5173
+npm run worker:dev # optional second terminal for local watsonx only
 npm run build     # viewer bundle + type-check + app build
 npm test          # full suite (build first on a fresh clone)
 npm run lint
@@ -199,4 +241,4 @@ Repo guide: [AGENTS.md](AGENTS.md) (architecture rules + AI-agent working rules)
 
 Demo artworks: eight public-domain (CC0) works from The Metropolitan Museum of Art — full list in [SOURCES.md](src/demo/SOURCES.md). Code: [MIT](LICENSE).
 
-Openhall was built in collaboration with AI — IBM Bob and Claude did the implementation labour, documented in this repo — and the design decisions, content, and direction are Huiying Chung's. The same is true of every gallery it generates: the AI curates and writes, but the art, and the gallery, belong to the artist.
+Openhall was built in collaboration with AI — IBM Bob, Claude, and Codex did implementation and verification labour documented in this repo — and the design decisions, content, and direction are Huiying Chung's. The same is true of every gallery it generates: the AI curates and writes, but the art, and the gallery, belong to the artist.
