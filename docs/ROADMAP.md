@@ -1,75 +1,91 @@
 # Openhall — 4-Week Roadmap (July 2026)
 
-Deadline: **July 31** (submission). Today: July 5. Working weeks below.
+July challenge deadline: **July 31, 2026 at 11:59 PM ET** ([official challenge page](https://aibuilderschallenge-bob.bemyapp.com/)). Status snapshot: **July 10, 2026**.
 
-## Week 1 (Jul 6–12) — Foundation & walkable room
+Checkboxes describe the current, evidence-backed state of the repository. They are not the untouched original schedule.
 
-Goal: walk around a hardcoded room with hardcoded artworks.
+## Release blockers
 
-- [ ] Repo setup: Vite + TS + Three.js, ESLint/Prettier, GitHub repo public
-- [ ] Install & configure IBM Bob / BobShell; commit first Bob session log
-- [ ] **Freeze `gallery.json` schema** (rooms, walls, placements, lighting, labels, tour waypoints) — everything depends on this
-- [ ] Procedural room builder: walls/floor/ceiling from parameters, artwork planes from placements
-- [ ] PointerLockControls: WASD + mouse-look, AABB wall collision
-- [ ] Controls hint overlay
-- [ ] Sign up for watsonx.ai trial; verify Granite Vision + LLM API calls work (curl/Postman)
+- [ ] Make the GitHub repository public.
+- [ ] Publish a hosted, keyless demo and add its link near the top of the README.
+- [ ] Add one strong screenshot or short GIF to the README.
+- [ ] Record the submission video.
+- [ ] Complete the required IBM SkillsBuild activity and re-check the official submission rules.
 
-**Milestone:** demo-able walkthrough of one hardcoded gallery.
+## Week 1 (Jul 6–12) — Foundation and hardening
 
-## Week 2 (Jul 13–19) — AI pipeline
+Goal: establish the complete technical foundation and verify the critical paths.
 
-Goal: upload images → AI produces a real gallery.json.
+- [x] Vite + TypeScript + Three.js repository with linting and tests.
+- [x] IBM Bob/BobShell work orders and committed session evidence.
+- [x] Zod schemas for `gallery.json` and transient AI outputs.
+- [x] Procedural rooms, artwork placement, lighting, and materials.
+- [x] Pointer Lock WASD controls, mouse-look, AABB wall collision, and controls overlay.
+- [x] Upload preprocessing and metadata editing for up to 10 works.
+- [x] BYOK settings, watsonx provider, OpenAI-compatible provider, and localStorage cleanup.
+- [x] Stateless Cloudflare relay for watsonx IAM and ML browser requests.
+- [x] Deterministic room chain, doorway-aware tour routing, and placement sanity.
+- [x] Real export integration test and headless Chromium smoke test.
+- [x] Credential-sentinel export test and external-network request guard.
 
-- [ ] Upload UI + client-side resize/compress (max 10 works)
-- [ ] BYOK settings screen (localStorage), provider abstraction (watsonx + OpenAI-compatible)
-- [ ] Token-exchange serverless worker for watsonx IAM (only if browser-direct fails)
-- [ ] Vision analysis prompt → per-work JSON (style, palette, subject, mood)
-- [ ] Curation prompt → grouping, ordering, wall assignment, tour path
-- [ ] Text-to-gallery prompt → validated gallery parameter JSON; 4 style presets
-- [ ] Wall label generation, editable in UI
-- [ ] JSON schema validation + retry-on-invalid for all LLM outputs
+**Milestone reached:** the repository contains a feature-complete, automated-test-covered MVP implementation. Fresh live-provider runs, external artist testing, device/browser checks, and manual publishing remain release-validation work.
 
-**Milestone:** end-to-end: upload 10 images + one sentence → walkable AI-generated gallery.
+## Week 2 (Jul 13–19) — Real provider and artist testing
 
-## Week 3 (Jul 20–26) — Interaction, export, polish
+Goal: validate the finished pipeline outside the developer's existing setup.
 
-Goal: feature-complete MVP.
+- [ ] Run a fresh 1–10 artwork watsonx generation with current paid credentials.
+- [ ] Run the OpenAI-compatible route with a current vision-capable model.
+- [ ] Test malformed-output retry and friendly failure UX against a live provider.
+- [ ] Ask at least two artists or art students to complete the flow without coaching.
+- [ ] Fix only reproducible onboarding or gallery-blocking issues found in those sessions.
+- [ ] Manually publish the current export through Netlify Drop and GitHub Pages.
 
-- [ ] Raycast hover-highlight + click → info panel + camera dolly to viewing position
-- [ ] Tour mode (waypoint navigation); touch/mobile fallback
-- [ ] Export: JSZip bundle (viewer + gallery.json + images), test on Netlify Drop & GitHub Pages
-- [ ] Demo mode: bundled sample artworks + pre-generated gallery.json
-- [ ] Visual polish: lighting quality, frames, materials, loading states
-- [ ] Deploy hosted instance (GitHub Pages / Vercel)
-- [ ] Cross-browser + mobile smoke test
+**Milestone:** a new user can generate and publish a personal gallery without developer intervention.
 
-**Milestone:** a stranger can go from images to a published gallery without help.
+## Week 3 (Jul 20–26) — Judge-facing packaging
+
+Goal: make the project understandable and usable within the first minute.
+
+- [x] README problem, solution, architecture, setup, security, limitations, and Bob story.
+- [x] Current PRODUCT_PLAN, ROADMAP, and AGENTS architecture agree with the implementation.
+- [ ] Make the repository public and confirm all README/CI links work while signed out.
+- [ ] Deploy the Openhall app with demo mode as the default judge path.
+- [ ] Add a top-fold screenshot or GIF and a clear **Try demo** link.
+- [ ] Run Chrome and Edge desktop smoke tests.
+- [ ] Run iOS Safari and Android Chrome tour/export smoke tests.
+- [ ] Perform a final accessibility and keyboard pass.
+
+**Milestone:** a judge can understand the value, open the demo, walk the gallery, and inspect evidence without cloning the repository.
 
 ## Week 4 (Jul 27–31) — Submission
 
-Goal: submit early, not at 11:59pm.
+Goal: submit before the final day.
 
-- [ ] Each team member completes ≥1 IBM SkillsBuild Bob learning activity (**required**) — do this early in the week
-- [ ] README: problem, solution, architecture diagram, screenshots, setup, Bob usage story
-- [ ] Demo video (usually ~3 min — check official rules): hook → live text-to-gallery generation → walkthrough → export → "owned by artists" close
-- [ ] Clean commit history; ensure BobShell logs/evidence in repo
-- [ ] Submission form on platform: repo link, video, descriptions
-- [ ] Buffer for bugs (aim to submit Jul 29–30)
+- [ ] Complete the required IBM SkillsBuild Bob learning activity and retain the team's completion evidence.
+- [ ] Record a public demo video of up to three minutes: problem → generation evidence → walkthrough → export → ownership.
+- [ ] Verify no credentials, private URLs, uploaded user images, or generated zips are tracked.
+- [ ] Confirm the latest CI run is green on the public repository.
+- [ ] Complete the project description and all platform submission fields.
+- [ ] Re-read the official rules for video length, licensing, IBM technology, and team requirements.
+- [ ] Submit by July 29–30, leaving one day of buffer.
 
-## Cut list (if behind schedule, cut in this order)
+## MVP scope guard
 
-1. Camera dolly on click (keep plain info panel)
-2. OpenAI-compatible fallback provider (watsonx only)
-3. Mobile tour mode (desktop-only MVP)
-4. Editable labels (accept AI output as-is)
+Do not add accounts, hosted persistence, multiplayer, VR/WebXR, video or imported 3D artworks, payments, managed public AI usage, or one-click deployment APIs before submission. The non-negotiable pitch remains:
 
-**Never cut:** text-to-gallery live generation, WASD walkthrough, export. These are the pitch.
+1. Live BYOK generation from the artist's artworks.
+2. A walkable and guided 3D exhibition.
+3. A self-contained export the artist owns.
+4. A keyless prebuilt demo for judges.
 
-## Submission checklist (verify against official rules)
+## Submission checklist
 
-- [ ] Public GitHub repo
+- [ ] Public GitHub repository
+- [ ] Hosted keyless demo
+- [ ] README screenshot/GIF and demo link
 - [ ] Demo video
-- [ ] SkillsBuild activity completion per member
-- [ ] Project description on platform
-- [ ] Team registered before deadline
-- [ ] Re-read official rules PDF for anything missed: video length, license requirements, IBM tech requirements
+- [ ] SkillsBuild completion
+- [ ] Project description and team registration
+- [ ] Final rules review
+- [ ] Green CI on the submitted commit

@@ -36,6 +36,29 @@ describe('sanitizePlacements', () => {
     expect(result.placements[0].offsetFromCenter).toBeLessThanOrEqual(5.2);
   });
 
+  it('keeps the artwork tour waypoint aligned after clamping a placement', () => {
+    const gallery = baseGallery();
+    const room = gallery.rooms.find((r) => r.id === 'room-a')!;
+    const placement = gallery.placements.find((p) => p.artworkId === 'aw-01')!;
+    const waypoint = gallery.tour.find((w) => w.artworkId === 'aw-01')!;
+
+    placement.roomId = 'room-a';
+    placement.wall = 'n';
+    placement.offsetFromCenter = 6;
+    placement.displayWidth = 1.2;
+    waypoint.position.x = room.width / 2 + placement.offsetFromCenter;
+    waypoint.lookAt.x = waypoint.position.x;
+
+    const result = sanitizePlacements(gallery);
+    const sanitizedPlacement = result.placements.find((p) => p.artworkId === 'aw-01')!;
+    const syncedWaypoint = result.tour.find((w) => w.artworkId === 'aw-01')!;
+    const expectedX = room.width / 2 + sanitizedPlacement.offsetFromCenter;
+
+    expect(sanitizedPlacement.offsetFromCenter).toBeCloseTo(5.2);
+    expect(syncedWaypoint.position.x).toBeCloseTo(expectedX);
+    expect(syncedWaypoint.lookAt.x).toBeCloseTo(expectedX);
+  });
+
   it('clamps negative offset that exceeds wall half-width', () => {
     const gallery = baseGallery();
     gallery.placements[0] = {

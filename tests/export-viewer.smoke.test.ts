@@ -22,6 +22,7 @@ let galleryTitle: string;
 const pageErrors: string[] = [];
 const consoleErrors: string[] = [];
 const badResponses: string[] = [];
+const externalRequests: string[] = [];
 
 beforeAll(async () => {
   // 1. Real export zip → unzipped static site in a temp dir
@@ -45,6 +46,17 @@ beforeAll(async () => {
     );
   }
   page = await browser.newPage();
+  const allowedOrigin = new URL(server.baseUrl).origin;
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if ((url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== allowedOrigin) {
+      externalRequests.push(`${request.method()} ${request.url()}`);
+      await route.abort('blockedbyclient');
+      return;
+    }
+    await route.continue();
+  });
   page.on('pageerror', (err) => pageErrors.push(String(err)));
   page.on('console', (msg) => {
     if (msg.type() === 'error') consoleErrors.push(msg.text());
@@ -74,6 +86,10 @@ describe('exported bundle in headless Chromium', () => {
 
   it('loaded every asset it asked for (no 404s inside the bundle)', () => {
     expect(badResponses).toEqual([]);
+  });
+
+  it('makes no HTTP requests outside the exported static site', () => {
+    expect(externalRequests).toEqual([]);
   });
 
   it('threw no page errors and logged no console errors', () => {

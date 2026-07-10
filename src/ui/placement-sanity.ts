@@ -62,7 +62,25 @@ export function sanitizePlacements(gallery: Gallery): Gallery {
     });
   }
 
-  return { ...gallery, placements: result };
+  const originalByArtwork = new Map(gallery.placements.map((p) => [p.artworkId, p]));
+  const sanitizedByArtwork = new Map(result.map((p) => [p.artworkId, p]));
+  const tour = gallery.tour.map((waypoint) => {
+    if (!waypoint.artworkId || waypoint.kind === 'transit') return waypoint;
+    const before = originalByArtwork.get(waypoint.artworkId);
+    const after = sanitizedByArtwork.get(waypoint.artworkId);
+    if (!before || !after) return waypoint;
+
+    const offsetDelta = after.offsetFromCenter - before.offsetFromCenter;
+    if (offsetDelta === 0) return waypoint;
+    const offsetAxis = after.wall === 'n' || after.wall === 's' ? 'x' : 'z';
+    return {
+      ...waypoint,
+      position: { ...waypoint.position, [offsetAxis]: waypoint.position[offsetAxis] + offsetDelta },
+      lookAt: { ...waypoint.lookAt, [offsetAxis]: waypoint.lookAt[offsetAxis] + offsetDelta },
+    };
+  });
+
+  return { ...gallery, placements: result, tour };
 }
 
 // ---------------------------------------------------------------------------

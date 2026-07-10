@@ -151,9 +151,16 @@ describe('buildPlacements', () => {
 describe('buildTourWaypoints', () => {
   const rooms = buildRooms(PLAN_2_ROOMS, 'white-cube');
 
-  it('returns one waypoint per tourOrder entry', () => {
+  it('adds a doorway transit waypoint when the tour enters the next room', () => {
     const waypoints = buildTourWaypoints(PLAN_2_ROOMS, rooms, ARTWORKS_6);
-    expect(waypoints).toHaveLength(PLAN_2_ROOMS.tourOrder.length);
+    expect(waypoints).toHaveLength(PLAN_2_ROOMS.tourOrder.length + 1);
+
+    const transit = waypoints.find((w) => w.kind === 'transit');
+    expect(transit).toBeDefined();
+    expect(transit?.artworkId).toBeUndefined();
+    expect(transit?.position.x).toBeCloseTo(rooms[0].width);
+    expect(transit?.position.z).toBeCloseTo(rooms[0].depth / 2);
+    expect(transit!.lookAt.x).toBeGreaterThan(transit!.position.x);
   });
 
   it('camera y is at eye height (1.6m)', () => {
@@ -186,7 +193,7 @@ describe('buildTourWaypoints', () => {
 
   it('each waypoint has a label', () => {
     const waypoints = buildTourWaypoints(PLAN_2_ROOMS, rooms, ARTWORKS_6);
-    for (const wp of waypoints) {
+    for (const wp of waypoints.filter((w) => w.kind !== 'transit')) {
       expect(typeof wp.label).toBe('string');
       expect((wp.label ?? '').length).toBeGreaterThan(0);
     }
@@ -229,8 +236,9 @@ describe('assembleGallery', () => {
 
   it('tour waypoints cover all tourOrder entries', () => {
     const shell = assembleGallery(PLAN_2_ROOMS, 'white-cube', ARTWORKS_6, 'Test');
-    expect(shell.tour).toHaveLength(PLAN_2_ROOMS.tourOrder.length);
-    const waypointIds = new Set(shell.tour.map((w) => w.artworkId));
+    const artworkStops = shell.tour.filter((waypoint) => waypoint.kind !== 'transit');
+    expect(artworkStops).toHaveLength(PLAN_2_ROOMS.tourOrder.length);
+    const waypointIds = new Set(artworkStops.map((w) => w.artworkId));
     for (const id of PLAN_2_ROOMS.tourOrder) {
       expect(waypointIds.has(id)).toBe(true);
     }

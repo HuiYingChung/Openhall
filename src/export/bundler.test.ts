@@ -144,6 +144,43 @@ describe('buildExportBundle', () => {
     }
   });
 
+  it('never copies stored provider credentials into any zip entry', async () => {
+    const watsonxSentinel = 'OPENHALL_TEST_WATSONX_SECRET_7f83a9';
+    const openaiSentinel = 'OPENHALL_TEST_OPENAI_SECRET_c419de';
+    localStorage.setItem('openhall_watsonx', JSON.stringify({
+      apiKey: watsonxSentinel,
+      projectId: 'test-project',
+      wxUrl: 'https://us-south.ml.cloud.ibm.com',
+      tokenWorkerUrl: 'https://worker.example.test',
+    }));
+    localStorage.setItem('openhall_openai', JSON.stringify({
+      apiKey: openaiSentinel,
+      baseUrl: 'https://provider.example.test',
+      model: 'test-model',
+    }));
+
+    try {
+      const gallery = makeGallery();
+      vi.stubGlobal('fetch', makeFetch());
+      const { blob } = await buildExportBundle({
+        gallery,
+        artworkUrls: makeArtworkUrls(gallery),
+        viewerScriptUrl: 'https://example.com/assets/viewer.js',
+      });
+      const zip = await JSZip.loadAsync(blob);
+
+      for (const [path, file] of Object.entries(zip.files)) {
+        if (file.dir) continue;
+        const content = await file.async('string');
+        expect(content, `${path} contains the watsonx credential sentinel`).not.toContain(watsonxSentinel);
+        expect(content, `${path} contains the OpenAI-compatible credential sentinel`).not.toContain(openaiSentinel);
+      }
+    } finally {
+      localStorage.removeItem('openhall_watsonx');
+      localStorage.removeItem('openhall_openai');
+    }
+  });
+
   it('index.html references assets/viewer.js with a relative path', async () => {
     const gallery = makeGallery();
     vi.stubGlobal('fetch', makeFetch());
