@@ -7,7 +7,7 @@
  *   - In Node scripts: direct IAM call via env vars.
  *
  * Models confirmed working (2026-07):
- *   Vision:  meta/llama-3-2-11b-vision-instruct
+ *   Vision:  meta-llama/llama-3-2-11b-vision-instruct
  *   Text:    ibm/granite-3-8b-instruct
  */
 

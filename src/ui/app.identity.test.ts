@@ -11,6 +11,7 @@ import {
   type AppData,
 } from './app';
 import type { Gallery } from '../schema/gallery.schema';
+import { ARTIST_TOUR_ID } from '../schema/gallery.schema';
 import { ARTIST_MESH_ID } from '../viewer/room-builder';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -108,6 +109,51 @@ describe('applyIdentity (§4)', () => {
     const data = makeData({ artistName: undefined, links: [] });
     applyIdentity(gallery, data);
     expect(gallery.artist).toBeUndefined();
+  });
+
+  it('clearing artistName also removes the reserved artist tour stop, so the export re-validates', () => {
+    const gallery = makeGallery();
+    gallery.artist = { name: 'OldArtist', links: [] };
+    // Simulate a prior buildScene run having prepended the reserved intro stop.
+    gallery.tour = [
+      {
+        artworkId: ARTIST_TOUR_ID,
+        position: { x: 0, y: 1.6, z: 2 },
+        lookAt: { x: 0, y: 1.5, z: 0 },
+        label: 'Welcome — OldArtist',
+      },
+      { position: { x: 3, y: 1.6, z: 2 }, lookAt: { x: 3, y: 1.5, z: 0 }, label: 'Stop 1' },
+    ];
+
+    const data = makeData({ artistName: undefined, links: [] });
+    applyIdentity(gallery, data);
+
+    expect(gallery.artist).toBeUndefined();
+    expect(gallery.tour.map((w) => w.artworkId)).not.toContain(ARTIST_TOUR_ID);
+    expect(gallery.tour).toHaveLength(1); // the ordinary stop survives
+    // The regression this guards: the exported viewer parses gallery.json on
+    // boot, and an orphaned reserved stop fails that parse.
+    expect(() => GallerySchema.parse(gallery)).not.toThrow();
+  });
+
+  it('keeps the reserved artist tour stop while the artist remains set', () => {
+    const gallery = makeGallery();
+    gallery.artist = { name: 'Jane', links: [] };
+    gallery.tour = [
+      {
+        artworkId: ARTIST_TOUR_ID,
+        position: { x: 0, y: 1.6, z: 2 },
+        lookAt: { x: 0, y: 1.5, z: 0 },
+        label: 'Welcome — Jane',
+      },
+    ];
+
+    const data = makeData({ artistName: 'Jane', links: [] });
+    applyIdentity(gallery, data);
+
+    expect(gallery.artist?.name).toBe('Jane');
+    expect(gallery.tour.map((w) => w.artworkId)).toContain(ARTIST_TOUR_ID);
+    expect(() => GallerySchema.parse(gallery)).not.toThrow();
   });
 
   it('apply → clear → re-apply: no stale fields remain', () => {

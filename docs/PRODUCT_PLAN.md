@@ -45,7 +45,7 @@ One-line pitch: **“An AI curator builds the show; the artist keeps the gallery
 
 - **F1. Upload** — up to 10 JPG, PNG, or WebP images; drag-and-drop; client-side resize and compression.
 - **F2. BYOK setup** — credentials remain in browser localStorage. IBM watsonx.ai is primary; OpenAI-compatible vision models are the fallback.
-- **F3. AI analysis** — `meta/llama-3-2-11b-vision-instruct` analyses style, palette, subject, mood, and description into validated JSON.
+- **F3. AI analysis** — `meta-llama/llama-3-2-11b-vision-instruct` analyses style, palette, subject, mood, and description into validated JSON.
 - **F4. AI curation** — `ibm/granite-3-8b-instruct` chooses room count, grouping, wall assignments, and narrative order. Validation requires the order to move through rooms monotonically.
 - **F5. Deterministic gallery assembly** — four visual presets define materials, lighting, proportions, and ceiling height. Room dimensions are deterministic; width increases by 1.5 metres for each artwork beyond the first three in a room. Rooms form a linear chain of at most four; transit waypoints route the camera through doorways.
 - **F6. AI writing** — a plain-text title plus validated, editable wall labels and spoken narration. Structured failures retry once, then surface visibly.
