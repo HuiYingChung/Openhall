@@ -211,7 +211,7 @@ export type Artist = z.infer<typeof ArtistSchema>;
 // Top-level Gallery
 // ---------------------------------------------------------------------------
 
-export const GallerySchema = z.object({
+const _GalleryBaseSchema = z.object({
   /** Schema version for future migrations */
   version: z.literal('1.0'),
   title: z.string(),
@@ -226,4 +226,66 @@ export const GallerySchema = z.object({
   /** Optional in-world artist presence (portrait plaque + panel + tour intro). */
   artist: ArtistSchema.optional(),
 });
+
+/** Reserved tour-waypoint artworkId used for the artist intro stop. */
+export const ARTIST_TOUR_ID = '__artist__';
+
+/**
+ * GallerySchema — validated gallery.json structure with internal integrity.
+ *
+ * Internal integrity checks (on top of field shapes):
+ *   - Room ids are unique.
+ *   - Artwork ids are unique.
+ *   - Every placement references an existing room and an existing artwork.
+ *   - No artwork has more than one placement.
+ *   - Every tour waypoint with an artworkId references an existing artwork id,
+ *     with the single exception of the reserved ARTIST_TOUR_ID which is valid
+ *     only when gallery.artist is present.
+ */
+export const GallerySchema = _GalleryBaseSchema.superRefine((g, ctx) => {
+  const roomIds = new Set(g.rooms.map((r) => r.id));
+  const artworkIds = new Set(g.artworks.map((a) => a.id));
+
+  // Unique room ids
+  if (roomIds.size !== g.rooms.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['rooms'], message: 'room ids must be unique.' });
+  }
+  // Unique artwork ids
+  if (artworkIds.size !== g.artworks.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['artworks'], message: 'artwork ids must be unique.' });
+  }
+
+  // Placements reference existing rooms and artworks
+  const placedArtworkIds = new Set<string>();
+  for (let i = 0; i < g.placements.length; i++) {
+    const p = g.placements[i];
+    if (!roomIds.has(p.roomId)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['placements', i, 'roomId'], message: `placement references unknown roomId "${p.roomId}".` });
+    }
+    if (!artworkIds.has(p.artworkId)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['placements', i, 'artworkId'], message: `placement references unknown artworkId "${p.artworkId}".` });
+    }
+    if (placedArtworkIds.has(p.artworkId)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['placements', i, 'artworkId'], message: `artwork "${p.artworkId}" has more than one placement.` });
+    }
+    placedArtworkIds.add(p.artworkId);
+  }
+
+  // Tour waypoints: artworkId must reference a known artwork or the reserved artist id
+  for (let i = 0; i < g.tour.length; i++) {
+    const wp = g.tour[i];
+    if (wp.artworkId === undefined) continue;
+    if (wp.artworkId === ARTIST_TOUR_ID) {
+      // Valid only when artist is present
+      if (!g.artist) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tour', i, 'artworkId'], message: `reserved artist tour waypoint "${ARTIST_TOUR_ID}" requires gallery.artist to be present.` });
+      }
+      continue;
+    }
+    if (!artworkIds.has(wp.artworkId)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tour', i, 'artworkId'], message: `tour waypoint references unknown artworkId "${wp.artworkId}".` });
+    }
+  }
+});
+
 export type Gallery = z.infer<typeof GallerySchema>;

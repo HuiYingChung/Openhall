@@ -112,7 +112,7 @@ describe('composeGalleryFromPlan', () => {
       .mockResolvedValueOnce('"Quiet Forms"') // title call
       .mockResolvedValueOnce(JSON.stringify([ // one label batch (2 works ≤ 3)
         { artworkId: 'aw-01', label: 'Label one.', narration: 'Narration one.' },
-        { artworkId: 'aw-02', label: 'Label two.', artistStatement: 'A note.' },
+        { artworkId: 'aw-02', label: 'Label two.', narration: 'Narration two.', artistStatement: 'A note.' },
       ]));
 
     const gallery = await composeGalleryFromPlan(
@@ -129,23 +129,28 @@ describe('composeGalleryFromPlan', () => {
     expect(aw1.label).toBe('Label one.');
     expect(aw1.narration).toBe('Narration one.');
     expect(aw2.artistStatement).toBe('A note.');
-    expect(aw2.narration).toBeUndefined(); // model omitted it — graceful degradation
+    expect(aw2.narration).toBe('Narration two.');
   });
 
-  it('falls back to placeholder label + default title when the model is unhelpful', async () => {
+  it('two consecutive invalid label responses surface an error (no silent fallback)', async () => {
+    // The old 'No label available.' fallback is gone (§3). Two bad responses
+    // must fail loudly via generateValidated's retry-once-then-throw contract.
     const generate = vi.fn()
-      .mockResolvedValueOnce('   ') // empty title
+      .mockResolvedValueOnce('   ') // empty title → falls back to 'New Exhibition'
+      // First attempt: missing narration on both entries → invalid
       .mockResolvedValueOnce(JSON.stringify([
-        { artworkId: 'aw-01', label: 'Only one label.' },
+        { artworkId: 'aw-01', label: 'Only one entry, no narration.' },
+        { artworkId: 'aw-02', label: 'Second entry, also no narration.' },
+      ]))
+      // Retry: still invalid (missing aw-02 narration) → generateValidated throws
+      .mockResolvedValueOnce(JSON.stringify([
+        { artworkId: 'aw-01', label: 'Retry label.', narration: 'Retry narration.' },
+        { artworkId: 'aw-02', label: 'Still missing narration.' },
       ]));
 
-    const gallery = await composeGalleryFromPlan(
-      generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube'
-    );
-
-    expect(gallery.title).toBe('New Exhibition');
-    const aw2 = gallery.artworks.find((a) => a.id === 'aw-02')!;
-    expect(aw2.label).toBe('No label available.');
+    await expect(
+      composeGalleryFromPlan(generate, COMPOSE_ARTWORKS, COMPOSE_ANALYSES, COMPOSE_PLAN, 'white-cube')
+    ).rejects.toThrow('generateValidated');
   });
 
   it('batches labels in groups of three (narration doubles token budget)', async () => {
@@ -212,7 +217,7 @@ describe('composeGalleryFromPlan — progress events', () => {
       .mockResolvedValueOnce('Forms')
       .mockResolvedValueOnce(JSON.stringify([
         { artworkId: 'aw-01', label: 'Label one.', narration: 'Narration one.' },
-        { artworkId: 'aw-02', label: 'Label two.' },
+        { artworkId: 'aw-02', label: 'Label two.', narration: 'Narration two.' },
       ]));
 
     const events: string[] = [];
@@ -235,8 +240,8 @@ describe('composeGalleryFromPlan — progress events', () => {
     const good = vi.fn()
       .mockResolvedValueOnce('Quiet Forms')
       .mockResolvedValueOnce(JSON.stringify([
-        { artworkId: 'aw-01', label: 'A label for work one.' },
-        { artworkId: 'aw-02', label: 'A label for work two.' },
+        { artworkId: 'aw-01', label: 'A label for work one.', narration: 'Narration one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.', narration: 'Narration two.' },
       ]));
     const titles: string[] = [];
     await composeGalleryFromPlan(
@@ -248,8 +253,8 @@ describe('composeGalleryFromPlan — progress events', () => {
     const unhelpful = vi.fn()
       .mockResolvedValueOnce('   ')
       .mockResolvedValueOnce(JSON.stringify([
-        { artworkId: 'aw-01', label: 'A label for work one.' },
-        { artworkId: 'aw-02', label: 'A label for work two.' },
+        { artworkId: 'aw-01', label: 'A label for work one.', narration: 'Narration one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.', narration: 'Narration two.' },
       ]));
     const fallbackTitles: string[] = [];
     await composeGalleryFromPlan(
@@ -263,8 +268,8 @@ describe('composeGalleryFromPlan — progress events', () => {
     const generate = vi.fn()
       .mockResolvedValueOnce('Forms')
       .mockResolvedValueOnce(JSON.stringify([
-        { artworkId: 'aw-01', label: 'A label for work one.' },
-        { artworkId: 'aw-02', label: 'A label for work two.' },
+        { artworkId: 'aw-01', label: 'A label for work one.', narration: 'Narration one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.', narration: 'Narration two.' },
       ]));
     let assembled: { rooms: number; roomDims: string[]; placements: number; tourStops: number } | null = null;
     const gallery = await composeGalleryFromPlan(
@@ -283,8 +288,8 @@ describe('composeGalleryFromPlan — progress events', () => {
     const generate = vi.fn()
       .mockResolvedValueOnce('Forms')
       .mockResolvedValueOnce(JSON.stringify([
-        { artworkId: 'aw-01', label: 'A label for work one.' },
-        { artworkId: 'aw-02', label: 'A label for work two.' },
+        { artworkId: 'aw-01', label: 'A label for work one.', narration: 'Narration one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.', narration: 'Narration two.' },
       ]));
 
     const batchStart: Array<{ artworkIds: string[]; batch: number; totalBatches: number }> = [];
@@ -302,7 +307,7 @@ describe('composeGalleryFromPlan — progress events', () => {
   it('labels-batch-done carries the real label entries returned by the model', async () => {
     const entries = [
       { artworkId: 'aw-01', label: 'Written label.', narration: 'Spoken narration.' },
-      { artworkId: 'aw-02', label: 'Another label.' },
+      { artworkId: 'aw-02', label: 'Another label.', narration: 'Another narration.' },
     ];
     const generate = vi.fn()
       .mockResolvedValueOnce('Forms')
@@ -320,10 +325,10 @@ describe('composeGalleryFromPlan — progress events', () => {
   });
 
   it('emits retry event when the model output fails validation, then succeeds', async () => {
-    const badEntries = [{ artworkId: 'aw-01' }]; // missing required label field
+    const badEntries = [{ artworkId: 'aw-01' }]; // missing required label + narration + aw-02
     const goodEntries = [
-      { artworkId: 'aw-01', label: 'Good label.' },
-      { artworkId: 'aw-02', label: 'Another good label.' },
+      { artworkId: 'aw-01', label: 'Good label.', narration: 'Good narration.' },
+      { artworkId: 'aw-02', label: 'Another good label.', narration: 'Another narration.' },
     ];
     const generate = vi.fn()
       .mockResolvedValueOnce('Title') // title
@@ -350,8 +355,8 @@ describe('composeGalleryFromPlan — progress events', () => {
     const generate = vi.fn()
       .mockResolvedValueOnce('Forms')
       .mockResolvedValueOnce(JSON.stringify([
-        { artworkId: 'aw-01', label: 'A label for work one.' },
-        { artworkId: 'aw-02', label: 'A label for work two.' },
+        { artworkId: 'aw-01', label: 'A label for work one.', narration: 'Narration one.' },
+        { artworkId: 'aw-02', label: 'A label for work two.', narration: 'Narration two.' },
       ]));
     const retriedFlags: boolean[] = [];
     await composeGalleryFromPlan(

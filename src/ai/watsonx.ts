@@ -11,10 +11,11 @@
  *   Text:    ibm/granite-3-8b-instruct
  */
 
-import { WorkAnalysisSchema, CurationPlanSchema } from '../schema/analysis.schema';
+import { CurationPlanSchema } from '../schema/analysis.schema';
 import { generateValidated, composeGalleryFromPlan } from './provider';
 import { buildAnalyzePrompt } from './prompts/analyze.prompt';
 import { buildCuratePrompt } from './prompts/curate.prompt';
+import { buildAnalysisSchema, buildCurationSchema } from './validation';
 import type { AIProvider, UploadedArtwork, StylePreset } from './provider';
 import type { WorkAnalysis, CurationPlan } from '../schema/analysis.schema';
 import type { Gallery } from '../schema/gallery.schema';
@@ -205,11 +206,12 @@ export class WatsonxProvider implements AIProvider {
           },
         ], 512);
       },
-      WorkAnalysisSchema
+      buildAnalysisSchema(artwork.id)
     );
   }
 
   async curate(analyses: WorkAnalysis[], userBrief: string): Promise<CurationPlan> {
+    const expectedIds = analyses.map((a) => a.artworkId);
     const prompt = buildCuratePrompt(
       JSON.stringify(analyses, null, 2),
       userBrief,
@@ -220,7 +222,7 @@ export class WatsonxProvider implements AIProvider {
         chat(this.settings, WATSONX_TEXT_MODEL, [
           { role: 'user', content: prompt + extraContext },
         ], 1024),
-      CurationPlanSchema
+      buildCurationSchema(expectedIds)
     );
   }
 
