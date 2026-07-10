@@ -168,3 +168,40 @@ describe('buildScene artist plaque', () => {
     expect(gallery.tour.filter((w) => w.artworkId === ARTIST_MESH_ID)).toHaveLength(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// disposeScene — §6 environment texture cleanup
+// ---------------------------------------------------------------------------
+
+import { disposeScene } from './room-builder';
+import * as THREE from 'three';
+
+describe('disposeScene (§6)', () => {
+  it('disposes scene.environment and clears the reference', () => {
+    const gallery = parsedSampleGallery();
+    const { scene } = buildScene(gallery);
+
+    // If makeStudioEnvTexture produced a texture, it should be on scene.environment
+    if (scene.environment instanceof THREE.Texture) {
+      const env = scene.environment as THREE.Texture;
+      let disposed = false;
+      // Listen for disposal
+      env.addEventListener('dispose', () => { disposed = true; });
+
+      disposeScene(scene);
+
+      expect(disposed).toBe(true);
+      expect(scene.environment).toBeNull();
+    } else {
+      // No env texture (e.g. PMREMGenerator not available in jsdom) — just
+      // verify disposeScene doesn't throw when scene.environment is null/non-texture.
+      expect(() => disposeScene(scene)).not.toThrow();
+    }
+  });
+
+  it('does not throw when scene.environment is already null', () => {
+    const scene = new THREE.Scene();
+    scene.environment = null;
+    expect(() => disposeScene(scene)).not.toThrow();
+  });
+});

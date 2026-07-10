@@ -115,6 +115,13 @@ export function disposeScene(scene: THREE.Scene): void {
       mat.dispose();
     }
   });
+  // Dispose the scene's environment map when it is an owned texture.
+  // buildScene() creates a PMREMGenerator-derived texture via makeStudioEnvTexture()
+  // and assigns it to scene.environment — it is not shared and must be released here.
+  if (scene.environment instanceof THREE.Texture) {
+    scene.environment.dispose();
+    scene.environment = null;
+  }
   // Remove all children so the scene is empty
   while (scene.children.length > 0) scene.remove(scene.children[0]);
 }
