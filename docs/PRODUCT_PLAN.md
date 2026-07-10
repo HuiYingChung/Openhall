@@ -1,134 +1,117 @@
 # Openhall — Product Plan
 
 > AI-generated 3D galleries that artists actually own.
-> IBM AI Builders Challenge — July 2026: "Reimagine Creative Industries with AI"
+> [AI Builders Challenge with IBM Bob](https://aibuilderschallenge-bob.bemyapp.com/) — July 2026: "Reimagine Creative Industries with AI"
 
----
+Status: current MVP specification, updated July 10, 2026. See [ROADMAP.md](ROADMAP.md) for verified completion state and submission work.
 
-## 1. Problem Statement
+## 1. Problem statement
 
-Independent artists and art students create work worth showing, but exhibiting it remains gatekept and expensive. Physical gallery space costs hundreds to thousands of dollars, is location-bound, and is often inaccessible to emerging creators. Existing online alternatives — Instagram grids, Behance pages, PDF portfolios — flatten artwork into scrolling feeds, stripping away the spatial, curated experience that gives an exhibition its impact.
+Independent artists and art students create work worth showing, but exhibiting it remains expensive, location-bound, and gatekept. Instagram grids, portfolio pages, and PDFs flatten a show into a feed. Existing virtual-gallery platforms provide spatial presentation, but commonly require manual 3D editing and keep the result inside the vendor's hosting and subscription model.
 
-Existing virtual gallery platforms (Artsteps, Kunstmatrix, ArtPlacer, Exhibbit) don't solve this either:
-
-- They are **manual 3D editors** — artists still spend hours dragging, placing, and lighting.
-- They are **walled platforms** — galleries live on the vendor's servers, behind subscription tiers, and disappear if the artist stops paying or the vendor shuts down.
-
-## 2. Target Audience
+## 2. Target audience
 
 | Tier | Who | Need |
-|------|-----|------|
-| Primary | Art & design students (graduation shows, portfolio reviews, applications) | Professional exhibition experience, zero budget, zero 3D skills |
-| Secondary | Independent/emerging artists (illustrators, photographers, digital artists) | Shareable immersive showcase for clients, collectors, social media |
-| Roadmap | Collectives, student clubs, educators | Group/class virtual exhibitions |
+|---|---|---|
+| Primary | Art and design students | A credible graduation or portfolio show without gallery rent or 3D skills |
+| Secondary | Independent and emerging artists | A shareable immersive showcase they can host themselves |
+| Post-MVP | Collectives and educators | Group and classroom exhibitions |
 
-## 3. Solution
+## 3. Current solution
 
-**Openhall** is an open-source, AI-powered web tool that turns a folder of images into a walkable 3D exhibition in minutes — and the artist owns the result outright.
+Openhall is an open-source BYOK web tool that turns up to 10 artwork images into a walkable exhibition and exports it as a self-contained static website.
 
-The artist uploads up to 10 works (MVP), plugs in their own AI API key (BYOK), and Openhall does the rest:
-
-1. **AI Curation** — vision + language models analyze style, color, and theme to group works, order them, and design the visitor flow.
-2. **Text-to-Gallery** — describe the space in natural language ("concrete walls, cold lighting, a narrow corridor opening into a large hall") and AI translates it into gallery parameters; or pick a style preset (white cube, classical, industrial, minimalist).
-3. **AI Docent** — auto-generated wall labels and artist-statement polish for each piece.
-4. **Walkable 3D** — first-person WASD + mouse-look navigation, click-to-inspect artworks, plus a guided tour mode for mobile/non-gamer visitors.
-5. **Export & Own** — one click produces a self-contained static site (HTML + JS + assets). Deploy free on GitHub Pages / Netlify / Vercel, on your own domain. No platform lock-in, no monthly fee, no dependency on Openhall's servers.
+1. **Upload and describe.** The artist supplies JPG, PNG, or WebP images, optional metadata, and a one-sentence curatorial brief.
+2. **AI analyses and curates.** A vision model analyses each work. A language model chooses room count, grouping, wall assignments, within-room visitor order, title, labels, and narration.
+3. **Deterministic code builds.** A selected style preset controls materials, lighting, and base dimensions. Code builds a linear room chain, places the works, routes the tour through doorways, and sanitizes placements.
+4. **Visitors walk or tour.** Desktop visitors can use WASD and mouse-look; touch visitors enter guided tour mode. Labels and an opt-in browser speech-synthesis audio guide accompany the works.
+5. **The artist exports and owns.** JSZip packages the viewer, `gallery.json`, artwork images, and publishing guide. The result has no runtime dependency on Openhall or an AI provider.
 
 ## 4. Differentiation
 
-Individual pieces exist in the market; **the combination does not**:
+Openhall does not claim that every individual capability is unique. Commercial virtual galleries, AI audio guides, automatic procedural gallery generators, and exportable formats all exist. Its differentiation is the complete workflow in one open-source BYOK tool.
 
-| | Artsteps / Kunstmatrix / etc. | Openhall |
+| | Typical hosted virtual-gallery platform | Openhall MVP |
 |---|---|---|
-| Gallery creation | Manual 3D editor, hours of work | Fully AI-generated in minutes |
-| Customization | Drag-and-drop | Natural language ("text-to-gallery") + presets |
-| Ownership | Locked to platform, subscription | Exported static site, artist-owned forever |
-| Cost model | Freemium walls (e.g. 10-artwork cap then pay) | Open source + BYOK ≈ $0 |
-| AI | Partial add-ons (audio guides) | Core of the product: vision analysis, curation, layout, labels |
+| Creation | Manual editor or platform-specific automation | AI curation plus deterministic geometry |
+| Input | Drag, place, and light works manually | Artwork images, one curatorial sentence, and a style preset |
+| Interpretation | Manual labels or optional add-ons | AI-written title, labels, and narration |
+| Ownership | Gallery remains on the platform | Static-site zip the artist can host anywhere |
+| Cost | Subscription or platform tier | Artist pays provider usage directly; no Openhall fee or markup |
 
-**One-line pitch:** "Artsteps gives you a 3D editor; Openhall gives you an AI curator — and the gallery is yours to keep."
+One-line pitch: **“An AI curator builds the show; the artist keeps the gallery.”**
 
-## 5. Features
+## 5. MVP features
 
-### MVP (July — hackathon submission)
+- **F1. Upload** — up to 10 JPG, PNG, or WebP images; drag-and-drop; client-side resize and compression.
+- **F2. BYOK setup** — credentials remain in browser localStorage. IBM watsonx.ai is primary; OpenAI-compatible vision models are the fallback.
+- **F3. AI analysis** — `meta/llama-3-2-11b-vision-instruct` analyses style, palette, subject, mood, and description into validated JSON.
+- **F4. AI curation** — `ibm/granite-3-8b-instruct` chooses room count, grouping, wall assignments, and narrative order. Validation requires the order to move through rooms monotonically.
+- **F5. Deterministic gallery assembly** — four visual presets define materials, lighting, proportions, and ceiling height. Room dimensions are deterministic; width increases by 1.5 metres for each artwork beyond the first three in a room. Rooms form a linear chain of at most four; transit waypoints route the camera through doorways.
+- **F6. AI writing** — a plain-text title plus validated, editable wall labels and spoken narration. Structured failures retry once, then surface visibly.
+- **F7. 3D walkthrough** — Three.js, WASD, Pointer Lock mouse-look, AABB collision, click-to-inspect, and camera dolly.
+- **F8. Guided tour** — manual or autoplay navigation, touch fallback, and opt-in browser speech synthesis.
+- **F9. Export** — a self-contained static-site zip with a `PUBLISH.md` guide; the real bundle is exercised in headless Chromium.
+- **F10. Demo mode** — eight bundled CC0 artworks and a prebuilt, pre-authored gallery provide the visitor and export experience without an API key. Demo mode intentionally does not reproduce upload or generation.
 
-- **F1. Upload** — up to 10 images (JPG/PNG), drag-and-drop, client-side resize/compress.
-- **F2. BYOK setup** — API key stored in localStorage only; IBM watsonx.ai first-class, OpenAI-compatible providers as fallback. 3-minute onboarding guide.
-- **F3. AI analysis** — Granite Vision analyzes each work (style, palette, subject, mood) → structured JSON.
-- **F4. AI curation** — Granite LLM groups/orders works, assigns walls, generates visitor flow. **Room count and room sizes are AI-decided**, driven by artwork count and grouping (e.g. one large hall for a cohesive set; three rooms for three series) — capped at 4 rooms for ≤10 works. Style presets define materials, lighting, proportions, and flow character — never a fixed room count.
-- **F5. Text-to-Gallery** — natural-language room description → gallery parameter JSON (layout, wall material, lighting temperature, floor, accent color). 4 style presets as one-click alternatives.
-- **F6. AI wall labels** — title/medium/statement text per work, editable by the artist.
-- **F7. 3D walkthrough** — Three.js first-person: WASD + PointerLock mouse-look, wall collision, raycast hover-highlight, click → info panel with smooth camera dolly to viewing position. Controls hint overlay on first entry.
-- **F8. Tour mode** — click-to-advance guided path (reuses AI-generated visitor flow); default on mobile/touch.
-- **F9. Export** — download self-contained static site (viewer + gallery.json + images) as a zip. Step-by-step "publish free in 5 minutes" guide (Netlify Drop / GitHub Pages).
-- **F10. Demo mode** — bundled sample artworks + pre-generated gallery so anyone (and judges) can experience the full flow without a key.
+### Explicitly out of MVP
 
-### Explicitly OUT of MVP (roadmap slide only)
-
-Multi-user presence, VR/WebXR, video/3D-model artworks, sales/checkout, accounts & hosted galleries, real-time AI voice docent, one-click deploy API integration.
+Accounts, hosted persistence, multiplayer, VR/WebXR, video or imported 3D artworks, payments, managed AI usage, and one-click deployment APIs.
 
 ## 6. Architecture
 
+```mermaid
+flowchart TD
+    U["Upload images + metadata"] --> A["Vision analysis"]
+    B["One-sentence brief"] --> C["Curation plan"]
+    A --> C
+    P["Style preset"] --> D["Deterministic rooms, placements, doorways, tour"]
+    C --> D
+    C --> W["Title, labels, narration"]
+    A --> W
+    D --> G["Validated gallery.json"]
+    W --> G
+    G --> V["Framework-free Three.js viewer"]
+    G --> E["JSZip static-site export"]
 ```
-┌────────────────────────── Browser (everything runs client-side) ─────────────────────────┐
-│                                                                                          │
-│  Upload UI ──► Image preprocessing (resize/compress, canvas API)                         │
-│                     │                                                                    │
-│                     ▼                                                                    │
-│  BYOK key (localStorage) ──► AI Pipeline                                                 │
-│                              1. Vision analysis (Granite Vision via watsonx.ai API)      │
-│                              2. Curation plan   (Granite LLM → curation JSON)            │
-│                              3. Gallery params  (text-to-gallery → gallery JSON)         │
-│                              4. Wall labels     (LLM → labels JSON)                      │
-│                     │                                                                    │
-│                     ▼                                                                    │
-│  gallery.json (single source of truth: rooms, walls, placements, lighting, labels, tour) │
-│                     │                                                                    │
-│                     ▼                                                                    │
-│  Three.js Viewer (procedural room builder ← gallery.json)                                │
-│    • PointerLockControls (WASD + mouse-look)   • AABB wall collision                     │
-│    • Raycaster (hover/click artworks)          • Tour mode (waypoint walk)               │
-│                     │                                                                    │
-│                     ▼                                                                    │
-│  Exporter: zip(viewer bundle + gallery.json + images) ──► artist self-hosts anywhere     │
-└──────────────────────────────────────────────────────────────────────────────────────────┘
 
-Serverless (only if needed): tiny token-exchange function for watsonx IAM auth/CORS
-(Cloudflare Workers / Vercel functions free tier). No database. No backend state.
-```
+The OpenAI-compatible route calls its provider from the browser. The watsonx browser route requires the user-configured stateless Cloudflare relay for IBM IAM token exchange and the watsonx ML request. There is no Openhall database or Openhall-operated backend.
 
 ### Key design decisions
 
-- **gallery.json is the contract.** AI generates it; the viewer renders it; the exporter ships it. This decouples AI from 3D and makes everything testable.
-- **Procedural rooms, not 3D assets.** Rooms are generated from parameters (dimensions, materials, lighting) — no modeling, tiny bundle, infinite variety.
-- **Client-side only.** No server compute, no stored user data, no AI cost to us. The exception is an optional stateless token-exchange worker for watsonx IAM (its API-key→token flow and CORS make pure-browser calls awkward).
-- **Provider abstraction.** One `AIProvider` interface; `WatsonxProvider` (primary, IBM story) and `OpenAICompatProvider` (fallback) behind it.
+- **`gallery.json` is the contract.** The generation pipeline produces it; the viewer renders it; the exporter ships it. The viewer and AI layers share the schema, not implementation code.
+- **Creative decisions are AI; geometry is code.** Models choose curation and language. Deterministic code owns room dimensions, adjacency, coordinates, doorway routing, and placement sanity.
+- **Procedural rooms, not imported architecture.** This keeps the export portable and below the 5 MB non-artwork budget.
+- **Provider abstraction.** `WatsonxProvider` and `OpenAICompatProvider` implement the same `AIProvider` interface.
+- **BYOK without an Openhall credential service.** Keys are stored locally and sent only to the selected provider or, for watsonx, the user-configured relay.
 
 ### Tech stack
 
-- **Frontend:** Vite + TypeScript + Three.js (vanilla or React — Bob's choice; keep the viewer framework-free so the export bundle stays lean)
-- **AI:** IBM watsonx.ai — Granite Vision (image analysis) + Granite LLM (curation, text-to-gallery, labels); structured JSON outputs
-- **Auth to watsonx:** IBM Cloud IAM token exchange via minimal serverless function
-- **Export:** JSZip client-side packaging
-- **Hosting (tool itself):** GitHub Pages or Vercel free tier
-- **Dev tooling:** IBM Bob + BobShell throughout (see AGENTS.md)
+- Vite + TypeScript strict mode
+- Three.js viewer in vanilla TypeScript
+- Zod schemas and structured-output validation
+- IBM watsonx.ai: Llama vision analysis and Granite text generation
+- JSZip client-side export
+- Vitest plus real Chromium export smoke tests
+- Cloudflare Worker relay for the watsonx browser route
 
-## 7. How Openhall uses IBM technology
+## 7. IBM technology
 
-- **IBM Bob** — primary development agent for the entire codebase: Three.js viewer, AI pipeline, exporter, tests. BobShell session logs committed to the repo document the human+Bob workflow (judging: Best Use of Technology).
-- **IBM watsonx.ai** — runtime AI brain: Granite Vision for artwork analysis, Granite LLM for curation/layout/labels.
+- **IBM Bob** implemented core features from written work orders; BobShell prompts and session evidence are committed under `docs/bob-prompts/` and `docs/bob-sessions/`.
+- **IBM watsonx.ai** is the primary runtime provider: Llama vision analysis and Granite curation/writing.
 - **Narrative:** *Built with Bob. Powered by watsonx. Owned by artists.*
 
-## 8. Business / sustainability model (post-hackathon)
+## 8. Sustainability
 
-Open-source core stays free forever (BYOK). Optional paid layers later: premium gallery presets, managed hosting with custom domains, one-click deploy, team/classroom features. None required for the tool to be useful — which is the point.
+The open-source BYOK core remains free. Possible post-MVP services include managed hosting, custom domains, additional presets, and classroom tools, but none are required to use or host an exported gallery.
 
-## 9. Risks & mitigations
+## 9. Risks and mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| Text-to-gallery output too unpredictable | Constrain to parameter schema + presets as guardrails; LLM fills a validated JSON, never freeform geometry |
-| watsonx browser auth friction | Token-exchange worker ready day 1; OpenAI-compatible fallback provider |
-| 3D scope creep | gallery.json schema frozen end of week 1; features F1–F10 only |
-| Artists can't get API keys | Demo mode + 3-minute BYOK guide with free-tier providers |
-| Judges can't run it | Hosted demo instance + demo mode requires zero setup |
+| Risk | Current mitigation |
+|---|---|
+| Structured model output is malformed | Zod validation, one retry with the validation error, then a visible failure |
+| Model-generated geometry is incoherent | The model no longer writes geometry; deterministic assembly and placement sanity do |
+| watsonx browser setup is too difficult | Keyless demo mode, explicit worker guide, and OpenAI-compatible fallback |
+| A public demo consumes the owner's AI budget | Demo mode is prebuilt; live generation remains BYOK |
+| Export works in unit tests but fails in reality | Real zip creation, unzip, local static server, and Chromium smoke test |
+| Submission is hard to evaluate quickly | Publish a hosted demo, screenshot/GIF, and short video before submission |
