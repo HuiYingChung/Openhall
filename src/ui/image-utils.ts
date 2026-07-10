@@ -90,9 +90,50 @@ function fitDimensions(w: number, h: number, maxEdge: number): { width: number; 
 /**
  * Create a persistent object URL for displaying a file in the viewer.
  * The caller is responsible for calling URL.revokeObjectURL when done.
+ *
+ * @deprecated Use createDisplayBlobUrl() instead. This variant passes the
+ *   original (potentially huge) file directly to Three.js and the exporter,
+ *   which violates the ≤2048px display-copy contract. Retained only for
+ *   portrait uploads where we do not downscale.
  */
 export function createDisplayObjectUrl(file: File): string {
   return URL.createObjectURL(file);
+}
+
+/**
+ * Resize an image file to at most 2048px on its longest edge, then return
+ * a persistent object URL for a JPEG Blob.
+ *
+ * - Aspect ratio is preserved.
+ * - Images smaller than 2048px on every edge are NOT upscaled.
+ * - The caller is responsible for revoking the returned URL with
+ *   URL.revokeObjectURL() when the artwork is removed.
+ */
+export async function createDisplayBlobUrl(file: File, maxEdge = 2048, quality = 0.88): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const tempUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(tempUrl); // revoke temporary load URL
+      const { width, height } = fitDimensions(img.naturalWidth, img.naturalHeight, maxEdge);
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Could not get 2D context')); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { reject(new Error(`Failed to encode display image: ${file.name}`)); return; }
+          resolve(URL.createObjectURL(blob));
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(tempUrl); reject(new Error(`Failed to load image: ${file.name}`)); };
+    img.src = tempUrl;
+  });
 }
 
 /**

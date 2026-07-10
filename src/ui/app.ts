@@ -17,7 +17,7 @@ import { showToast, buildErrorCard, showFieldError, translateError, type ErrorAc
 import { createGenerationView, buildFloorPlanSvg } from './generation-view';
 import { escapeHtml } from './escape-html';
 import { sanitizePlacements } from './placement-sanity';
-import { resizeToDataUrl, createDisplayObjectUrl, generateFaviconDataUrl, allocateArtworkId, computeContentFingerprint } from './image-utils';
+import { resizeToDataUrl, createDisplayBlobUrl, generateFaviconDataUrl, allocateArtworkId, computeContentFingerprint } from './image-utils';
 import {
   WatsonxProvider,
   loadWatsonxSettings,
@@ -1377,9 +1377,16 @@ function renderUpload(
     const file = favInput.files?.[0];
     if (!file) return;
     try {
-      data.customFaviconDataUrl = await generateFaviconDataUrl(URL.createObjectURL(file));
+      // Create a temporary URL, generate the favicon data URL, then revoke the temp URL
+      const tempUrl = URL.createObjectURL(file);
+      try {
+        data.customFaviconDataUrl = await generateFaviconDataUrl(tempUrl);
+      } finally {
+        URL.revokeObjectURL(tempUrl);
+      }
       refreshFav();
     } catch { showToast({ message: 'Could not read that image. Try a PNG or JPG.', tone: 'error', duration: 6000 }); }
+    favInput.value = '';
   });
   favReset.addEventListener('click', () => {
     data.customFaviconDataUrl = null;
@@ -1389,10 +1396,14 @@ function renderUpload(
   portInput.addEventListener('change', () => {
     const file = portInput.files?.[0];
     if (!file) return;
-    idv.portraitObjectUrl = createDisplayObjectUrl(file);
+    // Revoke the old portrait URL before replacing it
+    if (idv.portraitObjectUrl) URL.revokeObjectURL(idv.portraitObjectUrl);
+    idv.portraitObjectUrl = URL.createObjectURL(file);
+    portInput.value = '';
     refreshPort();
   });
   portReset.addEventListener('click', () => {
+    if (idv.portraitObjectUrl) URL.revokeObjectURL(idv.portraitObjectUrl);
     idv.portraitObjectUrl = null;
     portInput.value = '';
     refreshPort();
@@ -1407,11 +1418,11 @@ function renderUpload(
     for (const file of toProcess) {
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) continue;
       try {
-        const [{ dataUrl: analysisDataUrl, width, height }, contentHash] = await Promise.all([
+        const [{ dataUrl: analysisDataUrl, width, height }, displayObjectUrl, contentHash] = await Promise.all([
           resizeToDataUrl(file, 1024),
+          createDisplayBlobUrl(file, 2048),
           computeContentFingerprint(file),
         ]);
-        const displayObjectUrl = createDisplayObjectUrl(file);
         const id = allocateArtworkId();
         const artwork: UploadedArtwork = {
           id, filename: file.name, analysisDataUrl, displayObjectUrl,
@@ -1512,6 +1523,8 @@ function addThumbnail(
     </div>`;
 
   card.querySelector(`[data-remove="${artwork.id}"]`)!.addEventListener('click', () => {
+    // Revoke the display blob URL before removing — prevents memory leak
+    if (artwork.displayObjectUrl) URL.revokeObjectURL(artwork.displayObjectUrl);
     data.artworks = data.artworks.filter((a) => a.id !== artwork.id);
     card.remove();
     onRemove?.();
