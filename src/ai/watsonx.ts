@@ -8,7 +8,7 @@
  *
  * Models confirmed working (2026-07):
  *   Vision:  meta-llama/llama-3-2-11b-vision-instruct
- *   Text:    ibm/granite-3-8b-instruct
+ *   Text:    meta-llama/llama-3-3-70b-instruct
  */
 
 import { generateValidated, composeGalleryFromPlan } from './provider';
@@ -20,7 +20,7 @@ import type { WorkAnalysis, CurationPlan } from '../schema/analysis.schema';
 import type { Gallery } from '../schema/gallery.schema';
 
 export const WATSONX_VISION_MODEL = 'meta-llama/llama-3-2-11b-vision-instruct';
-export const WATSONX_TEXT_MODEL = 'ibm/granite-3-8b-instruct';
+export const WATSONX_TEXT_MODEL = 'meta-llama/llama-3-3-70b-instruct';
 const WX_VERSION = '2024-05-31';
 
 // ---------------------------------------------------------------------------
