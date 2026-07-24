@@ -1191,7 +1191,7 @@ function renderSettings(
     <div class="oh-screen oh-screen--center">
       <div class="oh-panel">
         <h2 style="margin:0 0 0.25rem;font-size:1.4rem;">API Settings</h2>
-        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Your API key is never stored — it lives in memory only while this page is open, and vanishes when you refresh or leave. OpenAI-compatible calls go directly to the provider; watsonx calls route through this site's open-source relay (stateless, never logged) — or through your own worker if you prefer.</p>
+        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Your API key is never stored — it lives in memory only while this page is open, and vanishes when you refresh or leave. OpenAI-compatible calls go directly to the provider; watsonx calls route through this site's open-source relay (stateless, never logged) — or through your own worker if you prefer. This hosted site counts visits with cookieless, anonymized Vercel Web Analytics; your key and images are never part of it.</p>
 
         <label class="oh-label" style="font-size:0.9rem;margin-bottom:0.5rem;">Provider</label>
         <select id="oh-provider" class="oh-field" style="margin-bottom:1rem;">

@@ -140,4 +140,21 @@ deep-path invocation still works via the pathname fallback. Two new tests
 
 Verification: 448 passed (448); lint and build clean. Post-deploy check
 must probe GET `/api/relay/proxy/ml/v1/text/chat` expecting 405, then a
-real generation run.
+real generation run. (Both passed: deep route answers 405, and Huiying's
+real-key generation succeeded on production.)
+
+## Follow-up 4 — Vercel Web Analytics (hosted only)
+
+Huiying asked for visit tracking for the launch. Conflict handled openly:
+the product's honest story says "no analytics", so the hosted instance uses
+the least-invasive option and discloses it. Vercel Web Analytics is
+cookieless and anonymized, its script is served same-origin
+(`/_vercel/insights/script.js`, covered by the existing
+`script-src 'self'` CSP — no third-party domain added), and the Settings
+disclosure gained: "This hosted site counts visits with cookieless,
+anonymized Vercel Web Analytics; your key and images are never part of it."
+Plain `<script defer>` tag in index.html rather than the npm package (no
+new dependency; 404s harmlessly in local dev). Requires enabling Web
+Analytics on the Vercel project (dashboard toggle) before data flows.
+Hobby includes a small monthly event quota; the planned pre-launch Pro
+upgrade raises it for PH day.

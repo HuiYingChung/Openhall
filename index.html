@@ -18,5 +18,10 @@
   </head>
   <body>
     <script type="module" src="/src/main.ts"></script>
+    <!-- Hosted deployment only (deploy/vercel-ph): Vercel Web Analytics —
+         cookieless, anonymized visit counts. Served same-origin, so the
+         strict CSP (script-src 'self') already covers it. 404s harmlessly
+         in local dev where the /_vercel route doesn't exist. -->
+    <script defer src="/_vercel/insights/script.js"></script>
   </body>
 </html>
