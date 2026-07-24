@@ -118,3 +118,26 @@ without a key. New regression test in app.upload.test.ts covers the
 keyless button label, hint, and Settings routing.
 
 Verification: 446 passed (446); lint and build clean.
+
+## Follow-up 3 — production bug: deep relay paths 404'd
+
+Huiying's real-key generation on the live site failed with `watsonx HTTP
+404 … NOT_FOUND cle1::…` — Vercel's own 404, not IBM's. Probing confirmed
+the asymmetry: `/api/relay/xyz` (one segment) reached the function (405),
+`/api/relay/proxy/ml/v1/text/chat` (deep) did not. Root cause: Vercel's
+plain-api filesystem router matches a `[...path].ts` catch-all against only
+ONE segment. The earlier live verification probed only `/token` (single
+segment) — lesson recorded: probe the deepest route, not the shallowest.
+
+Fix (documented rewrite-parameter mechanism, not a workaround): function
+moved to fixed `api/relay.ts`; vercel.json adds
+`{ source: "/api/relay/:path*", destination: "/api/relay" }` ahead of the
+SPA rewrite — matched segments arrive in the `path` query parameter.
+`resolveRoute()` now takes (pathname, pathParam) and prefers the parameter;
+the proxy route strips `path` from the query it forwards upstream. Direct
+deep-path invocation still works via the pathname fallback. Two new tests
+(rewrite-style token + proxy with param stripping; 448 total).
+
+Verification: 448 passed (448); lint and build clean. Post-deploy check
+must probe GET `/api/relay/proxy/ml/v1/text/chat` expecting 405, then a
+real generation run.

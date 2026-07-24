@@ -1,5 +1,5 @@
 /**
- * api/relay/[...path].ts — Vercel function: watsonx IAM token exchange + ML API proxy.
+ * api/relay.ts — Vercel function: watsonx IAM token exchange + ML API proxy.
  *
  * Same-origin port of `worker/token-exchange.ts` for the hosted deployment
  * (deploy/vercel-ph branch only; the Cloudflare worker remains the
@@ -10,6 +10,15 @@
  *                              (IBM IAM has no CORS headers; browsers cannot call it)
  *   POST /api/relay/proxy/*  — forwards to https://us-south.ml.cloud.ibm.com/*
  *                              (watsonx ML API has no CORS headers either)
+ *
+ * Routing: Vercel's plain-api filesystem router matches only ONE dynamic
+ * segment, so a `[...path].ts` catch-all silently 404s on deep paths like
+ * /api/relay/proxy/ml/v1/text/chat (found in production by a real
+ * generation run). The function therefore lives at the fixed path
+ * /api/relay, and a vercel.json rewrite maps /api/relay/:path* onto it —
+ * the matched segments arrive in the `path` query parameter (documented
+ * rewrite behavior). resolveRoute() accepts both that parameter and a raw
+ * deep pathname, so direct invocation keeps working too.
  *
  * Served from the app's own origin, so unlike the worker there is no CORS
  * machinery at all. Security posture (mirrors the worker):
@@ -37,9 +46,15 @@ export type RelayRoute =
   | { kind: 'proxy'; upstreamPath: string }
   | { kind: 'unknown' };
 
-/** Map a request pathname to a relay route. Exported for unit tests. */
-export function resolveRoute(pathname: string): RelayRoute {
-  const sub = pathname.replace(/^\/api\/relay/, '');
+/**
+ * Map a request to a relay route. `pathParam` is the rewrite-provided `path`
+ * query parameter (e.g. "token" or "proxy/ml/v1/text/chat"); when absent the
+ * raw pathname is used. Exported for unit tests.
+ */
+export function resolveRoute(pathname: string, pathParam: string | null): RelayRoute {
+  const sub = pathParam
+    ? '/' + pathParam.replace(/^\/+/, '')
+    : pathname.replace(/^\/api\/relay/, '');
   if (sub === '' || sub === '/' || sub === '/token') return { kind: 'token' };
   if (sub.startsWith('/proxy/')) return { kind: 'proxy', upstreamPath: sub.slice('/proxy'.length) };
   return { kind: 'unknown' };
@@ -79,7 +94,7 @@ export async function POST(request: Request): Promise<Response> {
     return json(413, { error: 'Request body too large' });
   }
 
-  const route = resolveRoute(url.pathname);
+  const route = resolveRoute(url.pathname, url.searchParams.get('path'));
 
   // -------------------------------------------------------------------------
   // POST /api/relay/token — IAM key → bearer token exchange
@@ -116,7 +131,11 @@ export async function POST(request: Request): Promise<Response> {
   // POST /api/relay/proxy/* — forward to the watsonx ML API host only
   // -------------------------------------------------------------------------
   if (route.kind === 'proxy') {
-    const upstreamUrl = `${WX_PROXY_HOST}${route.upstreamPath}${url.search}`;
+    // Forward the original query string minus the rewrite's own `path` param.
+    const upstreamParams = new URLSearchParams(url.searchParams);
+    upstreamParams.delete('path');
+    const search = upstreamParams.toString();
+    const upstreamUrl = `${WX_PROXY_HOST}${route.upstreamPath}${search ? `?${search}` : ''}`;
 
     // Forward Authorization and Content-Type; never log the body. The body is
     // buffered (not streamed) — payloads are JSON and comfortably in memory.

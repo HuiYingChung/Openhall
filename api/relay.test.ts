@@ -1,27 +1,38 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { POST, originAllowed, resolveRoute } from './[...path].ts';
+import { POST, originAllowed, resolveRoute } from './relay.ts';
 
 beforeEach(() => {
   vi.restoreAllMocks();
 });
 
 describe('resolveRoute', () => {
-  it('maps the token routes', () => {
-    expect(resolveRoute('/api/relay/token')).toEqual({ kind: 'token' });
-    expect(resolveRoute('/api/relay')).toEqual({ kind: 'token' });
-    expect(resolveRoute('/api/relay/')).toEqual({ kind: 'token' });
+  it('maps the token routes from a raw pathname', () => {
+    expect(resolveRoute('/api/relay/token', null)).toEqual({ kind: 'token' });
+    expect(resolveRoute('/api/relay', null)).toEqual({ kind: 'token' });
+    expect(resolveRoute('/api/relay/', null)).toEqual({ kind: 'token' });
   });
 
   it('maps proxy routes to the upstream path, preserving depth', () => {
-    expect(resolveRoute('/api/relay/proxy/ml/v1/text/chat')).toEqual({
+    expect(resolveRoute('/api/relay/proxy/ml/v1/text/chat', null)).toEqual({
+      kind: 'proxy',
+      upstreamPath: '/ml/v1/text/chat',
+    });
+  });
+
+  it('prefers the rewrite-provided path query parameter', () => {
+    // Vercel's rewrite /api/relay/:path* → /api/relay passes the matched
+    // segments as the `path` query parameter.
+    expect(resolveRoute('/api/relay', 'token')).toEqual({ kind: 'token' });
+    expect(resolveRoute('/api/relay', 'proxy/ml/v1/text/chat')).toEqual({
       kind: 'proxy',
       upstreamPath: '/ml/v1/text/chat',
     });
   });
 
   it('rejects anything else', () => {
-    expect(resolveRoute('/api/relay/other')).toEqual({ kind: 'unknown' });
-    expect(resolveRoute('/api/relay/proxy')).toEqual({ kind: 'unknown' });
+    expect(resolveRoute('/api/relay/other', null)).toEqual({ kind: 'unknown' });
+    expect(resolveRoute('/api/relay/proxy', null)).toEqual({ kind: 'unknown' });
+    expect(resolveRoute('/api/relay', 'other')).toEqual({ kind: 'unknown' });
   });
 });
 
@@ -91,6 +102,25 @@ describe('POST handler', () => {
     expect(calledUrl).toBe('https://us-south.ml.cloud.ibm.com/ml/v1/text/chat?version=2024-05-31');
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('forwards rewrite-style proxy calls and strips the path param from the upstream query', async () => {
+    const upstream = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
+    await POST(
+      new Request(
+        'https://openhall.vercel.app/api/relay?version=2024-05-31&path=proxy%2Fml%2Fv1%2Ftext%2Fchat',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer t' },
+          body: JSON.stringify({ prompt: 'hi' }),
+        }
+      )
+    );
+    expect(upstream).toHaveBeenCalledTimes(1);
+    const calledUrl = upstream.mock.calls[0][0] as string;
+    expect(calledUrl).toBe('https://us-south.ml.cloud.ibm.com/ml/v1/text/chat?version=2024-05-31');
   });
 
   it('returns 404 for unknown relay paths without contacting anything', async () => {
