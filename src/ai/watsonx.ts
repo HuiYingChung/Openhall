@@ -39,11 +39,25 @@ export interface WatsonxSettings {
   tokenWorkerUrl: string;
 }
 
+/**
+ * Hosted-deployment policy (deploy/vercel-ph): the API key must never touch
+ * persistent storage. It lives only in this module-level variable — one page
+ * load, gone on refresh/close. Non-secret settings (project ID, endpoints)
+ * still persist in localStorage for convenience.
+ */
+let memoryApiKey = '';
+
 export function loadWatsonxSettings(): WatsonxSettings | null {
   try {
     const raw = localStorage.getItem('openhall_watsonx');
     if (!raw) return null;
-    return JSON.parse(raw) as WatsonxSettings;
+    const stored = JSON.parse(raw) as WatsonxSettings;
+    if (stored.apiKey) {
+      // Scrub any key persisted by an earlier version. Deliberately not
+      // adopted into memory — "never stored" starts by deleting what was.
+      localStorage.setItem('openhall_watsonx', JSON.stringify({ ...stored, apiKey: '' }));
+    }
+    return { ...stored, apiKey: memoryApiKey };
   } catch {
     return null;
   }
@@ -53,7 +67,14 @@ export function saveWatsonxSettings(s: WatsonxSettings): void {
   // Invalidate the token cache when settings change — the new credentials
   // may be for a different account or endpoint.
   invalidateToken();
-  localStorage.setItem('openhall_watsonx', JSON.stringify(s));
+  memoryApiKey = s.apiKey;
+  localStorage.setItem('openhall_watsonx', JSON.stringify({ ...s, apiKey: '' }));
+}
+
+/** Wipe the in-memory key (shared-computer escape hatch). */
+export function clearMemoryApiKey(): void {
+  memoryApiKey = '';
+  invalidateToken();
 }
 
 // ---------------------------------------------------------------------------

@@ -67,3 +67,54 @@ Playwright 1.61.1 expects 1228; fixed with symlinks in /opt/pw-browsers
 - Deployment is via GitHub push (`create-vercel-branch.cmd`, untracked) +
   Vercel Git integration with Production Branch = `deploy/vercel-ph`;
   binary assets made direct MCP file-tree deploy impractical.
+
+## Follow-up in the same session — ephemeral API keys (never stored)
+
+After the first production deploy went live (verified: CSP headers, SPA
+rewrite, relay answering 405 to GET, fresh viewer build), Huiying's call:
+API keys must be one-time — never persisted anywhere. Her scope decision:
+hosted branch only; strictness decision: memory-only (strictest claim),
+accepted that F5 requires re-entering the key — reasonable because a reload
+loses uploads and progress anyway, so re-pasting is the smallest part of
+redoing the flow. Regenerating after edits needs no re-entry (SPA, one page
+load).
+
+Changes:
+
+- `watsonx.ts` / `openai-compat.ts`: `apiKey` now lives in a module-level
+  memory variable only. `save*Settings` persists the settings object with
+  `apiKey: ''`; `load*Settings` merges the memory key back in. Keys
+  persisted by the earlier deploy are scrubbed on load and deliberately not
+  adopted. New `clearMemoryApiKey()` on both; `forgetStoredCredentials()`
+  wipes memory keys + token cache too.
+- Settings UI copy: intro says never stored / memory only; both key fields
+  labeled "(never stored — memory only)" with `autocomplete="off"`; escape
+  hatch reworded to "Clear settings" (it clears non-secret settings + any
+  in-memory key). Key-gating logic needed no changes — every gate reads
+  `load*Settings()?.apiKey`, which is empty after reload and routes to
+  Settings.
+- New `src/ai/key-ephemeral.test.ts` (6 tests): key absent from
+  localStorage after save, usable from memory same-load, legacy-key scrub
+  without adoption, hatch wipes memory — both providers.
+
+Deliberate divergence: AGENTS.md rule 7 says "API keys live in localStorage
+only" — that remains true for main; this branch's hosted policy is stricter
+by owner decision and is documented in the Settings copy.
+
+Verification: 445 passed (445) — 439 prior + 6 new; lint and build clean.
+
+## Follow-up 2 — keyless exploring (judges can use the upload screen)
+
+Huiying's call: judges/visitors without any API key should be able to use
+the upload page — uploads, brief, presets, identity — with only generation
+gated. Changes: upload is now always the landing screen (boot and
+exit-to-menu no longer route keyless visitors to Settings); the Settings
+screen always offers Cancel (there is always an upload screen to return
+to); when artworks are ready but no key is present, the Generate button
+reads "Add API key to generate →" with an explanatory hint, and clicking it
+routes to Settings instead of arming a generation (draft and uploads stay
+in memory). The cached "Continue → (no AI, no cost)" path stays available
+without a key. New regression test in app.upload.test.ts covers the
+keyless button label, hint, and Settings routing.
+
+Verification: 446 passed (446); lint and build clean.

@@ -30,6 +30,7 @@ import {
   loadWatsonxSettings,
   saveWatsonxSettings,
   invalidateToken,
+  clearMemoryApiKey as clearWatsonxMemoryKey,
   WATSONX_VISION_MODEL,
   WATSONX_TEXT_MODEL,
 } from '../ai/watsonx';
@@ -37,6 +38,7 @@ import {
   OpenAICompatProvider,
   loadOpenAISettings,
   saveOpenAISettings,
+  clearMemoryApiKey as clearOpenAIMemoryKey,
 } from '../ai/openai-compat';
 import type { AIProvider, UploadedArtwork, StylePreset, ComposeProgressEvent } from '../ai/provider';
 import { STYLE_PRESETS as PRESETS } from '../ai/provider';
@@ -209,17 +211,19 @@ export function applySuppressedArtworkTitles(
 }
 
 /**
- * Remove every stored credential and the provider choice from this browser.
- * The shared-computer escape hatch: after this, localStorage holds nothing
- * key-like. Exported for unit tests.
+ * Remove every saved setting, the provider choice, and the in-memory API keys
+ * from this browser. The shared-computer escape hatch. API keys themselves are
+ * never persisted (hosted-deployment policy) — this clears the non-secret
+ * settings plus anything currently held in memory. Exported for unit tests.
  */
 export function forgetStoredCredentials(): void {
   localStorage.removeItem('openhall_watsonx');
   localStorage.removeItem('openhall_openai');
   localStorage.removeItem('openhall_provider');
-  // Invalidate the in-memory Watsonx token — must not outlive the credentials
-  // that produced it. forgetStoredCredentials() is the "shared computer" escape
-  // hatch; leaving a live token would defeat it.
+  // Wipe in-memory keys and the Watsonx token — neither may outlive the
+  // settings that produced them; leaving them live would defeat the hatch.
+  clearWatsonxMemoryKey();
+  clearOpenAIMemoryKey();
   invalidateToken();
 }
 
@@ -525,9 +529,8 @@ export function bootApp(): void {
       restoreDraftAfterDemo(data, draftBeforeDemo);
       draftBeforeDemo = null;
     }
-    // Navigate: go to upload if there is a stored key, settings otherwise
-    const hasKey = !!(loadWatsonxSettings()?.apiKey || loadOpenAISettings()?.apiKey);
-    setState(hasKey ? 'upload' : 'settings');
+    // Navigate: upload is always the landing screen (key only needed to generate)
+    setState('upload');
   }
 
   // ---------------------------------------------------------------------------
@@ -965,8 +968,9 @@ export function bootApp(): void {
     renderStepper(state);
     switch (state) {
       case 'settings': {
-        const hasKey = !!(loadWatsonxSettings()?.apiKey || loadOpenAISettings()?.apiKey);
-        renderSettings(ui, data, () => setState('upload'), startDemo, hasKey ? () => setState('upload') : undefined);
+        // Cancel is always available — the upload screen is explorable
+        // without a key, so there is always somewhere to go back to.
+        renderSettings(ui, data, () => setState('upload'), startDemo, () => setState('upload'));
         break;
       }
 
@@ -1061,10 +1065,10 @@ export function bootApp(): void {
     }
   }
 
-  // Check if settings exist — if not, go to settings first
-  const hasWatsonx = !!loadWatsonxSettings()?.apiKey;
-  const hasOpenAI = !!loadOpenAISettings()?.apiKey;
-  setState(hasWatsonx || hasOpenAI ? 'upload' : 'settings');
+  // Upload is the landing screen — explorable without any API key (hosted
+  // policy: judges/visitors can try uploads, brief, and presets freely).
+  // A key is only required at the moment of generation.
+  setState('upload');
 }
 
 // ---------------------------------------------------------------------------
@@ -1166,7 +1170,15 @@ function renderSettings(
 ): void {
   const wx = loadWatsonxSettings();
   const oai = loadOpenAISettings();
-  const hasStoredCredentials = !!(wx?.apiKey || oai?.apiKey);
+  // Anything the escape hatch could clear: an in-memory key, or persisted
+  // non-secret settings. API keys themselves are never persisted.
+  const hasStoredCredentials =
+    !!(wx?.apiKey || oai?.apiKey) ||
+    !!(
+      localStorage.getItem('openhall_watsonx') ||
+      localStorage.getItem('openhall_openai') ||
+      localStorage.getItem('openhall_provider')
+    );
   const storedProvider = localStorage.getItem('openhall_provider');
   const providerDefault =
     storedProvider === 'watsonx' || storedProvider === 'openai'
@@ -1179,7 +1191,7 @@ function renderSettings(
     <div class="oh-screen oh-screen--center">
       <div class="oh-panel">
         <h2 style="margin:0 0 0.25rem;font-size:1.4rem;">API Settings</h2>
-        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Keys are stored in this browser only. OpenAI-compatible calls go directly to the provider; watsonx calls route through this site's open-source relay (stateless, never logged) — or through your own worker if you prefer.</p>
+        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Your API key is never stored — it lives in memory only while this page is open, and vanishes when you refresh or leave. OpenAI-compatible calls go directly to the provider; watsonx calls route through this site's open-source relay (stateless, never logged) — or through your own worker if you prefer.</p>
 
         <label class="oh-label" style="font-size:0.9rem;margin-bottom:0.5rem;">Provider</label>
         <select id="oh-provider" class="oh-field" style="margin-bottom:1rem;">
@@ -1188,8 +1200,8 @@ function renderSettings(
         </select>
 
         <div id="oh-watsonx-fields" style="display:${providerDefault === 'watsonx' ? 'block' : 'none'}">
-          <label class="oh-label">IBM Cloud API Key</label>
-          <input id="oh-wx-key" class="oh-field" type="password" placeholder="ApiKey-..." style="margin-bottom:0.75rem;" />
+          <label class="oh-label">IBM Cloud API Key <span style="color:var(--oh-ink-muted);">(never stored — memory only)</span></label>
+          <input id="oh-wx-key" class="oh-field" type="password" placeholder="ApiKey-..." autocomplete="off" style="margin-bottom:0.75rem;" />
           <label class="oh-label">watsonx Project ID (UUID)</label>
           <input id="oh-wx-project" class="oh-field" type="text" placeholder="xxxxxxxx-xxxx-4xxx-xxxx-xxxxxxxxxxxx" style="margin-bottom:0.75rem;" />
           <label class="oh-label">Token Worker URL <span style="color:var(--oh-ink-muted);">(pre-filled with this site's relay)</span></label>
@@ -1205,8 +1217,8 @@ function renderSettings(
         </div>
 
         <div id="oh-openai-fields" style="display:${providerDefault === 'openai' ? 'block' : 'none'}">
-          <label class="oh-label">API Key</label>
-          <input id="oh-oai-key" class="oh-field" type="password" placeholder="sk-..." style="margin-bottom:0.75rem;" />
+          <label class="oh-label">API Key <span style="color:var(--oh-ink-muted);">(never stored — memory only)</span></label>
+          <input id="oh-oai-key" class="oh-field" type="password" placeholder="sk-..." autocomplete="off" style="margin-bottom:0.75rem;" />
           <label class="oh-label">Base URL</label>
           <input id="oh-oai-url" class="oh-field" type="text" placeholder="https://api.openai.com/v1" style="margin-bottom:0.75rem;" />
           <label class="oh-label">Model</label>
@@ -1222,8 +1234,8 @@ function renderSettings(
         <p style="font-size:0.75rem;color:#555;margin:1rem 0 0;text-align:center;">No key? Try the <button id="oh-demo-btn" class="oh-btn--link" style="color:var(--oh-ink-muted);font-size:0.75rem;">demo mode</button> instead.</p>
         ${hasStoredCredentials ? `
         <p id="oh-forget-row" style="font-size:0.75rem;color:#555;margin:0.6rem 0 0;text-align:center;">
-          On a shared computer? <button id="oh-forget-key" class="oh-btn--link" style="color:var(--oh-ink-muted);font-size:0.75rem;">Forget my key</button>
-          — removes your keys and provider settings from this browser.
+          On a shared computer? <button id="oh-forget-key" class="oh-btn--link" style="color:var(--oh-ink-muted);font-size:0.75rem;">Clear settings</button>
+          — removes saved project/endpoint settings and any key in memory. Your API key is never saved to this browser.
         </p>` : ''}
       </div>
     </div>`;
@@ -1299,14 +1311,14 @@ function renderSettings(
   container.querySelector('#oh-forget-key')?.addEventListener('click', () => {
     const row = container.querySelector('#oh-forget-row') as HTMLElement;
     row.innerHTML = `
-      This removes your keys from this browser — you'll need to re-enter them.
-      <button id="oh-forget-confirm" class="oh-btn--link" style="color:var(--oh-ink);font-size:0.75rem;font-weight:700;">Forget keys</button>
+      This clears your saved settings and any key currently in memory — you'll need to re-enter them.
+      <button id="oh-forget-confirm" class="oh-btn--link" style="color:var(--oh-ink);font-size:0.75rem;font-weight:700;">Clear settings</button>
       &nbsp;·&nbsp;
       <button id="oh-forget-cancel" class="oh-btn--link" style="color:var(--oh-ink-muted);font-size:0.75rem;">Keep them</button>
     `;
     row.querySelector('#oh-forget-confirm')!.addEventListener('click', () => {
       forgetStoredCredentials();
-      showToast({ message: 'Keys and provider settings removed from this browser.', tone: 'success' });
+      showToast({ message: 'Settings and in-memory keys cleared from this browser.', tone: 'success' });
       renderSettings(container, _data, onDone, onDemo, undefined);
     });
     row.querySelector('#oh-forget-cancel')!.addEventListener('click', () => {
@@ -1498,6 +1510,15 @@ export function renderUpload(
     // Cache state drives both the button label and the cost hint below it.
     const cached = !!data.gallery && data.lastGenKey === aiInputKey(data);
     const hadGallery = !!data.gallery;
+    // Keyless exploring: everything on this screen works without a key —
+    // only generation needs one. Say so on the button itself, before the click.
+    const hasKey = !!(loadWatsonxSettings()?.apiKey || loadOpenAISettings()?.apiKey);
+    if (ready && !cached && !hasKey) {
+      generateBtn.textContent = 'Add API key to generate →';
+      genHint.innerHTML = `${svgWarn()}Generating needs your own API key (never stored — memory only). Everything else here works without one.`;
+      genHint.className = 'oh-hint--warn';
+      return;
+    }
     generateBtn.textContent = cached ? 'Continue → (no AI, no cost)' : 'Generate Gallery →';
     if (cached) {
       genHint.innerHTML = `${svgCheck()}Same artworks, description &amp; style — continues with no new AI call.`;
@@ -1697,6 +1718,16 @@ export function renderUpload(
 
   generateBtn.addEventListener('click', () => {
     data.userBrief = briefInput.value.trim();
+
+    // No key yet? The button already says "Add API key to generate" — honor
+    // it by going straight to Settings (draft and uploads stay in memory).
+    const willNeedAI = !(data.gallery && data.lastGenKey === aiInputKey(data));
+    const hasKey = !!(loadWatsonxSettings()?.apiKey || loadOpenAISettings()?.apiKey);
+    if (willNeedAI && !hasKey) {
+      onSettings();
+      return;
+    }
+
     if (!data.userBrief) {
       const errEl = container.querySelector('#oh-brief-error') as HTMLElement;
       showFieldError(errEl, 'Add a one-sentence description of your exhibition.', [briefInput]);

@@ -21,18 +21,36 @@ export interface OpenAICompatSettings {
   model: string;
 }
 
+/**
+ * Hosted-deployment policy (deploy/vercel-ph): the API key must never touch
+ * persistent storage — memory only, one page load. Non-secret settings
+ * (base URL, model) still persist in localStorage for convenience.
+ */
+let memoryApiKey = '';
+
 export function loadOpenAISettings(): OpenAICompatSettings | null {
   try {
     const raw = localStorage.getItem('openhall_openai');
     if (!raw) return null;
-    return JSON.parse(raw) as OpenAICompatSettings;
+    const stored = JSON.parse(raw) as OpenAICompatSettings;
+    if (stored.apiKey) {
+      // Scrub any key persisted by an earlier version; never adopt it.
+      localStorage.setItem('openhall_openai', JSON.stringify({ ...stored, apiKey: '' }));
+    }
+    return { ...stored, apiKey: memoryApiKey };
   } catch {
     return null;
   }
 }
 
 export function saveOpenAISettings(s: OpenAICompatSettings): void {
-  localStorage.setItem('openhall_openai', JSON.stringify(s));
+  memoryApiKey = s.apiKey;
+  localStorage.setItem('openhall_openai', JSON.stringify({ ...s, apiKey: '' }));
+}
+
+/** Wipe the in-memory key (shared-computer escape hatch). */
+export function clearMemoryApiKey(): void {
+  memoryApiKey = '';
 }
 
 // ---------------------------------------------------------------------------
