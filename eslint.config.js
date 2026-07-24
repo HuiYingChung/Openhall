@@ -81,6 +81,20 @@ export default [
       '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }],
     },
   },
+  // Vercel relay function (web-standard runtime, same globals as the worker)
+  {
+    files: ['api/**/*.ts'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
+      globals: cfWorkerGlobals,
+    },
+    plugins: { '@typescript-eslint': tsPlugin },
+    rules: {
+      ...tsPlugin.configs.recommended.rules,
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
+  },
   // Worker TypeScript (Cloudflare Workers context)
   {
     files: ['worker/**/*.ts'],

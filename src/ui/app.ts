@@ -1141,6 +1141,22 @@ function wordmark(sizeRem = 1.6): string {
 // Settings screen
 // ---------------------------------------------------------------------------
 
+/**
+ * Default relay for the hosted deployment: the same-origin Vercel function
+ * (api/relay/[...path].ts). Deploy-branch behavior — visitors get a working
+ * watsonx route without deploying their own worker, and the field stays
+ * editable so self-hosters can point at their own relay instead.
+ */
+export const HOSTED_RELAY_PATH = '/api/relay';
+
+/**
+ * Initial value for the Token Worker URL field. A saved value wins — including
+ * a deliberately blank one — so only first-time visitors get the hosted relay.
+ */
+export function initialTokenWorkerUrl(saved: string | undefined): string {
+  return saved ?? HOSTED_RELAY_PATH;
+}
+
 function renderSettings(
   container: HTMLElement,
   _data: AppData,
@@ -1163,7 +1179,7 @@ function renderSettings(
     <div class="oh-screen oh-screen--center">
       <div class="oh-panel">
         <h2 style="margin:0 0 0.25rem;font-size:1.4rem;">API Settings</h2>
-        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Keys are stored in this browser only. OpenAI-compatible calls go directly to the provider; watsonx calls route through your token worker (stateless, no logging).</p>
+        <p style="color:var(--oh-ink-muted);font-size:0.85rem;margin:0 0 1.5rem;">Keys are stored in this browser only. OpenAI-compatible calls go directly to the provider; watsonx calls route through this site's open-source relay (stateless, never logged) — or through your own worker if you prefer.</p>
 
         <label class="oh-label" style="font-size:0.9rem;margin-bottom:0.5rem;">Provider</label>
         <select id="oh-provider" class="oh-field" style="margin-bottom:1rem;">
@@ -1176,11 +1192,15 @@ function renderSettings(
           <input id="oh-wx-key" class="oh-field" type="password" placeholder="ApiKey-..." style="margin-bottom:0.75rem;" />
           <label class="oh-label">watsonx Project ID (UUID)</label>
           <input id="oh-wx-project" class="oh-field" type="text" placeholder="xxxxxxxx-xxxx-4xxx-xxxx-xxxxxxxxxxxx" style="margin-bottom:0.75rem;" />
-          <label class="oh-label">Token Worker URL <span style="color:var(--oh-ink-muted);">(leave blank if deploying locally)</span></label>
-          <input id="oh-wx-worker" class="oh-field" type="text" placeholder="https://your-worker.workers.dev" style="margin-bottom:0.75rem;" />
+          <label class="oh-label">Token Worker URL <span style="color:var(--oh-ink-muted);">(pre-filled with this site's relay)</span></label>
+          <input id="oh-wx-worker" class="oh-field" type="text" placeholder="/api/relay" style="margin-bottom:0.75rem;" />
           <p class="oh-help" style="margin:0 0 1rem;">
-            The token worker proxies IBM IAM authentication (required for browser use).<br>
-            Deploy <code>worker/token-exchange.ts</code> to Cloudflare Workers — it's free.
+            IBM's auth and model endpoints don't accept browser calls, so requests pass through a relay.
+            The default is this site's own: stateless, never logged, forwards only to IBM, and
+            <a href="https://github.com/HuiYingChung/Openhall" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">open source</a>.
+            Prefer your own infrastructure? Deploy <code>worker/token-exchange.ts</code> to Cloudflare
+            Workers (free) and paste its URL above.<br>
+            Tip: create a separate IBM API key just for Openhall — you can delete it anytime.
           </p>
         </div>
 
@@ -1215,7 +1235,9 @@ function renderSettings(
   // Set field values via .value assignment (safe with special characters in keys)
   (container.querySelector('#oh-wx-key') as HTMLInputElement).value = wx?.apiKey ?? '';
   (container.querySelector('#oh-wx-project') as HTMLInputElement).value = wx?.projectId ?? '';
-  (container.querySelector('#oh-wx-worker') as HTMLInputElement).value = wx?.tokenWorkerUrl ?? '';
+  (container.querySelector('#oh-wx-worker') as HTMLInputElement).value = initialTokenWorkerUrl(
+    wx?.tokenWorkerUrl
+  );
   (container.querySelector('#oh-oai-key') as HTMLInputElement).value = oai?.apiKey ?? '';
   (container.querySelector('#oh-oai-url') as HTMLInputElement).value = oai?.baseUrl ?? 'https://api.openai.com/v1';
   (container.querySelector('#oh-oai-model') as HTMLInputElement).value = oai?.model ?? 'gpt-4o';
