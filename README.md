@@ -242,8 +242,16 @@ npm run lint
 
 Repo guide: [AGENTS.md](AGENTS.md) (architecture rules + AI-agent working rules) · [docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md) · [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## Ownership: the tool and your gallery
+
+**Openhall is Huiying Chung's tool.** Its application, source code, interface, reusable viewer engine, templates, documentation, and branding are not available for copying, redistribution, or commercial reuse without written permission.
+
+**Your art remains yours.** Openhall claims no ownership of artworks, images, text, identity information, or other content you upload. You are responsible for having the rights required to use that material.
+
+**Your exported gallery is yours to use.** Openhall claims no ownership of the exhibition-specific content generated for you. Subject to applicable law and the terms of the AI provider and other third parties involved, you may publish, modify, distribute, and commercially use your exported static gallery. You also receive limited permission to host the Openhall viewer code included in that export, solely as part of operating and publishing that gallery. This does not permit extracting or reusing Openhall's code, viewer engine, templates, or branding to recreate Openhall or build another tool or service. See the [full license notice](LICENSE).
+
 ## Credits & license
 
-Demo artworks: eight public-domain (CC0) works from The Metropolitan Museum of Art — full list in [SOURCES.md](src/demo/SOURCES.md). Code: [All rights reserved](LICENSE).
+Demo artworks: eight public-domain (CC0) works from The Metropolitan Museum of Art — full list in [SOURCES.md](src/demo/SOURCES.md). Openhall: [All rights reserved, with a limited permission for user-exported galleries](LICENSE).
 
-Openhall was built in collaboration with AI — IBM Bob, Claude, and Codex did implementation and verification labour documented in this repo — and the design decisions, content, and direction are Huiying Chung's. The same is true of every gallery it generates: the AI curates and writes, but the art, and the gallery, belong to the artist.
+Openhall was built in collaboration with AI — IBM Bob, Claude, and Codex did implementation and verification labour documented in this repo — and the design decisions, content, and direction are Huiying Chung's.
