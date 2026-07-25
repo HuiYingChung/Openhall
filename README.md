@@ -97,7 +97,7 @@ The spoken audio guide uses the browser's built-in speech synthesis with zero bu
 
 ## Challenge fit: reimagining who gets to exhibit
 
-The creative industry's bottleneck isn't creation — it's **exhibition**. Openhall uses AI to replace the gatekeepers (space, money, 3D skills, curatorial labour) rather than the artist. The AI never generates art; it does the labour *around* the art — curation, spatial design, interpretation — and then hands the artist a file they own outright. Reimagined: an art student's graduation show takes one generation run and ends with a URL on their own domain.
+The creative industry's bottleneck isn't creation — it's **exhibition**. Openhall uses AI to replace the gatekeepers (space, money, 3D skills, curatorial labour) rather than the artist. The AI never generates art; it does the labour *around* the art — curation, spatial design, interpretation — and then hands the artist an exported file they can publish and control. Reimagined: an art student's graduation show takes one generation run and ends with a URL on their own domain.
 
 ## Built with Bob (and how we kept AI agents honest)
 
@@ -185,7 +185,7 @@ In the tour: **Autoplay** advances automatically (a thin progress line on the la
 
 **Export** downloads `<your-exhibition-title>.zip` — a complete website: `index.html`, the viewer engine, `gallery.json`, your images, and a `PUBLISH.md` walkthrough. Fastest route: drag the zip onto [Netlify Drop](https://app.netlify.com/drop); you can sign in first or claim the deploy afterward if you want to manage it. Also covered in PUBLISH.md: GitHub Pages, and testing locally with `npx serve` (browsers restrict `file://` pages, so double-clicking index.html won't work).
 
-The export contains no API keys, no analytics, and no runtime dependency on Openhall's infrastructure — it is genuinely yours.
+The export contains no API keys, no analytics, and no runtime dependency on Openhall's infrastructure — it is yours to publish and use under the export permission described in [Ownership](#ownership-the-tool-and-your-gallery).
 
 ### Troubleshooting
 
