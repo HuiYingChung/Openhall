@@ -7,7 +7,7 @@ Ten artworks and one sentence in, a walkable exhibition out: AI-curated rooms, w
 > Built with IBM Bob. Powered by watsonx. Owned by artists.
 
 [![CI](https://github.com/HuiYingChung/Openhall/actions/workflows/ci.yml/badge.svg)](https://github.com/HuiYingChung/Openhall/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: All Rights Reserved](https://img.shields.io/badge/License-All%20Rights%20Reserved-blue.svg)](LICENSE)
 
 Built for the July 2026 [**AI Builders Challenge with IBM Bob**](https://aibuilderschallenge-bob.bemyapp.com/), sponsored by IBM SkillsBuild — *"Reimagine Creative Industries with AI"*.
 
@@ -54,7 +54,7 @@ Existing options solve parts of this problem. Many established virtual-gallery p
 
 ## What makes it different
 
-The market overlaps with Openhall in important ways (reviewed July 2026): [KUNSTMATRIX](https://www.kunstmatrix.com/en) offers virtual exhibitions and AI-assisted audio guides; [PeopleArtFactory](https://beta.peopleartfactory.com/) combines an AI assistant with an exportable open format; [WebHome.Center](https://webhome.center/) promotes automatic AI-powered 3D exhibition creation; and [OpenVGAL](https://openvgal.com/) procedurally generates rooms, layouts, tours, and a static zip. Openhall's narrower differentiation is the **full workflow in one open-source BYOK tool**: analyse the artist's images, curate the show, write labels and narration, build a walkable gallery, and export a provider-independent static site. We did not find an exact match for that complete combination, but individual competitors cover substantial parts of it.
+The market overlaps with Openhall in important ways (reviewed July 2026): [KUNSTMATRIX](https://www.kunstmatrix.com/en) offers virtual exhibitions and AI-assisted audio guides; [PeopleArtFactory](https://beta.peopleartfactory.com/) combines an AI assistant with an exportable open format; [WebHome.Center](https://webhome.center/) promotes automatic AI-powered 3D exhibition creation; and [OpenVGAL](https://openvgal.com/) procedurally generates rooms, layouts, tours, and a static zip. Openhall's narrower differentiation is the **full workflow in one publicly viewable BYOK tool**: analyse the artist's images, curate the show, write labels and narration, build a walkable gallery, and export a provider-independent static site. We did not find an exact match for that complete combination, but individual competitors cover substantial parts of it.
 
 | | Typical virtual-gallery platforms | Openhall |
 |---|---|---|
@@ -62,7 +62,7 @@ The market overlaps with Openhall in important ways (reviewed July 2026): [KUNST
 | Customization | Drag-and-drop | A one-sentence curatorial brief + style presets |
 | Docent | Some offer audio add-ons | AI-written labels **and** spoken narration, per work |
 | Ownership | Locked to the platform | Exported static site, yours forever |
-| Cost model | Subscription tiers | Open source; **you pay your AI provider directly per generation** — no subscription, no platform fee, no margin taken |
+| Cost model | Subscription tiers | **You pay your AI provider directly per generation** — no Openhall subscription, platform fee, or margin |
 | AI's role | Add-on features | The curator: analysis, grouping, flow, titles, all text |
 
 ## How the AI works (and where it deliberately doesn't)
@@ -89,7 +89,7 @@ Three decisions carry the architecture:
 
 **2. `gallery.json` is the contract.** The generation pipeline produces it, the viewer renders it, and the exporter ships it. One zod schema guards both ends: the pipeline validates on the way out, and every exported gallery re-validates it on boot. Analysis (including an artwork-title suggestion), curation, labels, and narration are structured JSON, validated with exactly one retry on failure; the exhibition title is deliberately plain text (models don't answer naming questions in JSON). An artist-entered artwork title always wins, while a blank title receives the suggestion already returned by the vision call. An empty successful exhibition-title response gets a safe fallback, while authentication, quota, and network failures still surface to the user. The generating screen shows this honestly: each returned analysis and suggested artwork title, the curator's grouping, the exhibition-title response, every completed label/narration batch, whether that batch needed its validation retry, and the model doing the work (`meta-llama/llama-3-2-11b-vision-instruct` for analysis, `meta-llama/llama-3-3-70b-instruct` for text, on the watsonx route). Nothing on that screen is theatre.
 
-**3. BYOK, (almost) everything client-side.** No accounts, no database, no analytics. The one server-side piece is a small, stateless, open-source CORS relay the watsonx route needs. Details and trade-offs in [Security & privacy](#security--privacy-honestly).
+**3. BYOK, (almost) everything client-side.** No accounts, no database, no analytics. The one server-side piece is a small, stateless CORS relay whose implementation is included in this repository the watsonx route needs. Details and trade-offs in [Security & privacy](#security--privacy-honestly).
 
 Both provider routes implement the same `AIProvider` interface, so the pipeline is provider-agnostic: a generation run uses exactly one provider, and switching vendors changes configuration, not code. On the watsonx route, a single run spans the browser client, the user-deployed Cloudflare Worker relay, IBM IAM, and two watsonx-hosted models — with deterministic assembly, the Three.js viewer, browser speech synthesis, and the static-site export completing the chain.
 
@@ -244,6 +244,6 @@ Repo guide: [AGENTS.md](AGENTS.md) (architecture rules + AI-agent working rules)
 
 ## Credits & license
 
-Demo artworks: eight public-domain (CC0) works from The Metropolitan Museum of Art — full list in [SOURCES.md](src/demo/SOURCES.md). Code: [MIT](LICENSE).
+Demo artworks: eight public-domain (CC0) works from The Metropolitan Museum of Art — full list in [SOURCES.md](src/demo/SOURCES.md). Code: [All rights reserved](LICENSE).
 
 Openhall was built in collaboration with AI — IBM Bob, Claude, and Codex did implementation and verification labour documented in this repo — and the design decisions, content, and direction are Huiying Chung's. The same is true of every gallery it generates: the AI curates and writes, but the art, and the gallery, belong to the artist.
