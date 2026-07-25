@@ -1,11 +1,43 @@
 Copyright © 2026 Huiying Chung. All rights reserved.
 
-This repository is made publicly available solely for competition evaluation,
-educational review, and portfolio presentation purposes.
+## 1. Openhall software
 
-No permission is granted to copy, modify, distribute, sublicense, sell, or
-commercially use this project or any portion of its source code without prior
+Openhall, including its source code, application interface, reusable viewer
+engine, templates, documentation, and branding (collectively, the "Openhall
+Software"), is owned by Huiying Chung.
+
+This repository is made publicly available solely for competition evaluation,
+educational review, and portfolio presentation. Except for the limited export
+permission below, no permission is granted to copy, modify, distribute,
+sublicense, sell, or commercially use the Openhall Software without prior
 written permission from the copyright owner.
 
-Third-party software and assets included in or used by this project remain
-subject to their respective licenses and terms.
+## 2. User content
+
+Openhall does not claim ownership of artworks, images, text, identity
+information, or other content supplied by a user. Users retain whatever rights
+they hold in that content and are responsible for having the rights required
+to upload and use it.
+
+## 3. Exported galleries
+
+Openhall does not claim ownership of exhibition-specific content generated for
+a user. Subject to applicable law and the terms of any AI provider or other
+third party involved, users may use, publish, modify, distribute, and
+commercially exploit the exhibition-specific static gallery they generate and
+export through Openhall.
+
+To the extent an exported gallery contains portions of the Openhall Software,
+the copyright owner grants the user a limited, non-exclusive, worldwide,
+royalty-free permission to use, host, copy, and distribute those portions only
+as incorporated into, and as necessary to operate, that exported gallery.
+
+This export permission does not allow anyone to extract or reuse the Openhall
+Software, source code, reusable viewer engine, templates, documentation, or
+branding to redistribute Openhall, create a competing tool or service, or use
+them independently of the user's exported gallery.
+
+## 4. Third-party materials
+
+Third-party software, services, models, and assets included in or used by this
+project remain subject to their respective licenses and terms.
