@@ -9,11 +9,22 @@ Ten artworks and one sentence in, a walkable exhibition out: AI-curated rooms, w
 [![CI](https://github.com/HuiYingChung/Openhall/actions/workflows/ci.yml/badge.svg)](https://github.com/HuiYingChung/Openhall/actions/workflows/ci.yml)
 [![License: All Rights Reserved](https://img.shields.io/badge/License-All%20Rights%20Reserved-blue.svg)](LICENSE)
 
+[**Try Openhall online →**](https://openhall-eta.vercel.app) — no install required. Explore the complete visitor and export demo without a key, or bring your own provider key to generate a gallery from your artworks.
+
 Built for the July 2026 [**AI Builders Challenge with IBM Bob**](https://aibuilderschallenge-bob.bemyapp.com/), sponsored by IBM SkillsBuild — *"Reimagine Creative Industries with AI"*.
 
 ---
 
-## Try it locally in 60 seconds (no API key)
+## Try it online (no install)
+
+Open **[openhall-eta.vercel.app](https://openhall-eta.vercel.app)** and choose one of two paths:
+
+- **Demo gallery — no API key:** walk through a finished exhibition, inspect artworks, run the guided tour and audio guide, then export the gallery as a self-contained static site.
+- **Live generation — bring your own key:** upload your own artworks and run the real curation pipeline with IBM watsonx.ai or a compatible multimodal provider. Openhall adds no subscription or model markup; your provider bills you directly.
+
+The demo is intentionally prebuilt and makes no AI calls, so it proves the visitor and export experience rather than the generation pipeline. On the hosted version, a provider key stays in memory only while the page is open and disappears on refresh or navigation. The hosted site uses cookieless, anonymized Vercel Web Analytics; API keys and artwork images are not included. Deployment-specific source is public on [`deploy/vercel-ph`](https://github.com/HuiYingChung/Openhall/tree/deploy/vercel-ph).
+
+## Or run it locally in 60 seconds (no API key)
 
 Prerequisite: **Node.js 22.12 or newer** with npm. From a fresh clone:
 
@@ -89,9 +100,9 @@ Three decisions carry the architecture:
 
 **2. `gallery.json` is the contract.** The generation pipeline produces it, the viewer renders it, and the exporter ships it. One zod schema guards both ends: the pipeline validates on the way out, and every exported gallery re-validates it on boot. Analysis (including an artwork-title suggestion), curation, labels, and narration are structured JSON, validated with exactly one retry on failure; the exhibition title is deliberately plain text (models don't answer naming questions in JSON). An artist-entered artwork title always wins, while a blank title receives the suggestion already returned by the vision call. An empty successful exhibition-title response gets a safe fallback, while authentication, quota, and network failures still surface to the user. The generating screen shows this honestly: each returned analysis and suggested artwork title, the curator's grouping, the exhibition-title response, every completed label/narration batch, whether that batch needed its validation retry, and the model doing the work (`meta-llama/llama-3-2-11b-vision-instruct` for analysis, `meta-llama/llama-3-3-70b-instruct` for text, on the watsonx route). Nothing on that screen is theatre.
 
-**3. BYOK, (almost) everything client-side.** No accounts, no database, no analytics. The one server-side piece is a small, stateless CORS relay whose implementation is included in this repository the watsonx route needs. Details and trade-offs in [Security & privacy](#security--privacy-honestly).
+**3. BYOK, (almost) everything client-side.** There are no accounts or database. The hosted site uses cookieless, anonymized Vercel Web Analytics; the local/self-hosted app and exported galleries include no analytics. The watsonx route needs a small, stateless CORS relay whose implementation is public; the hosted deployment supplies a same-origin Vercel function, while local/self-hosted users can run the included Cloudflare worker. Details and trade-offs in [Security & privacy](#security--privacy-honestly).
 
-Both provider routes implement the same `AIProvider` interface, so the pipeline is provider-agnostic: a generation run uses exactly one provider, and switching vendors changes configuration, not code. On the watsonx route, a single run spans the browser client, the user-deployed Cloudflare Worker relay, IBM IAM, and two watsonx-hosted models — with deterministic assembly, the Three.js viewer, browser speech synthesis, and the static-site export completing the chain.
+Both provider routes implement the same `AIProvider` interface, so the pipeline is provider-agnostic: a generation run uses exactly one provider, and switching vendors changes configuration, not code. On the watsonx route, a single run spans the browser client, the selected stateless relay (the hosted Vercel function or a user-deployed Cloudflare Worker), IBM IAM, and two watsonx-hosted models — with deterministic assembly, the Three.js viewer, browser speech synthesis, and the static-site export completing the chain.
 
 The spoken audio guide uses the browser's built-in speech synthesis with zero bundled dependencies. It can work offline when the browser exposes a local system voice; browsers may also provide online voices, so offline speech is not guaranteed. We considered bundling a WASM TTS engine for platforms without voices and rejected it (2–3 MB of robotic speech against a 5 MB bundle budget); instead the app detects a voiceless platform and says so, with instructions ([details below](#known-limitations)).
 
@@ -111,18 +122,18 @@ This tool about AI was also built by AI, under human direction — and the proce
 
 ### A. Demo first (no key)
 
-Settings screen → **demo mode**. It loads a bundled, prebuilt gallery and exercises the visitor and export experience; it intentionally skips upload, AI generation, and label review.
+On the [hosted version](https://openhall-eta.vercel.app), choose **demo gallery**. Locally, use Settings → **demo mode**. Both load the same bundled, prebuilt gallery and exercise the visitor and export experience; they intentionally skip upload, AI generation, and label review.
 
 ### B. Bring your own key
 
-Openhall supports two provider routes. Your key is stored in this browser's localStorage only — see [Security & privacy](#security--privacy-honestly) before using a shared computer.
+Openhall supports two provider routes. On the hosted version, your key stays in memory only and is erased when you refresh or leave the page. In the local/self-hosted `main` build, provider settings — including the key — are stored in this browser's localStorage. See [Security & privacy](#security--privacy-honestly) before using a shared computer.
 
 **Route 1 — IBM watsonx.ai (primary)**
 
 1. Create an [IBM Cloud](https://cloud.ibm.com/) account and a [watsonx.ai](https://www.ibm.com/watsonx) project in **us-south**. IBM offers other watsonx regions, but Openhall currently targets us-south only.
 2. Create an API key. **Copy it immediately — IBM never shows it again.** Prefer a dedicated, least-privilege [Service ID API key](https://cloud.ibm.com/docs/iam?interface=ui&topic=iam-serviceidapikeys) for Openhall; otherwise use a dedicated revocable user key.
 3. Find your **Project ID** (watsonx project → Manage → General).
-4. Choose where to run the token worker (IBM's auth and ML endpoints don't allow browser calls, so a CORS relay is required).
+4. Choose the relay path (IBM's auth and ML endpoints do not allow these browser calls directly). The hosted version already uses its default same-origin, stateless Vercel relay, so no worker setup is required there. For local or self-hosted use, run or deploy the included Cloudflare worker:
 
    For local testing, keep **two terminals** open in the repository:
 
@@ -150,7 +161,7 @@ Openhall supports two provider routes. Your key is stored in this browser's loca
    ```
 
    Set `ALLOWED_ORIGINS` in the Cloudflare dashboard to the exact domains that will run Openhall (comma-separated when needed). A blank value accepts only the local Vite development origins; `*` deliberately allows every website. This is browser-side abuse mitigation, not authentication: non-browser clients can omit or forge `Origin`, so deploy the worker for your own gallery rather than treating it as a protected public API.
-5. In Openhall's **Settings**: pick *IBM watsonx.ai*, paste the API key, Project ID, and your worker URL → **Save & Continue**.
+5. In the hosted version's **Settings**, pick *IBM watsonx.ai* and enter the API key and Project ID; keep the default relay. In a local or self-hosted build, also enter your worker URL → **Save & Continue**.
 
 **Route 2 — OpenAI-compatible (fallback)**
 
@@ -196,16 +207,18 @@ The export contains no API keys, no analytics, and no runtime dependency on Open
 
 ## Security & privacy, honestly
 
-**Data flow.** On the OpenAI-compatible route, your browser talks to the provider directly. On the watsonx route, your key and artwork images pass through the Cloudflare relay you configure because IBM's IAM and ML endpoints do not accept these browser calls directly. The [worker](worker/token-exchange.ts) is stateless, logs no request bodies, exchanges the key with IBM IAM, and restricts the ML proxy to the configured watsonx host. **No Openhall-operated server receives or stores the data, but Cloudflare runs the relay and IBM receives the credentials/tokens and model payloads under their own terms.**
+**Data flow.** On the OpenAI-compatible route, your browser talks to the provider directly. The watsonx route needs a relay because IBM's IAM and ML endpoints do not accept these browser calls directly. The hosted deployment uses the open-source, same-origin [Vercel relay](https://github.com/HuiYingChung/Openhall/blob/deploy/vercel-ph/api/relay.ts); it is stateless, logs no request bodies, restricts proxying to IBM IAM and the configured watsonx host, and sets `Cache-Control: no-store`. Local and self-hosted users can instead run the included [Cloudflare worker](worker/token-exchange.ts), which applies the same core boundaries. Vercel or Cloudflare operates the selected relay, and IBM receives credentials/tokens and model payloads under their own terms.
 
-**Key storage.** Your key lives in this browser's localStorage. That's the standard trade-off for a serverless BYOK tool — the alternative (our server holding your keys) would create a far bigger honeypot — but it has real limitations you should know:
+**Key storage.** On the hosted version, your key remains in page memory only and disappears when you refresh, close, or leave the page. In the local/self-hosted `main` build, provider settings — including the key — live in this browser's localStorage. Those choices avoid an Openhall key database, but they still have limitations:
 
-- Any JavaScript running on the page could read it. Our defences include loading no remotely hosted third-party scripts and escaping user- and AI-controlled text at HTML insertion points, with regression tests for those renderers — but no web app can claim immunity from undiscovered XSS.
-- Malicious browser extensions can read page storage; that's outside any web app's control.
-- On a **shared computer**, the key persists for the next user. Use a private window, or Settings → **Forget my key** (two-step, wipes all stored credentials).
+- Any JavaScript running on the page could read an in-memory or localStorage key. Our defences include escaping user- and AI-controlled text at HTML insertion points and regression tests for those renderers, but no web app can claim immunity from undiscovered XSS.
+- Malicious browser extensions may be able to read page data; that is outside any web app's control.
+- On a **shared computer**, the local/self-hosted build's stored key can persist for the next user. Use a private window or Settings → **Forget my key**. The hosted version erases its in-memory key when you leave or refresh.
 - Best practice regardless: use a **dedicated, revocable, least-privilege key** for Openhall and configure provider billing alerts. Alerts are not guaranteed hard spending caps.
 
-**What we've verified:** keys never appear in exports (asserted by tests), the worker sets `Cache-Control: no-store`, and the exported viewer's automated Chromium boot path makes no HTTP requests beyond its own static-site origin. **What we can't promise:** the absence of unknown vulnerabilities or that browser-provided online speech voices never use their own services. Treat the key like the credential it is.
+**Analytics.** The hosted site uses cookieless, anonymized Vercel Web Analytics for aggregate visits and page views. API keys and artwork images are not included. The local/self-hosted `main` build and exported galleries contain no analytics.
+
+**What we've verified:** keys never appear in exports (asserted by tests), both relay implementations set `Cache-Control: no-store`, and the exported viewer's automated Chromium boot path makes no HTTP requests beyond its own static-site origin. **What we can't promise:** the absence of unknown vulnerabilities or that browser-provided online speech voices never use their own services. Treat the key like the credential it is.
 
 ## Testing & CI
 
